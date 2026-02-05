@@ -1,0 +1,35 @@
+services:
+  # Backend API
+  - type: web
+    name: tidrapportering-api
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    envVars:
+      - key: DATABASE_URL
+        value: file:./dev.db
+      - key: JWT_SECRET
+        generateValue: true
+      - key: PORT
+        value: 3001
+      - key: FRONTEND_URL
+        value: https://tidrapportering.onrender.com
+      - key: UPLOAD_DIR
+        value: /app/uploads
+
+  # Frontend Static Site
+  - type: web
+    name: tidrapportering
+    runtime: static
+    buildCommand: cd frontend && npm install && npm run build
+    staticPublishPath: frontend/dist
+    pullRequestPreviewsEnabled: true
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: SAMEORIGIN
+    routes:
+      - type: rewrite
+        source: /api/*
+        destination: https://tidrapportering-api.onrender.com/api/*

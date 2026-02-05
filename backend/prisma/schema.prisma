@@ -1,0 +1,165 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Användare
+model User {
+  id          String   @id @default(uuid())
+  email       String   @unique
+  password    String
+  name        String
+  role        String   @default("EMPLOYEE") // ADMIN, SUPERVISOR, EMPLOYEE
+  hourlyCost  Float?   // Intern timkostnad för rapporter
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  timeEntries     TimeEntry[]
+  approvedEntries TimeEntry[]  @relation("Approver")
+  weekLocks       WeekLock[]
+  auditLogs       AuditLog[]
+}
+
+// Kunder
+model Customer {
+  id            String   @id @default(uuid())
+  name          String
+  orgNumber     String?  // Organisationsnummer
+  address       String?
+  contactPerson String?
+  email         String?
+  phone         String?
+  defaultRate   Float?   // Standard kundpris kr/h
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  projects Project[]
+}
+
+// Projekt
+model Project {
+  id           String   @id @default(uuid())
+  customerId   String?
+  customer     Customer? @relation(fields: [customerId], references: [id])
+  name         String
+  code         String   @unique // Projektnummer
+  site         String?  // Plats/arbetsplats
+  status       String   @default("PLANNED") // PLANNED, ONGOING, COMPLETED, INVOICED
+  budgetHours  Float?
+  billingModel String   @default("HOURLY") // HOURLY (löpande), FIXED (fastpris)
+  defaultRate  Float?   // Projektspecifikt pris kr/h
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  timeEntries TimeEntry[]
+}
+
+// Aktiviteter/Koder
+model Activity {
+  id              String   @id @default(uuid())
+  name            String
+  code            String   @unique
+  category        String   @default("WORK") // WORK, TRAVEL, MEETING, INTERNAL, CHANGE_ORDER, ABSENCE
+  billableDefault Boolean  @default(true)
+  rateOverride    Float?   // Aktivitetsspecifikt pris
+  sortOrder       Int      @default(0)
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  timeEntries TimeEntry[]
+}
+
+// Tidrader
+model TimeEntry {
+  id          String    @id @default(uuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  projectId   String?   // null = intern tid
+  project     Project?  @relation(fields: [projectId], references: [id])
+  activityId  String
+  activity    Activity  @relation(fields: [activityId], references: [id])
+  date        DateTime
+  startTime   String?   // HH:mm format
+  endTime     String?   // HH:mm format
+  hours       Float
+  billable    Boolean   @default(true)
+  note        String?
+  status      String    @default("DRAFT") // DRAFT, SUBMITTED, APPROVED, REJECTED
+  submittedAt DateTime?
+  approvedAt  DateTime?
+  approverId  String?
+  approver    User?     @relation("Approver", fields: [approverId], references: [id])
+  rejectNote  String?
+  gpsLat      Float?
+  gpsLng      Float?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  attachments Attachment[]
+}
+
+// Bilagor
+model Attachment {
+  id          String    @id @default(uuid())
+  timeEntryId String
+  timeEntry   TimeEntry @relation(fields: [timeEntryId], references: [id], onDelete: Cascade)
+  filename    String
+  originalName String
+  mimeType    String
+  size        Int
+  path        String
+  createdAt   DateTime  @default(now())
+}
+
+// Veckolås för attestflöde
+model WeekLock {
+  id            String    @id @default(uuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id])
+  weekStartDate DateTime  // Måndagen i veckan
+  status        String    @default("SUBMITTED") // SUBMITTED, APPROVED, REJECTED
+  comment       String?
+  submittedAt   DateTime  @default(now())
+  reviewedAt    DateTime?
+  reviewerId    String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([userId, weekStartDate])
+}
+
+// Audit log (GDPR)
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+  action     String   // CREATE, UPDATE, DELETE, LOGIN, EXPORT
+  entityType String   // TimeEntry, User, Project, etc.
+  entityId   String?
+  oldValue   String?  // JSON string
+  newValue   String?  // JSON string
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+}
+
+// Företagsinställningar
+model Settings {
+  id              String   @id @default(uuid())
+  companyName     String   @default("Mitt Företag AB")
+  vatRate         Float    @default(25) // Momssats %
+  weekStartDay    Int      @default(1) // 1 = måndag
+  csvDelimiter    String   @default(";")
+  defaultCurrency String   @default("SEK")
+  reminderTime    String   @default("15:30")
+  reminderEnabled Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}

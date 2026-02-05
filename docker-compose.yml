@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  # PostgreSQL databas (för produktion)
+  # db:
+  #   image: postgres:15-alpine
+  #   environment:
+  #     POSTGRES_USER: tidapp
+  #     POSTGRES_PASSWORD: tidapp123
+  #     POSTGRES_DB: tidapp
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #   ports:
+  #     - "5432:5432"
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "3001:3001"
+    environment:
+      - DATABASE_URL=file:./dev.db
+      - JWT_SECRET=super-secret-jwt-key-change-in-production-min-32-chars
+      - PORT=3001
+      - UPLOAD_DIR=/app/uploads
+    volumes:
+      - ./uploads:/app/uploads
+      - db_data:/app/prisma
+    # depends_on:
+    #   - db
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+
+volumes:
+  # postgres_data:
+  db_data:
