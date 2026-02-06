@@ -33,3 +33,6 @@ services:
       - type: rewrite
         source: /api/*
         destination: https://tidrapportering-api.onrender.com/api/*
+      - type: rewrite
+        source: /*
+        destination: /index.html
