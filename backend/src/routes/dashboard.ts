@@ -23,8 +23,10 @@ const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
     const weekEnd = new Date(weekStart);
     weekEnd.setDate(weekEnd.getDate() + 6);
 
-    // Basfilter för tidrader
-    const userFilter = isAdminOrSupervisor ? {} : { userId: request.user.id };
+    // Basfilter för tidrader (alltid filtrera på företag)
+    const userFilter = isAdminOrSupervisor
+      ? { user: { companyId: request.user.companyId } }
+      : { userId: request.user.id };
 
     // Månadens timmar
     const monthStats = await prisma.timeEntry.aggregate({
@@ -55,7 +57,7 @@ const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
 
     // Pågående projekt med timmar och budget
     const ongoingProjects = await prisma.project.findMany({
-      where: { status: 'ONGOING', active: true },
+      where: { status: 'ONGOING', active: true, companyId: request.user.companyId },
       include: {
         customer: { select: { name: true } },
       },
@@ -95,7 +97,7 @@ const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
     let pendingApprovals: any[] = [];
     if (isAdminOrSupervisor) {
       pendingApprovals = await prisma.weekLock.findMany({
-        where: { status: 'SUBMITTED' },
+        where: { status: 'SUBMITTED', user: { companyId: request.user.companyId } },
         include: {
           user: { select: { id: true, name: true } },
         },

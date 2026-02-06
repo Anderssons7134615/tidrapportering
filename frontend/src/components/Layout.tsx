@@ -69,7 +69,12 @@ export default function Layout() {
             >
               {menuOpen ? <X size={24} /> : <Menu size={24} />}
             </button>
-            <h1 className="text-lg font-bold">TidApp</h1>
+            <div>
+              <h1 className="text-lg font-bold leading-tight">TidApp</h1>
+              {user?.companyName && (
+                <p className="text-xs text-primary-200 leading-tight">{user.companyName}</p>
+              )}
+            </div>
           </div>
           <div className="flex items-center gap-3">
             {/* Offline-indikator */}

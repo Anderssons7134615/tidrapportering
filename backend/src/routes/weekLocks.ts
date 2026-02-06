@@ -9,7 +9,7 @@ const weekLockRoutes: FastifyPluginAsync = async (fastify) => {
   }, async (request) => {
     const { status, userId } = request.query as { status?: string; userId?: string };
 
-    const where: any = {};
+    const where: any = { user: { companyId: request.user.companyId } };
 
     if (request.user.role === 'EMPLOYEE') {
       where.userId = request.user.id;
@@ -78,7 +78,7 @@ const weekLockRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     const count = await prisma.weekLock.count({
-      where: { status: 'SUBMITTED' },
+      where: { status: 'SUBMITTED', user: { companyId: request.user.companyId } },
     });
 
     return { count };

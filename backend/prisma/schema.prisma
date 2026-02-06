@@ -7,9 +7,27 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// Företag (multi-tenant)
+model Company {
+  id        String   @id @default(uuid())
+  name      String
+  orgNumber String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users      User[]
+  customers  Customer[]
+  projects   Project[]
+  activities Activity[]
+  settings   Settings[]
+}
+
 // Användare
 model User {
   id          String   @id @default(uuid())
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id])
   email       String   @unique
   password    String
   name        String
@@ -28,6 +46,8 @@ model User {
 // Kunder
 model Customer {
   id            String   @id @default(uuid())
+  companyId     String
+  company       Company  @relation(fields: [companyId], references: [id])
   name          String
   orgNumber     String?  // Organisationsnummer
   address       String?
@@ -45,10 +65,12 @@ model Customer {
 // Projekt
 model Project {
   id           String   @id @default(uuid())
+  companyId    String
+  company      Company  @relation(fields: [companyId], references: [id])
   customerId   String?
   customer     Customer? @relation(fields: [customerId], references: [id])
   name         String
-  code         String   @unique // Projektnummer
+  code         String   // Unik per företag (se @@unique nedan)
   site         String?  // Plats/arbetsplats
   status       String   @default("PLANNED") // PLANNED, ONGOING, COMPLETED, INVOICED
   budgetHours  Float?
@@ -59,13 +81,17 @@ model Project {
   updatedAt    DateTime @updatedAt
 
   timeEntries TimeEntry[]
+
+  @@unique([companyId, code])
 }
 
 // Aktiviteter/Koder
 model Activity {
   id              String   @id @default(uuid())
+  companyId       String
+  company         Company  @relation(fields: [companyId], references: [id])
   name            String
-  code            String   @unique
+  code            String   // Unik per företag (se @@unique nedan)
   category        String   @default("WORK") // WORK, TRAVEL, MEETING, INTERNAL, CHANGE_ORDER, ABSENCE
   billableDefault Boolean  @default(true)
   rateOverride    Float?   // Aktivitetsspecifikt pris
@@ -75,6 +101,8 @@ model Activity {
   updatedAt       DateTime @updatedAt
 
   timeEntries TimeEntry[]
+
+  @@unique([companyId, code])
 }
 
 // Tidrader
@@ -150,9 +178,11 @@ model AuditLog {
   createdAt  DateTime @default(now())
 }
 
-// Företagsinställningar
+// Företagsinställningar (per företag)
 model Settings {
   id              String   @id @default(uuid())
+  companyId       String   @unique
+  company         Company  @relation(fields: [companyId], references: [id])
   companyName     String   @default("Mitt Företag AB")
   vatRate         Float    @default(25) // Momssats %
   weekStartDay    Int      @default(1) // 1 = måndag

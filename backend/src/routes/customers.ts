@@ -20,13 +20,14 @@ const requireAdminOrSupervisor = async (request: any, reply: any) => {
 };
 
 const customerRoutes: FastifyPluginAsync = async (fastify) => {
-  // List customers
+  // List customers (same company)
   fastify.get('/', {
     preHandler: [fastify.authenticate],
   }, async (request) => {
     const { active } = request.query as { active?: string };
 
-    const where = active !== undefined ? { active: active === 'true' } : {};
+    const where: any = { companyId: request.user.companyId };
+    if (active !== undefined) where.active = active === 'true';
 
     const customers = await prisma.customer.findMany({
       where,
@@ -56,7 +57,7 @@ const customerRoutes: FastifyPluginAsync = async (fastify) => {
       },
     });
 
-    if (!customer) {
+    if (!customer || customer.companyId !== request.user.companyId) {
       return reply.status(404).send({ error: 'Kund hittades inte' });
     }
 
@@ -71,7 +72,7 @@ const customerRoutes: FastifyPluginAsync = async (fastify) => {
       const body = customerSchema.parse(request.body);
 
       const customer = await prisma.customer.create({
-        data: body,
+        data: { ...body, companyId: request.user.companyId },
       });
 
       // Audit log
@@ -103,7 +104,7 @@ const customerRoutes: FastifyPluginAsync = async (fastify) => {
       const body = customerSchema.partial().parse(request.body);
 
       const customer = await prisma.customer.findUnique({ where: { id } });
-      if (!customer) {
+      if (!customer || customer.companyId !== request.user.companyId) {
         return reply.status(404).send({ error: 'Kund hittades inte' });
       }
 
@@ -140,7 +141,7 @@ const customerRoutes: FastifyPluginAsync = async (fastify) => {
     const { id } = request.params as { id: string };
 
     const customer = await prisma.customer.findUnique({ where: { id } });
-    if (!customer) {
+    if (!customer || customer.companyId !== request.user.companyId) {
       return reply.status(404).send({ error: 'Kund hittades inte' });
     }
 

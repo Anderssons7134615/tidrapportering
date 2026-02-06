@@ -38,7 +38,7 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
       status?: string;
     };
 
-    const where: any = {};
+    const where: any = { user: { companyId: request.user.companyId } };
 
     // Medarbetare ser bara sina egna
     if (request.user.role === 'EMPLOYEE') {

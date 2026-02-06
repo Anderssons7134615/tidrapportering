@@ -57,6 +57,11 @@ export const authApi = {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     }),
+  register: (data: { companyName: string; orgNumber?: string; name: string; email: string; password: string }) =>
+    fetchApi<{ token: string; user: User }>('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
   me: () => fetchApi<User>('/auth/me'),
   changePassword: (currentPassword: string, newPassword: string) =>
     fetchApi<{ message: string }>('/auth/change-password', {

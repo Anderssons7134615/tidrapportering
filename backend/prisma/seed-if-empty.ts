@@ -24,22 +24,18 @@ const DEFAULT_ACTIVITIES = [
 ];
 
 async function main() {
-  console.log('🌱 Seedar databas...');
+  // Kolla om det redan finns företag
+  const companyCount = await prisma.company.count();
 
-  // Rensa befintlig data
-  await prisma.auditLog.deleteMany();
-  await prisma.attachment.deleteMany();
-  await prisma.weekLock.deleteMany();
-  await prisma.timeEntry.deleteMany();
-  await prisma.activity.deleteMany();
-  await prisma.project.deleteMany();
-  await prisma.customer.deleteMany();
-  await prisma.user.deleteMany();
-  await prisma.settings.deleteMany();
-  await prisma.company.deleteMany();
+  if (companyCount > 0) {
+    console.log('⏭️  Databas redan seedat (' + companyCount + ' företag finns). Hoppar över.');
+    return;
+  }
 
-  // === FÖRETAG 1: Anderssons Isolering ===
-  const company1 = await prisma.company.create({
+  console.log('🌱 Tom databas - seedar med standarddata...');
+
+  // Skapa Anderssons Isolering
+  const company = await prisma.company.create({
     data: {
       name: 'Anderssons Isolering',
       orgNumber: '556123-4567',
@@ -48,7 +44,7 @@ async function main() {
 
   await prisma.settings.create({
     data: {
-      companyId: company1.id,
+      companyId: company.id,
       companyName: 'Anderssons Isolering',
       vatRate: 25,
       weekStartDay: 1,
@@ -59,83 +55,34 @@ async function main() {
     },
   });
 
-  const hashedPassword1 = await bcrypt.hash('Rick1234', 10);
+  const hashedPassword = await bcrypt.hash('Rick1234', 10);
   await prisma.user.create({
     data: {
-      companyId: company1.id,
+      companyId: company.id,
       email: 'rick@anderssonsisolering.se',
-      password: hashedPassword1,
+      password: hashedPassword,
       name: 'Rick',
       role: 'ADMIN',
       hourlyCost: 450,
     },
   });
 
-  // Skapa aktiviteter för företag 1
   await Promise.all(
     DEFAULT_ACTIVITIES.map((a) =>
       prisma.activity.create({
-        data: { ...a, companyId: company1.id },
+        data: { ...a, companyId: company.id },
       })
     )
   );
 
-  console.log('✅ Företag 1 (Anderssons Isolering) skapat');
-
-  // === FÖRETAG 2: Testföretaget AB (demo) ===
-  const company2 = await prisma.company.create({
-    data: {
-      name: 'Testföretaget AB',
-      orgNumber: '556987-6543',
-    },
-  });
-
-  await prisma.settings.create({
-    data: {
-      companyId: company2.id,
-      companyName: 'Testföretaget AB',
-      vatRate: 25,
-      weekStartDay: 1,
-      csvDelimiter: ';',
-      defaultCurrency: 'SEK',
-      reminderTime: '16:00',
-      reminderEnabled: true,
-    },
-  });
-
-  const hashedPassword2 = await bcrypt.hash('Test1234', 10);
-  await prisma.user.create({
-    data: {
-      companyId: company2.id,
-      email: 'admin@testforetaget.se',
-      password: hashedPassword2,
-      name: 'Test Admin',
-      role: 'ADMIN',
-      hourlyCost: 400,
-    },
-  });
-
-  // Skapa aktiviteter för företag 2
-  await Promise.all(
-    DEFAULT_ACTIVITIES.map((a) =>
-      prisma.activity.create({
-        data: { ...a, companyId: company2.id },
-      })
-    )
-  );
-
-  console.log('✅ Företag 2 (Testföretaget AB) skapat');
-
-  console.log('\n🎉 Databas seedning klar!');
-  console.log('\n📧 Logga in med:');
-  console.log('   Anderssons Isolering: rick@anderssonsisolering.se / Rick1234');
-  console.log('   Testföretaget AB:     admin@testforetaget.se / Test1234');
+  console.log('✅ Databas seedat med Anderssons Isolering');
+  console.log('📧 Logga in: rick@anderssonsisolering.se / Rick1234');
 }
 
 main()
   .catch((e) => {
-    console.error(e);
-    process.exit(1);
+    console.error('Seed-fel:', e);
+    // Fortsätt ändå - servern ska starta även om seed misslyckas
   })
   .finally(async () => {
     await prisma.$disconnect();

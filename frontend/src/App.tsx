@@ -5,6 +5,7 @@ import Layout from './components/Layout';
 import LoadingSpinner from './components/ui/LoadingSpinner';
 
 const Login = lazy(() => import('./pages/Login'));
+const Register = lazy(() => import('./pages/Register'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const TimeEntry = lazy(() => import('./pages/TimeEntry'));
 const WeekView = lazy(() => import('./pages/WeekView'));
@@ -37,6 +38,7 @@ export default function App() {
     <Suspense fallback={<LoadingSpinner fullScreen />}>
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Register />} />
       <Route
         path="/"
         element={

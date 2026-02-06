@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
 import { authApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
@@ -87,7 +87,10 @@ export default function Login() {
         </form>
 
         <p className="text-center text-primary-200 text-sm mt-6">
-          Testanvändare: admin@byggab.se / password123
+          Nytt företag?{' '}
+          <Link to="/register" className="text-white underline hover:no-underline">
+            Registrera er här
+          </Link>
         </p>
       </div>
     </div>

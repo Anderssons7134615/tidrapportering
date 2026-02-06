@@ -20,16 +20,18 @@ const requireAdmin = async (request: any, reply: any) => {
 };
 
 const settingsRoutes: FastifyPluginAsync = async (fastify) => {
-  // Get settings
+  // Get settings (per company)
   fastify.get('/', {
     preHandler: [fastify.authenticate],
-  }, async () => {
-    let settings = await prisma.settings.findFirst();
+  }, async (request) => {
+    let settings = await prisma.settings.findUnique({
+      where: { companyId: request.user.companyId },
+    });
 
     // Skapa default settings om de inte finns
     if (!settings) {
       settings = await prisma.settings.create({
-        data: {},
+        data: { companyId: request.user.companyId },
       });
     }
 
@@ -43,16 +45,26 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
     try {
       const body = settingsSchema.parse(request.body);
 
-      let settings = await prisma.settings.findFirst();
+      let settings = await prisma.settings.findUnique({
+        where: { companyId: request.user.companyId },
+      });
 
       if (settings) {
         settings = await prisma.settings.update({
-          where: { id: settings.id },
+          where: { companyId: request.user.companyId },
           data: body,
         });
       } else {
         settings = await prisma.settings.create({
-          data: body,
+          data: { ...body, companyId: request.user.companyId },
+        });
+      }
+
+      // Uppdatera även företagsnamn i Company-tabellen om det ändras
+      if (body.companyName) {
+        await prisma.company.update({
+          where: { id: request.user.companyId },
+          data: { name: body.companyName },
         });
       }
 

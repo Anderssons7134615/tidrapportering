@@ -19,13 +19,13 @@ const requireAdmin = async (request: any, reply: any) => {
 };
 
 const activityRoutes: FastifyPluginAsync = async (fastify) => {
-  // List activities
+  // List activities (same company)
   fastify.get('/', {
     preHandler: [fastify.authenticate],
   }, async (request) => {
     const { active, category } = request.query as { active?: string; category?: string };
 
-    const where: any = {};
+    const where: any = { companyId: request.user.companyId };
     if (active !== undefined) where.active = active === 'true';
     if (category) where.category = category;
 
@@ -47,7 +47,7 @@ const activityRoutes: FastifyPluginAsync = async (fastify) => {
       where: { id },
     });
 
-    if (!activity) {
+    if (!activity || activity.companyId !== request.user.companyId) {
       return reply.status(404).send({ error: 'Aktivitet hittades inte' });
     }
 
@@ -61,9 +61,14 @@ const activityRoutes: FastifyPluginAsync = async (fastify) => {
     try {
       const body = activitySchema.parse(request.body);
 
-      // Kontrollera att kod är unik
+      // Kontrollera att kod är unik inom företaget
       const existing = await prisma.activity.findUnique({
-        where: { code: body.code },
+        where: {
+          companyId_code: {
+            companyId: request.user.companyId,
+            code: body.code,
+          },
+        },
       });
 
       if (existing) {
@@ -71,7 +76,7 @@ const activityRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       const activity = await prisma.activity.create({
-        data: body,
+        data: { ...body, companyId: request.user.companyId },
       });
 
       // Audit log
@@ -103,14 +108,19 @@ const activityRoutes: FastifyPluginAsync = async (fastify) => {
       const body = activitySchema.partial().parse(request.body);
 
       const activity = await prisma.activity.findUnique({ where: { id } });
-      if (!activity) {
+      if (!activity || activity.companyId !== request.user.companyId) {
         return reply.status(404).send({ error: 'Aktivitet hittades inte' });
       }
 
-      // Om kod ändras, kontrollera att den är unik
+      // Om kod ändras, kontrollera att den är unik inom företaget
       if (body.code && body.code !== activity.code) {
         const existing = await prisma.activity.findUnique({
-          where: { code: body.code },
+          where: {
+            companyId_code: {
+              companyId: request.user.companyId,
+              code: body.code,
+            },
+          },
         });
         if (existing) {
           return reply.status(400).send({ error: 'Aktivitetskoden finns redan' });
@@ -150,7 +160,7 @@ const activityRoutes: FastifyPluginAsync = async (fastify) => {
     const { id } = request.params as { id: string };
 
     const activity = await prisma.activity.findUnique({ where: { id } });
-    if (!activity) {
+    if (!activity || activity.companyId !== request.user.companyId) {
       return reply.status(404).send({ error: 'Aktivitet hittades inte' });
     }
 

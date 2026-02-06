@@ -35,11 +35,12 @@ const requireAdmin = async (request: any, reply: any) => {
 };
 
 const userRoutes: FastifyPluginAsync = async (fastify) => {
-  // List users
+  // List users (only same company)
   fastify.get('/', {
     preHandler: [requireAdminOrSupervisor],
   }, async (request) => {
     const users = await prisma.user.findMany({
+      where: { companyId: request.user.companyId },
       select: {
         id: true,
         email: true,
@@ -61,7 +62,7 @@ const userRoutes: FastifyPluginAsync = async (fastify) => {
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
 
-    // Användare kan bara se sig själva, admin/supervisor kan se alla
+    // Användare kan bara se sig själva, admin/supervisor kan se alla i samma företag
     if (request.user.id !== id && !['ADMIN', 'SUPERVISOR'].includes(request.user.role)) {
       return reply.status(403).send({ error: 'Åtkomst nekad' });
     }
@@ -70,6 +71,7 @@ const userRoutes: FastifyPluginAsync = async (fastify) => {
       where: { id },
       select: {
         id: true,
+        companyId: true,
         email: true,
         name: true,
         role: true,
@@ -79,14 +81,14 @@ const userRoutes: FastifyPluginAsync = async (fastify) => {
       },
     });
 
-    if (!user) {
+    if (!user || user.companyId !== request.user.companyId) {
       return reply.status(404).send({ error: 'Användare hittades inte' });
     }
 
     return user;
   });
 
-  // Create user
+  // Create user (same company)
   fastify.post('/', {
     preHandler: [requireAdmin],
   }, async (request, reply) => {
@@ -107,6 +109,7 @@ const userRoutes: FastifyPluginAsync = async (fastify) => {
         data: {
           ...body,
           password: hashedPassword,
+          companyId: request.user.companyId,
         },
         select: {
           id: true,
@@ -148,7 +151,7 @@ const userRoutes: FastifyPluginAsync = async (fastify) => {
       const body = updateUserSchema.parse(request.body);
 
       const user = await prisma.user.findUnique({ where: { id } });
-      if (!user) {
+      if (!user || user.companyId !== request.user.companyId) {
         return reply.status(404).send({ error: 'Användare hittades inte' });
       }
 
@@ -202,7 +205,7 @@ const userRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     const user = await prisma.user.findUnique({ where: { id } });
-    if (!user) {
+    if (!user || user.companyId !== request.user.companyId) {
       return reply.status(404).send({ error: 'Användare hittades inte' });
     }
 
@@ -236,7 +239,7 @@ const userRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     const user = await prisma.user.findUnique({ where: { id } });
-    if (!user) {
+    if (!user || user.companyId !== request.user.companyId) {
       return reply.status(404).send({ error: 'Användare hittades inte' });
     }
 

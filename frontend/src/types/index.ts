@@ -6,6 +6,8 @@ export interface User {
   hourlyCost?: number;
   active: boolean;
   createdAt: string;
+  companyId?: string;
+  companyName?: string;
 }
 
 export interface Customer {

@@ -21,7 +21,7 @@ const requireAdminOrSupervisor = async (request: any, reply: any) => {
 };
 
 const projectRoutes: FastifyPluginAsync = async (fastify) => {
-  // List projects
+  // List projects (same company)
   fastify.get('/', {
     preHandler: [fastify.authenticate],
   }, async (request) => {
@@ -31,7 +31,7 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
       active?: string;
     };
 
-    const where: any = {};
+    const where: any = { companyId: request.user.companyId };
     if (status) where.status = status;
     if (customerId) where.customerId = customerId;
     if (active !== undefined) where.active = active === 'true';
@@ -80,7 +80,7 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
       },
     });
 
-    if (!project) {
+    if (!project || project.companyId !== request.user.companyId) {
       return reply.status(404).send({ error: 'Projekt hittades inte' });
     }
 
@@ -109,6 +109,12 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
     const { id } = request.params as { id: string };
     const { from, to } = request.query as { from?: string; to?: string };
 
+    // Verify project belongs to company
+    const project = await prisma.project.findUnique({ where: { id } });
+    if (!project || project.companyId !== request.user.companyId) {
+      return reply.status(404).send({ error: 'Projekt hittades inte' });
+    }
+
     const where: any = { projectId: id };
     if (from) where.date = { ...where.date, gte: new Date(from) };
     if (to) where.date = { ...where.date, lte: new Date(to) };
@@ -132,9 +138,14 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
     try {
       const body = projectSchema.parse(request.body);
 
-      // Kontrollera att projektkod är unik
+      // Kontrollera att projektkod är unik inom företaget
       const existing = await prisma.project.findUnique({
-        where: { code: body.code },
+        where: {
+          companyId_code: {
+            companyId: request.user.companyId,
+            code: body.code,
+          },
+        },
       });
 
       if (existing) {
@@ -142,7 +153,7 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       const project = await prisma.project.create({
-        data: body,
+        data: { ...body, companyId: request.user.companyId },
         include: {
           customer: { select: { id: true, name: true } },
         },
@@ -177,14 +188,19 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
       const body = projectSchema.partial().parse(request.body);
 
       const project = await prisma.project.findUnique({ where: { id } });
-      if (!project) {
+      if (!project || project.companyId !== request.user.companyId) {
         return reply.status(404).send({ error: 'Projekt hittades inte' });
       }
 
-      // Om kod ändras, kontrollera att den är unik
+      // Om kod ändras, kontrollera att den är unik inom företaget
       if (body.code && body.code !== project.code) {
         const existing = await prisma.project.findUnique({
-          where: { code: body.code },
+          where: {
+            companyId_code: {
+              companyId: request.user.companyId,
+              code: body.code,
+            },
+          },
         });
         if (existing) {
           return reply.status(400).send({ error: 'Projektkoden finns redan' });
@@ -227,7 +243,7 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
     const { id } = request.params as { id: string };
 
     const project = await prisma.project.findUnique({ where: { id } });
-    if (!project) {
+    if (!project || project.companyId !== request.user.companyId) {
       return reply.status(404).send({ error: 'Projekt hittades inte' });
     }
 

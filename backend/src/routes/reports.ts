@@ -30,6 +30,7 @@ const reportRoutes: FastifyPluginAsync = async (fastify) => {
         lte: new Date(to),
       },
       status: 'APPROVED', // Endast attesterade
+      user: { companyId: request.user.companyId },
     };
 
     if (userId) where.userId = userId;
@@ -62,7 +63,7 @@ const reportRoutes: FastifyPluginAsync = async (fastify) => {
 
     // Om CSV-format
     if (format === 'csv') {
-      const settings = await prisma.settings.findFirst();
+      const settings = await prisma.settings.findUnique({ where: { companyId: request.user.companyId } });
       const delimiter = settings?.csvDelimiter || ';';
 
       // BOM för UTF-8
@@ -132,6 +133,7 @@ const reportRoutes: FastifyPluginAsync = async (fastify) => {
       billable: true, // Endast fakturerbar tid
       status: 'APPROVED', // Endast attesterad
       projectId: { not: null }, // Inte intern tid
+      user: { companyId: request.user.companyId },
     };
 
     if (projectId) {
@@ -176,7 +178,7 @@ const reportRoutes: FastifyPluginAsync = async (fastify) => {
 
     // Om CSV-format
     if (format === 'csv') {
-      const settings = await prisma.settings.findFirst();
+      const settings = await prisma.settings.findUnique({ where: { companyId: request.user.companyId } });
       const delimiter = settings?.csvDelimiter || ';';
       const vatRate = settings?.vatRate || 25;
 
@@ -271,7 +273,7 @@ const reportRoutes: FastifyPluginAsync = async (fastify) => {
       include: { customer: true },
     });
 
-    if (!project) {
+    if (!project || project.companyId !== request.user.companyId) {
       return reply.status(404).send({ error: 'Projekt hittades inte' });
     }
 
