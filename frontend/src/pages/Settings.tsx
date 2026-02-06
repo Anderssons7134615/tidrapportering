@@ -77,7 +77,7 @@ export default function Settings() {
       {/* Lösenord */}
       <div className="card">
         <div className="flex items-center gap-2 mb-4">
-          <Lock className="w-5 h-5 text-gray-400" />
+          <Lock className="w-5 h-5 text-gray-500" />
           <h2 className="font-semibold">Byt lösenord</h2>
         </div>
         <form onSubmit={handlePasswordSubmit} className="space-y-4">
@@ -130,7 +130,7 @@ export default function Settings() {
       {isAdmin && settings && (
         <div className="card">
           <div className="flex items-center gap-2 mb-4">
-            <Building className="w-5 h-5 text-gray-400" />
+            <Building className="w-5 h-5 text-gray-500" />
             <h2 className="font-semibold">Företagsinställningar</h2>
           </div>
           <form onSubmit={handleSettingsSubmit} className="space-y-4">
@@ -207,10 +207,10 @@ export default function Settings() {
       {/* App-info */}
       <div className="card">
         <div className="flex items-center gap-2 mb-4">
-          <SettingsIcon className="w-5 h-5 text-gray-400" />
+          <SettingsIcon className="w-5 h-5 text-gray-500" />
           <h2 className="font-semibold">Om appen</h2>
         </div>
-        <div className="space-y-2 text-sm text-gray-600">
+        <div className="space-y-2 text-sm text-gray-400">
           <p><strong>Version:</strong> 1.0.0</p>
           <p><strong>Inloggad som:</strong> {user?.name} ({user?.email})</p>
           <p><strong>Roll:</strong> {user?.role === 'ADMIN' ? 'Admin' : user?.role === 'SUPERVISOR' ? 'Arbetsledare' : 'Medarbetare'}</p>

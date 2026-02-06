@@ -11,7 +11,7 @@ const sizeClasses = {
 
 export default function LoadingSpinner({ fullScreen, size = 'md' }: LoadingSpinnerProps) {
   const spinner = (
-    <div className={`animate-spin rounded-full border-b-2 border-primary-600 ${sizeClasses[size]}`} />
+    <div className={`animate-spin rounded-full border-b-2 border-primary-400 ${sizeClasses[size]}`} />
   );
 
   if (fullScreen) {

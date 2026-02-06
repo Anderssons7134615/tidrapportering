@@ -126,8 +126,8 @@ export default function Projects() {
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 bg-primary-100 rounded-lg">
-                    <FolderKanban className="w-5 h-5 text-primary-600" />
+                  <div className="p-2 bg-primary-900/30 rounded-lg">
+                    <FolderKanban className="w-5 h-5 text-primary-400" />
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
@@ -136,7 +136,7 @@ export default function Projects() {
                         {statusLabels[project.status]}
                       </span>
                     </div>
-                    <p className="text-sm text-gray-500">
+                    <p className="text-sm text-gray-400">
                       {project.code}
                       {project.customer && ` · ${project.customer.name}`}
                     </p>
@@ -149,7 +149,7 @@ export default function Projects() {
                       {project.budgetHours && ` / ${project.budgetHours}h`}
                     </p>
                     {project.budgetHours && (
-                      <div className="w-20 bg-gray-200 rounded-full h-1.5 mt-1">
+                      <div className="w-20 bg-gray-700 rounded-full h-1.5 mt-1">
                         <div
                           className={`h-1.5 rounded-full ${
                             (project.totalHours || 0) / project.budgetHours > 0.9
@@ -171,7 +171,7 @@ export default function Projects() {
                       setEditingProject(project);
                       setIsModalOpen(true);
                     }}
-                    className="p-2 text-gray-400 hover:text-gray-600"
+                    className="p-2 text-gray-500 hover:text-gray-300"
                   >
                     <Edit2 className="w-4 h-4" />
                   </button>
@@ -182,7 +182,7 @@ export default function Projects() {
                           deleteMutation.mutate(project.id);
                         }
                       }}
-                      className="p-2 text-gray-400 hover:text-red-500"
+                      className="p-2 text-gray-500 hover:text-red-400"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -197,12 +197,12 @@ export default function Projects() {
       {/* Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-4 border-b flex items-center justify-between">
+          <div className="bg-gray-900 rounded-xl max-w-md w-full max-h-[90vh] overflow-y-auto border border-gray-800">
+            <div className="p-4 border-b border-gray-800 flex items-center justify-between">
               <h2 className="font-semibold">
                 {editingProject ? 'Redigera projekt' : 'Nytt projekt'}
               </h2>
-              <button onClick={closeModal} className="p-1 hover:bg-gray-100 rounded">
+              <button onClick={closeModal} className="p-1 hover:bg-gray-800 rounded">
                 <X className="w-5 h-5" />
               </button>
             </div>

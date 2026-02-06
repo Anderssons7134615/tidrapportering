@@ -19,7 +19,7 @@ export function Skeleton({ className = '', variant = 'text', width, height }: Sk
 
   return (
     <div
-      className={`animate-pulse bg-slate-200 ${variantClasses[variant]} ${className}`}
+      className={`animate-pulse bg-gray-800 ${variantClasses[variant]} ${className}`}
       style={style}
     />
   );
@@ -107,7 +107,7 @@ export function WeekViewSkeleton() {
           </div>
           {i <= 5 && (
             <div className="space-y-2">
-              <div className="flex items-center justify-between p-2 bg-slate-50 rounded-lg">
+              <div className="flex items-center justify-between p-2 bg-gray-800 rounded-lg">
                 <div className="space-y-1.5">
                   <Skeleton width={120} height={14} />
                   <Skeleton width={80} height={12} />
@@ -220,7 +220,7 @@ export function ReportsSkeleton() {
   return (
     <div className="space-y-4">
       {[1, 2, 3].map((i) => (
-        <div key={i} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+        <div key={i} className="flex items-center justify-between p-3 bg-gray-800 rounded-lg">
           <div className="space-y-2">
             <Skeleton width={130} height={16} />
             <Skeleton width={90} height={12} />

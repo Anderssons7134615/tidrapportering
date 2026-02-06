@@ -58,21 +58,21 @@ export default function Layout() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-950">
       {/* Header */}
-      <header className="bg-primary-600/95 backdrop-blur-md text-white sticky top-0 z-50 safe-top">
+      <header className="bg-gray-900/95 backdrop-blur-md text-white sticky top-0 z-50 safe-top border-b border-gray-800">
         <div className="px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setMenuOpen(!menuOpen)}
-              className="p-1 hover:bg-primary-700 rounded-lg lg:hidden"
+              className="p-1 hover:bg-gray-800 rounded-lg lg:hidden"
             >
               {menuOpen ? <X size={24} /> : <Menu size={24} />}
             </button>
             <div>
-              <h1 className="text-lg font-bold leading-tight">TidApp</h1>
+              <h1 className="text-lg font-bold leading-tight text-primary-400">TidApp</h1>
               {user?.companyName && (
-                <p className="text-xs text-primary-200 leading-tight">{user.companyName}</p>
+                <p className="text-xs text-gray-400 leading-tight">{user.companyName}</p>
               )}
             </div>
           </div>
@@ -80,22 +80,22 @@ export default function Layout() {
             {/* Offline-indikator */}
             <div className="flex items-center gap-1 text-sm">
               {isOnline ? (
-                <Wifi size={16} className="text-green-300" />
+                <Wifi size={16} className="text-green-400" />
               ) : (
                 <>
-                  <WifiOff size={16} className="text-yellow-300" />
+                  <WifiOff size={16} className="text-yellow-400" />
                   {pendingEntries.length > 0 && (
-                    <span className="bg-yellow-500 text-xs px-1.5 py-0.5 rounded-full">
+                    <span className="bg-yellow-500 text-xs px-1.5 py-0.5 rounded-full text-black">
                       {pendingEntries.length}
                     </span>
                   )}
                 </>
               )}
             </div>
-            <span className="text-sm hidden sm:block">{user?.name}</span>
+            <span className="text-sm hidden sm:block text-gray-300">{user?.name}</span>
             <button
               onClick={handleLogout}
-              className="p-1.5 hover:bg-primary-700 rounded-lg"
+              className="p-1.5 hover:bg-gray-800 rounded-lg"
               title="Logga ut"
             >
               <LogOut size={20} />
@@ -106,7 +106,7 @@ export default function Layout() {
 
       <div className="flex">
         {/* Sidebar - Desktop */}
-        <aside className="hidden lg:block w-56 bg-white border-r border-gray-200 min-h-[calc(100vh-56px)] sticky top-14">
+        <aside className="hidden lg:block w-56 bg-gray-900 border-r border-gray-800 min-h-[calc(100vh-56px)] sticky top-14">
           <nav className="p-3 space-y-1">
             {filteredNavItems.map((item) => (
               <NavLink
@@ -115,8 +115,8 @@ export default function Layout() {
                 className={({ isActive }) =>
                   `flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
                     isActive
-                      ? 'bg-primary-50 text-primary-700 font-medium'
-                      : 'text-gray-600 hover:bg-gray-100'
+                      ? 'bg-primary-900/30 text-primary-400 font-medium'
+                      : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
                   }`
                 }
               >
@@ -135,7 +135,7 @@ export default function Layout() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
-              className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+              className="fixed inset-0 bg-black/60 z-40 lg:hidden"
               onClick={() => setMenuOpen(false)}
             />
           )}
@@ -143,12 +143,12 @@ export default function Layout() {
 
         {/* Mobile sidebar */}
         <aside
-          className={`fixed top-0 left-0 w-64 h-full bg-white z-50 transform transition-transform lg:hidden ${
+          className={`fixed top-0 left-0 w-64 h-full bg-gray-900 z-50 transform transition-transform lg:hidden ${
             menuOpen ? 'translate-x-0' : '-translate-x-full'
           }`}
         >
-          <div className="p-4 bg-primary-600 text-white flex items-center justify-between">
-            <span className="font-bold">TidApp</span>
+          <div className="p-4 bg-gray-800 text-white flex items-center justify-between">
+            <span className="font-bold text-primary-400">TidApp</span>
             <button onClick={() => setMenuOpen(false)}>
               <X size={24} />
             </button>
@@ -162,8 +162,8 @@ export default function Layout() {
                 className={({ isActive }) =>
                   `flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
                     isActive
-                      ? 'bg-primary-50 text-primary-700 font-medium'
-                      : 'text-gray-600 hover:bg-gray-100'
+                      ? 'bg-primary-900/30 text-primary-400 font-medium'
+                      : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
                   }`
                 }
               >
@@ -171,10 +171,10 @@ export default function Layout() {
                 <span>{item.label}</span>
               </NavLink>
             ))}
-            <hr className="my-3" />
+            <hr className="my-3 border-gray-800" />
             <button
               onClick={handleLogout}
-              className="flex items-center gap-3 px-3 py-2.5 text-red-600 hover:bg-red-50 rounded-lg w-full"
+              className="flex items-center gap-3 px-3 py-2.5 text-red-400 hover:bg-red-950 rounded-lg w-full"
             >
               <LogOut size={20} />
               <span>Logga ut</span>
@@ -199,7 +199,7 @@ export default function Layout() {
       </div>
 
       {/* Mobile bottom nav */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-md border-t border-gray-200/50 lg:hidden safe-bottom z-40">
+      <nav className="fixed bottom-0 left-0 right-0 bg-gray-900/90 backdrop-blur-md border-t border-gray-800 lg:hidden safe-bottom z-40">
         <div className="flex justify-around py-1 px-2">
           {bottomTabs.map((item) => (
             <NavLink
@@ -207,7 +207,7 @@ export default function Layout() {
               to={item.to}
               className={({ isActive }) =>
                 `relative flex flex-col items-center py-2 px-3 rounded-xl transition-colors ${
-                  isActive ? 'text-primary-600' : 'text-gray-400'
+                  isActive ? 'text-primary-400' : 'text-gray-500'
                 }`
               }
             >
@@ -216,7 +216,7 @@ export default function Layout() {
                   {isActive && (
                     <motion.div
                       layoutId="tab-indicator"
-                      className="absolute inset-0 bg-primary-50 rounded-xl"
+                      className="absolute inset-0 bg-primary-900/30 rounded-xl"
                       transition={{ type: 'spring', stiffness: 400, damping: 30 }}
                     />
                   )}

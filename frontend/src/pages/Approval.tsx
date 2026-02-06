@@ -100,7 +100,7 @@ export default function Approval() {
                 >
                   <div>
                     <p className="font-medium">{lock.user?.name}</p>
-                    <p className="text-sm text-gray-500">
+                    <p className="text-sm text-gray-400">
                       Vecka {format(new Date(lock.weekStartDate), 'w', { locale: sv })} (
                       {format(new Date(lock.weekStartDate), 'd/M')} -{' '}
                       {format(addDays(new Date(lock.weekStartDate), 6), 'd/M')})
@@ -109,7 +109,7 @@ export default function Approval() {
                   <div className="flex items-center gap-3">
                     <div className="text-right">
                       <p className="font-bold">{lock.totalHours?.toFixed(1)}h</p>
-                      <p className="text-xs text-gray-500">
+                      <p className="text-xs text-gray-400">
                         {lock.billableHours?.toFixed(1)}h fakt.
                       </p>
                     </div>
@@ -123,14 +123,14 @@ export default function Approval() {
 
                 {/* Expanderad vy */}
                 {expandedId === lock.id && (
-                  <div className="mt-4 pt-4 border-t">
+                  <div className="mt-4 pt-4 border-t border-gray-800">
                     {/* Tidrader */}
                     {weekDetails?.entries && (
                       <div className="space-y-2 mb-4">
                         {weekDetails.entries.map((entry) => (
                           <div
                             key={entry.id}
-                            className="flex items-center justify-between p-2 bg-gray-50 rounded-lg text-sm"
+                            className="flex items-center justify-between p-2 bg-gray-800 rounded-lg text-sm"
                           >
                             <div>
                               <span className="font-medium">
@@ -139,7 +139,7 @@ export default function Approval() {
                               <span className="mx-2">·</span>
                               <span>{entry.project?.name || 'Intern'}</span>
                               <span className="mx-2">·</span>
-                              <span className="text-gray-500">{entry.activity?.name}</span>
+                              <span className="text-gray-400">{entry.activity?.name}</span>
                             </div>
                             <div className="flex items-center gap-2">
                               <span className="font-medium">{entry.hours}h</span>
@@ -232,7 +232,7 @@ export default function Approval() {
               >
                 <div>
                   <p className="font-medium">{lock.user?.name}</p>
-                  <p className="text-sm text-gray-500">
+                  <p className="text-sm text-gray-400">
                     Vecka {format(new Date(lock.weekStartDate), 'w', { locale: sv })}
                   </p>
                 </div>
@@ -245,7 +245,7 @@ export default function Approval() {
                   <button
                     onClick={() => unlockMutation.mutate(lock.id)}
                     disabled={unlockMutation.isPending}
-                    className="p-2 text-gray-400 hover:text-gray-600"
+                    className="p-2 text-gray-500 hover:text-gray-300"
                     title="Lås upp"
                   >
                     <Unlock className="w-4 h-4" />

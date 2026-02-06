@@ -105,12 +105,12 @@ export default function Customers() {
               }`}
             >
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-gray-100 rounded-lg">
-                  <Building2 className="w-5 h-5 text-gray-600" />
+                <div className="p-2 bg-gray-800 rounded-lg">
+                  <Building2 className="w-5 h-5 text-gray-400" />
                 </div>
                 <div>
                   <p className="font-medium">{customer.name}</p>
-                  <p className="text-sm text-gray-500">
+                  <p className="text-sm text-gray-400">
                     {customer.contactPerson && `${customer.contactPerson} · `}
                     {customer._count?.projects || 0} projekt
                   </p>
@@ -118,7 +118,7 @@ export default function Customers() {
               </div>
               <div className="flex items-center gap-2">
                 {customer.defaultRate && (
-                  <span className="text-sm text-gray-500">
+                  <span className="text-sm text-gray-400">
                     {customer.defaultRate} kr/h
                   </span>
                 )}
@@ -127,7 +127,7 @@ export default function Customers() {
                     setEditingCustomer(customer);
                     setIsModalOpen(true);
                   }}
-                  className="p-2 text-gray-400 hover:text-gray-600"
+                  className="p-2 text-gray-500 hover:text-gray-300"
                 >
                   <Edit2 className="w-4 h-4" />
                 </button>
@@ -138,7 +138,7 @@ export default function Customers() {
                         deleteMutation.mutate(customer.id);
                       }
                     }}
-                    className="p-2 text-gray-400 hover:text-red-500"
+                    className="p-2 text-gray-500 hover:text-red-400"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -152,12 +152,12 @@ export default function Customers() {
       {/* Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-4 border-b flex items-center justify-between">
+          <div className="bg-gray-900 rounded-xl max-w-md w-full max-h-[90vh] overflow-y-auto border border-gray-800">
+            <div className="p-4 border-b border-gray-800 flex items-center justify-between">
               <h2 className="font-semibold">
                 {editingCustomer ? 'Redigera kund' : 'Ny kund'}
               </h2>
-              <button onClick={closeModal} className="p-1 hover:bg-gray-100 rounded">
+              <button onClick={closeModal} className="p-1 hover:bg-gray-800 rounded">
                 <X className="w-5 h-5" />
               </button>
             </div>

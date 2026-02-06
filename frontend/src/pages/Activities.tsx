@@ -111,7 +111,7 @@ export default function Activities() {
       {/* Lista grupperad per kategori */}
       {groupedActivities && Object.entries(groupedActivities).map(([category, acts]) => (
         <div key={category}>
-          <h2 className="font-medium text-gray-500 mb-2">
+          <h2 className="font-medium text-gray-400 mb-2">
             {categoryLabels[category] || category}
           </h2>
           <div className="space-y-2">
@@ -123,12 +123,12 @@ export default function Activities() {
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <div className="p-2 bg-gray-100 rounded-lg">
-                    <Tags className="w-4 h-4 text-gray-600" />
+                  <div className="p-2 bg-gray-800 rounded-lg">
+                    <Tags className="w-4 h-4 text-gray-400" />
                   </div>
                   <div>
                     <p className="font-medium">{activity.name}</p>
-                    <p className="text-sm text-gray-500">
+                    <p className="text-sm text-gray-400">
                       Kod: {activity.code}
                       {activity.rateOverride && ` · ${activity.rateOverride} kr/h`}
                     </p>
@@ -145,7 +145,7 @@ export default function Activities() {
                       setEditingActivity(activity);
                       setIsModalOpen(true);
                     }}
-                    className="p-2 text-gray-400 hover:text-gray-600"
+                    className="p-2 text-gray-500 hover:text-gray-300"
                   >
                     <Edit2 className="w-4 h-4" />
                   </button>
@@ -155,7 +155,7 @@ export default function Activities() {
                         deleteMutation.mutate(activity.id);
                       }
                     }}
-                    className="p-2 text-gray-400 hover:text-red-500"
+                    className="p-2 text-gray-500 hover:text-red-400"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -169,12 +169,12 @@ export default function Activities() {
       {/* Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl max-w-md w-full">
-            <div className="p-4 border-b flex items-center justify-between">
+          <div className="bg-gray-900 rounded-xl max-w-md w-full border border-gray-800">
+            <div className="p-4 border-b border-gray-800 flex items-center justify-between">
               <h2 className="font-semibold">
                 {editingActivity ? 'Redigera aktivitet' : 'Ny aktivitet'}
               </h2>
-              <button onClick={closeModal} className="p-1 hover:bg-gray-100 rounded">
+              <button onClick={closeModal} className="p-1 hover:bg-gray-800 rounded">
                 <X className="w-5 h-5" />
               </button>
             </div>

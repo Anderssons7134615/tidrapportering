@@ -30,17 +30,17 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-600 to-primary-800 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950 flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-white rounded-2xl shadow-lg mb-4">
-            <Clock className="w-8 h-8 text-primary-600" />
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-800 rounded-2xl shadow-lg shadow-primary-500/10 mb-4">
+            <Clock className="w-8 h-8 text-primary-400" />
           </div>
           <h1 className="text-2xl font-bold text-white">TidApp</h1>
-          <p className="text-primary-200">Tidrapportering</p>
+          <p className="text-gray-400">Tidrapportering</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-xl p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="bg-gray-900 rounded-2xl border border-gray-800 p-6 space-y-4">
           <div>
             <label htmlFor="email" className="label">
               E-post
@@ -86,9 +86,9 @@ export default function Login() {
           </button>
         </form>
 
-        <p className="text-center text-primary-200 text-sm mt-6">
+        <p className="text-center text-gray-500 text-sm mt-6">
           Nytt företag?{' '}
-          <Link to="/register" className="text-white underline hover:no-underline">
+          <Link to="/register" className="text-primary-400 hover:text-primary-300">
             Registrera er här
           </Link>
         </p>

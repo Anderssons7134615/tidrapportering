@@ -112,7 +112,7 @@ export default function Reports() {
           className={`flex-1 py-3 px-4 rounded-lg font-medium transition-colors ${
             reportType === 'salary'
               ? 'bg-primary-600 text-white'
-              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
           }`}
         >
           Löneunderlag
@@ -122,7 +122,7 @@ export default function Reports() {
           className={`flex-1 py-3 px-4 rounded-lg font-medium transition-colors ${
             reportType === 'invoice'
               ? 'bg-primary-600 text-white'
-              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
           }`}
         >
           Fakturaunderlag
@@ -253,20 +253,20 @@ export default function Reports() {
       ) : reportData ? (
         <div className="card">
           <div className="flex items-center gap-2 mb-4">
-            <FileBarChart className="w-5 h-5 text-gray-400" />
+            <FileBarChart className="w-5 h-5 text-gray-500" />
             <h2 className="font-semibold">Sammanfattning</h2>
           </div>
 
           {reportType === 'salary' ? (
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
-                <div className="p-4 bg-gray-50 rounded-lg">
+                <div className="p-4 bg-gray-800 rounded-lg">
                   <p className="text-2xl font-bold">{reportData.totals?.totalHours.toFixed(1)}h</p>
-                  <p className="text-sm text-gray-500">Totalt</p>
+                  <p className="text-sm text-gray-400">Totalt</p>
                 </div>
-                <div className="p-4 bg-gray-50 rounded-lg">
+                <div className="p-4 bg-gray-800 rounded-lg">
                   <p className="text-2xl font-bold">{reportData.totals?.uniqueUsers}</p>
-                  <p className="text-sm text-gray-500">Användare</p>
+                  <p className="text-sm text-gray-400">Användare</p>
                 </div>
               </div>
 
@@ -275,12 +275,12 @@ export default function Reports() {
                   <h3 className="font-medium mb-2">Per person och kod</h3>
                   <div className="space-y-2">
                     {Object.entries(reportData.summary).map(([userName, codes]: [string, any]) => (
-                      <div key={userName} className="p-3 bg-gray-50 rounded-lg">
+                      <div key={userName} className="p-3 bg-gray-800 rounded-lg">
                         <p className="font-medium mb-2">{userName}</p>
                         <div className="grid grid-cols-3 gap-2 text-sm">
                           {Object.entries(codes).map(([code, data]: [string, any]) => (
                             <div key={code} className="flex justify-between">
-                              <span className="text-gray-600">{code}</span>
+                              <span className="text-gray-400">{code}</span>
                               <span className="font-medium">{data.hours.toFixed(1)}h</span>
                             </div>
                           ))}
@@ -294,15 +294,15 @@ export default function Reports() {
           ) : (
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
-                <div className="p-4 bg-gray-50 rounded-lg">
+                <div className="p-4 bg-gray-800 rounded-lg">
                   <p className="text-2xl font-bold">{reportData.totals?.totalHours.toFixed(1)}h</p>
-                  <p className="text-sm text-gray-500">Fakturerbara timmar</p>
+                  <p className="text-sm text-gray-400">Fakturerbara timmar</p>
                 </div>
-                <div className="p-4 bg-green-50 rounded-lg">
-                  <p className="text-2xl font-bold text-green-700">
+                <div className="p-4 bg-green-900/20 rounded-lg">
+                  <p className="text-2xl font-bold text-green-400">
                     {reportData.totals?.totalAmount.toLocaleString('sv-SE')} kr
                   </p>
-                  <p className="text-sm text-gray-500">Totalt belopp</p>
+                  <p className="text-sm text-gray-400">Totalt belopp</p>
                 </div>
               </div>
 
@@ -311,18 +311,18 @@ export default function Reports() {
                   <h3 className="font-medium mb-2">Per projekt</h3>
                   <div className="space-y-2">
                     {Object.entries(reportData.byProject).map(([projectId, data]: [string, any]) => (
-                      <div key={projectId} className="flex justify-between p-3 bg-gray-50 rounded-lg">
+                      <div key={projectId} className="flex justify-between p-3 bg-gray-800 rounded-lg">
                         <div>
                           <p className="font-medium">
                             {data.project?.name || 'Okänt projekt'}
                           </p>
-                          <p className="text-sm text-gray-500">
+                          <p className="text-sm text-gray-400">
                             {data.project?.customer?.name}
                           </p>
                         </div>
                         <div className="text-right">
                           <p className="font-medium">{data.totalHours.toFixed(1)}h</p>
-                          <p className="text-sm text-green-600">
+                          <p className="text-sm text-green-400">
                             {data.totalAmount.toLocaleString('sv-SE')} kr
                           </p>
                         </div>

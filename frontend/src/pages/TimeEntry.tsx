@@ -148,7 +148,7 @@ export default function TimeEntry() {
         {/* Datum */}
         <div className="card">
           <label className="label flex items-center gap-2">
-            <Calendar className="w-4 h-4 text-gray-400" />
+            <Calendar className="w-4 h-4 text-gray-500" />
             Datum
           </label>
           <input
@@ -158,7 +158,7 @@ export default function TimeEntry() {
             className="input"
             required
           />
-          <p className="text-sm text-gray-500 mt-1">
+          <p className="text-sm text-gray-400 mt-1">
             {format(new Date(date), 'EEEE d MMMM', { locale: sv })}
           </p>
         </div>
@@ -166,7 +166,7 @@ export default function TimeEntry() {
         {/* Projekt */}
         <div className="card">
           <label className="label flex items-center gap-2">
-            <FolderKanban className="w-4 h-4 text-gray-400" />
+            <FolderKanban className="w-4 h-4 text-gray-500" />
             Projekt
           </label>
           <select
@@ -187,7 +187,7 @@ export default function TimeEntry() {
         {/* Aktivitet */}
         <div className="card">
           <label className="label flex items-center gap-2">
-            <Tags className="w-4 h-4 text-gray-400" />
+            <Tags className="w-4 h-4 text-gray-500" />
             Aktivitet
           </label>
           <select
@@ -213,7 +213,7 @@ export default function TimeEntry() {
         {/* Timmar */}
         <div className="card">
           <label className="label flex items-center gap-2">
-            <Clock className="w-4 h-4 text-gray-400" />
+            <Clock className="w-4 h-4 text-gray-500" />
             Antal timmar
           </label>
           <div className="flex gap-2">
@@ -235,7 +235,7 @@ export default function TimeEntry() {
                   key={h}
                   type="button"
                   onClick={() => setHours(h.toString())}
-                  className="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium"
+                  className="px-3 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm font-medium"
                 >
                   {h}h
                 </button>
@@ -251,7 +251,7 @@ export default function TimeEntry() {
               type="checkbox"
               checked={billable}
               onChange={(e) => setBillable(e.target.checked)}
-              className="w-5 h-5 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              className="w-5 h-5 rounded border-gray-600 text-primary-500 focus:ring-primary-500 bg-gray-800"
             />
             <span className="font-medium">Fakturerbar tid</span>
           </label>
@@ -260,7 +260,7 @@ export default function TimeEntry() {
         {/* Notering */}
         <div className="card">
           <label className="label flex items-center gap-2">
-            <FileText className="w-4 h-4 text-gray-400" />
+            <FileText className="w-4 h-4 text-gray-500" />
             Notering
           </label>
           <textarea
@@ -279,13 +279,13 @@ export default function TimeEntry() {
               type="checkbox"
               checked={useGps}
               onChange={(e) => setUseGps(e.target.checked)}
-              className="w-5 h-5 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              className="w-5 h-5 rounded border-gray-600 text-primary-500 focus:ring-primary-500 bg-gray-800"
             />
-            <MapPin className="w-4 h-4 text-gray-400" />
+            <MapPin className="w-4 h-4 text-gray-500" />
             <span className="font-medium">Bifoga GPS-position</span>
           </label>
           {gpsPosition && (
-            <p className="text-sm text-gray-500 mt-2">
+            <p className="text-sm text-gray-400 mt-2">
               Position: {gpsPosition.lat.toFixed(6)}, {gpsPosition.lng.toFixed(6)}
             </p>
           )}
@@ -298,7 +298,7 @@ export default function TimeEntry() {
           className={`w-full py-4 rounded-xl font-semibold text-white transition-all active:scale-[0.97] ${
             saved
               ? 'bg-green-500'
-              : 'bg-primary-600 hover:bg-primary-700 disabled:bg-gray-300 disabled:active:scale-100'
+              : 'bg-primary-500 hover:bg-primary-400 disabled:bg-gray-700 disabled:text-gray-500 disabled:active:scale-100'
           }`}
         >
           {createMutation.isPending ? (

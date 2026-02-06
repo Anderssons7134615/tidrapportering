@@ -55,7 +55,7 @@ function SwipeableEntry({
         dragElastic={0.1}
         onDragEnd={handleDragEnd}
         style={{ x }}
-        className="flex items-center justify-between p-2 bg-gray-50 rounded-lg relative"
+        className="flex items-center justify-between p-2 bg-gray-800 rounded-lg relative"
       >
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
@@ -65,10 +65,10 @@ function SwipeableEntry({
             {entry.billable ? (
               <span className="w-2 h-2 bg-green-500 rounded-full" title="Fakturerbar" />
             ) : (
-              <span className="w-2 h-2 bg-gray-300 rounded-full" title="Ej fakturerbar" />
+              <span className="w-2 h-2 bg-gray-600 rounded-full" title="Ej fakturerbar" />
             )}
           </div>
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-gray-400">
             {entry.activity?.name}
             {entry.note && ` - ${entry.note}`}
           </p>
@@ -81,7 +81,7 @@ function SwipeableEntry({
                 haptic('medium');
                 onDelete();
               }}
-              className="p-1 text-gray-400 hover:text-red-500"
+              className="p-1 text-gray-500 hover:text-red-400"
               disabled={isDeleting}
             >
               <Trash2 className="w-4 h-4" />
@@ -188,7 +188,7 @@ export default function WeekView() {
       <div className="flex items-center justify-between">
         <button
           onClick={() => navigateWeek('prev')}
-          className="p-2 hover:bg-gray-100 rounded-lg active:scale-90 transition-transform"
+          className="p-2 hover:bg-gray-800 rounded-lg active:scale-90 transition-transform"
         >
           <ChevronLeft className="w-5 h-5" />
         </button>
@@ -196,14 +196,14 @@ export default function WeekView() {
           <h1 className="page-title">
             Vecka {format(weekStart, 'w', { locale: sv })}
           </h1>
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-gray-400">
             {format(weekStart, 'd MMM', { locale: sv })} -{' '}
             {format(addDays(weekStart, 6), 'd MMM yyyy', { locale: sv })}
           </p>
         </div>
         <button
           onClick={() => navigateWeek('next')}
-          className="p-2 hover:bg-gray-100 rounded-lg active:scale-90 transition-transform"
+          className="p-2 hover:bg-gray-800 rounded-lg active:scale-90 transition-transform"
         >
           <ChevronRight className="w-5 h-5" />
         </button>
@@ -212,26 +212,26 @@ export default function WeekView() {
       {/* Status och summering */}
       <div className="card">
         <div className="flex items-center justify-between mb-3">
-          <span className="text-sm text-gray-500">Summering</span>
+          <span className="text-sm text-gray-400">Summering</span>
           {getStatusBadge()}
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div>
             <p className="text-2xl font-bold">{data?.summary.totalHours.toFixed(1)}h</p>
-            <p className="text-sm text-gray-500">Total tid</p>
+            <p className="text-sm text-gray-400">Total tid</p>
           </div>
           <div>
-            <p className="text-2xl font-bold text-green-600">
+            <p className="text-2xl font-bold text-green-400">
               {data?.summary.billableHours.toFixed(1)}h
             </p>
-            <p className="text-sm text-gray-500">Fakturerbar</p>
+            <p className="text-sm text-gray-400">Fakturerbar</p>
           </div>
         </div>
 
         {isRejected && data?.weekLock?.comment && (
-          <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-            <p className="text-sm font-medium text-red-800">Kommentar:</p>
-            <p className="text-sm text-red-700">{data.weekLock.comment}</p>
+          <div className="mt-4 p-3 bg-red-900/20 border border-red-800 rounded-lg">
+            <p className="text-sm font-medium text-red-300">Kommentar:</p>
+            <p className="text-sm text-red-400">{data.weekLock.comment}</p>
           </div>
         )}
       </div>
@@ -252,8 +252,8 @@ export default function WeekView() {
           return (
             <motion.div
               key={day.toISOString()}
-              className={`card ${isToday ? 'border-2 border-primary-300' : ''} ${
-                isWeekend ? 'bg-gray-50' : ''
+              className={`card ${isToday ? 'border-2 border-primary-700' : ''} ${
+                isWeekend ? 'bg-gray-800/50' : ''
               }`}
               variants={{
                 hidden: { opacity: 0, y: 10 },
@@ -265,7 +265,7 @@ export default function WeekView() {
                   <span className="font-medium">
                     {format(day, 'EEEE', { locale: sv })}
                   </span>
-                  <span className="text-gray-500 ml-2">
+                  <span className="text-gray-400 ml-2">
                     {format(day, 'd/M')}
                   </span>
                 </div>
@@ -320,7 +320,7 @@ export default function WeekView() {
       {!isLocked && (
         <Link
           to="/time-entry"
-          className="block text-center py-3 border-2 border-dashed border-gray-300 rounded-xl text-gray-500 hover:border-primary-300 hover:text-primary-600 transition-colors"
+          className="block text-center py-3 border-2 border-dashed border-gray-700 rounded-xl text-gray-500 hover:border-primary-600 hover:text-primary-400 transition-colors"
         >
           + Lägg till tid
         </Link>

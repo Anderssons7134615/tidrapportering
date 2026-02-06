@@ -45,18 +45,18 @@ export default function Register() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-600 to-primary-800 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950 flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-white rounded-2xl shadow-lg mb-4">
-            <Clock className="w-8 h-8 text-primary-600" />
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-800 rounded-2xl shadow-lg shadow-primary-500/10 mb-4">
+            <Clock className="w-8 h-8 text-primary-400" />
           </div>
           <h1 className="text-2xl font-bold text-white">TidApp</h1>
-          <p className="text-primary-200">Registrera nytt företag</p>
+          <p className="text-gray-400">Registrera nytt företag</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-xl p-6 space-y-4">
-          <div className="flex items-center gap-2 text-primary-600 mb-2">
+        <form onSubmit={handleSubmit} className="bg-gray-900 rounded-2xl border border-gray-800 p-6 space-y-4">
+          <div className="flex items-center gap-2 text-primary-400 mb-2">
             <Building2 className="w-5 h-5" />
             <span className="font-semibold text-sm">Företagsuppgifter</span>
           </div>
@@ -90,7 +90,7 @@ export default function Register() {
             />
           </div>
 
-          <hr className="border-gray-200" />
+          <hr className="border-gray-800" />
 
           <div>
             <label htmlFor="name" className="label">
@@ -170,9 +170,9 @@ export default function Register() {
           </button>
         </form>
 
-        <p className="text-center text-primary-200 text-sm mt-6">
+        <p className="text-center text-gray-500 text-sm mt-6">
           Har redan ett konto?{' '}
-          <Link to="/login" className="text-white underline hover:no-underline">
+          <Link to="/login" className="text-primary-400 hover:text-primary-300">
             Logga in
           </Link>
         </p>
