@@ -8,7 +8,9 @@ services:
     plan: free
     envVars:
       - key: DATABASE_URL
-        value: file:./dev.db
+        fromDatabase:
+          name: tidrapportering-db
+          property: connectionString
       - key: JWT_SECRET
         generateValue: true
       - key: PORT
@@ -36,3 +38,7 @@ services:
       - type: rewrite
         source: /*
         destination: /index.html
+
+databases:
+  - name: tidrapportering-db
+    plan: free

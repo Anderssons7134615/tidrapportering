@@ -6,7 +6,7 @@ echo.
 
 echo Startar backend...
 cd backend
-start cmd /k "npm install && npx prisma generate && npx prisma db push && npm run db:seed && npm run dev"
+start cmd /k "npm install && npx prisma generate && npx prisma db push && npm run db:seed:safe && npm run dev"
 
 echo Vantar 5 sekunder...
 timeout /t 5 /nobreak > nul
@@ -23,7 +23,6 @@ echo Backend:  http://localhost:3001
 echo ========================================
 echo.
 echo Testanvandare:
-echo - admin@byggab.se / password123
-echo - lars@byggab.se / password123
-echo - erik@byggab.se / password123
+echo - rick@anderssonsisolering.se / Rick1234
+echo - admin@testforetaget.se / Test1234
 echo ========================================

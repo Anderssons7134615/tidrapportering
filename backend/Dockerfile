@@ -13,6 +13,9 @@ RUN npm install
 # Kopiera källkod
 COPY . .
 
+# Byt till PostgreSQL (schema.prisma har sqlite för lokal utveckling)
+RUN sed -i 's/provider = "sqlite"/provider = "postgresql"/' prisma/schema.prisma
+
 # Generera Prisma client
 RUN npx prisma generate
 
