@@ -19,6 +19,8 @@ import weekLockRoutes from './routes/weekLocks.js';
 import reportRoutes from './routes/reports.js';
 import settingsRoutes from './routes/settings.js';
 import dashboardRoutes from './routes/dashboard.js';
+import workItemRoutes from './routes/workItems.js';
+import workLogRoutes from './routes/workLogs.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -99,6 +101,8 @@ fastify.register(weekLockRoutes, { prefix: '/api/week-locks' });
 fastify.register(reportRoutes, { prefix: '/api/reports' });
 fastify.register(settingsRoutes, { prefix: '/api/settings' });
 fastify.register(dashboardRoutes, { prefix: '/api/dashboard' });
+fastify.register(workItemRoutes, { prefix: '/api/work-items' });
+fastify.register(workLogRoutes, { prefix: '/api/work-logs' });
 
 // Health check
 fastify.get('/api/health', async () => {

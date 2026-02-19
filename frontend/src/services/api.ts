@@ -9,6 +9,9 @@ import type {
   Settings,
   DashboardData,
   WeekData,
+  WorkItem,
+  WorkLog,
+  WorkLogStats,
 } from '../types';
 
 const API_BASE = '/api';
@@ -210,6 +213,42 @@ export const settingsApi = {
   get: () => fetchApi<Settings>('/settings'),
   update: (data: Partial<Settings>) =>
     fetchApi<Settings>('/settings', { method: 'PUT', body: JSON.stringify(data) }),
+};
+
+// Work Items
+export const workItemsApi = {
+  list: (active?: boolean) =>
+    fetchApi<WorkItem[]>(`/work-items${active !== undefined ? `?active=${active}` : ''}`),
+  create: (data: Partial<WorkItem>) =>
+    fetchApi<WorkItem>('/work-items', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: Partial<WorkItem>) =>
+    fetchApi<WorkItem>(`/work-items/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  delete: (id: string) =>
+    fetchApi<{ message: string }>(`/work-items/${id}`, { method: 'DELETE' }),
+};
+
+// Work Logs
+export const workLogsApi = {
+  list: (params?: { workItemId?: string; projectId?: string; from?: string; to?: string }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.workItemId) searchParams.set('workItemId', params.workItemId);
+    if (params?.projectId) searchParams.set('projectId', params.projectId);
+    if (params?.from) searchParams.set('from', params.from);
+    if (params?.to) searchParams.set('to', params.to);
+    const query = searchParams.toString();
+    return fetchApi<WorkLog[]>(`/work-logs${query ? `?${query}` : ''}`);
+  },
+  create: (data: { workItemId: string; projectId?: string; date: string; quantity: number; minutes: number; note?: string }) =>
+    fetchApi<WorkLog>('/work-logs', { method: 'POST', body: JSON.stringify(data) }),
+  delete: (id: string) =>
+    fetchApi<{ message: string }>(`/work-logs/${id}`, { method: 'DELETE' }),
+  getStats: (params?: { from?: string; to?: string }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.from) searchParams.set('from', params.from);
+    if (params?.to) searchParams.set('to', params.to);
+    const query = searchParams.toString();
+    return fetchApi<WorkLogStats[]>(`/work-logs/stats${query ? `?${query}` : ''}`);
+  },
 };
 
 // Dashboard

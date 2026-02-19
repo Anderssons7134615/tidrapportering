@@ -141,6 +141,38 @@ export interface DashboardData {
   };
 }
 
+export interface WorkItem {
+  id: string;
+  name: string;
+  unit: string;
+  description?: string;
+  active: boolean;
+}
+
+export interface WorkLog {
+  id: string;
+  userId: string;
+  user?: { id: string; name: string };
+  workItemId: string;
+  workItem?: WorkItem;
+  projectId?: string;
+  project?: { id: string; name: string };
+  date: string;
+  quantity: number;
+  minutes: number;
+  note?: string;
+}
+
+export interface WorkLogStats {
+  workItemId: string;
+  name: string;
+  unit: string;
+  totalQuantity: number;
+  totalMinutes: number;
+  avgMinPerUnit: number;
+  entryCount: number;
+}
+
 export interface WeekData {
   entries: TimeEntry[];
   weekLock?: WeekLock;

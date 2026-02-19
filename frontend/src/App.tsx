@@ -16,6 +16,8 @@ const Activities = lazy(() => import('./pages/Activities'));
 const Users = lazy(() => import('./pages/Users'));
 const Reports = lazy(() => import('./pages/Reports'));
 const Settings = lazy(() => import('./pages/Settings'));
+const Productivity = lazy(() => import('./pages/Productivity'));
+const WorkItems = lazy(() => import('./pages/WorkItems'));
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { token } = useAuthStore();
@@ -99,6 +101,15 @@ export default function App() {
           }
         />
         <Route path="settings" element={<Settings />} />
+        <Route path="productivity" element={<Productivity />} />
+        <Route
+          path="work-items"
+          element={
+            <AdminRoute>
+              <WorkItems />
+            </AdminRoute>
+          }
+        />
       </Route>
     </Routes>
     </Suspense>
