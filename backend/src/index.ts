@@ -71,8 +71,18 @@ await fastify.register(fastifyStatic, {
 fastify.decorate('authenticate', async function (request: any, reply: any) {
   try {
     await request.jwtVerify();
+
+    // Säkerställ att användare + företag fortfarande finns (viktigt efter reseed/reset av DB)
+    const user = await prisma.user.findUnique({
+      where: { id: request.user.id },
+      select: { id: true, active: true, companyId: true },
+    });
+
+    if (!user || !user.active || user.companyId !== request.user.companyId) {
+      return reply.status(401).send({ error: 'Sessionen är inte längre giltig, logga in igen' });
+    }
   } catch (err) {
-    reply.status(401).send({ error: 'Unauthorized' });
+    return reply.status(401).send({ error: 'Unauthorized' });
   }
 });
 
