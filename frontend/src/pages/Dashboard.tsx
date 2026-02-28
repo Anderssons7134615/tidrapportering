@@ -114,7 +114,7 @@ export default function Dashboard() {
             {data.projects.map((project) => {
               const budgetUsed = project.budgetUsedPercent ?? 0;
               return (
-                <div key={project.id} className="bg-gray-800 rounded-xl border border-gray-700 p-4 min-h-[130px]">
+                <div key={project.id} className="bg-gray-900 border border-gray-700 p-4 min-h-[130px]">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="font-semibold truncate">{project.name}</p>

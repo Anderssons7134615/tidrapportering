@@ -64,7 +64,7 @@ export default function Layout() {
   return (
     <div className="min-h-screen bg-gray-950">
       {/* Header */}
-      <header className="bg-gray-900/95 backdrop-blur-md text-white sticky top-0 z-50 safe-top border-b border-gray-800">
+      <header className="bg-gray-900 text-white sticky top-0 z-50 safe-top border-b border-gray-800">
         <div className="px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <button
@@ -117,10 +117,10 @@ export default function Layout() {
                 key={item.to}
                 to={item.to}
                 className={({ isActive }) =>
-                  `flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
+                  `flex items-center gap-3 px-3 py-2 border-l-2 transition-colors ${
                     isActive
-                      ? 'bg-primary-900/30 text-primary-400 font-medium'
-                      : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
+                      ? 'border-primary-500 bg-gray-800 text-primary-300 font-semibold'
+                      : 'border-transparent text-gray-400 hover:bg-gray-800 hover:text-gray-200'
                   }`
                 }
               >
@@ -164,10 +164,10 @@ export default function Layout() {
                 to={item.to}
                 onClick={() => setMenuOpen(false)}
                 className={({ isActive }) =>
-                  `flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
+                  `flex items-center gap-3 px-3 py-2.5 border-l-2 transition-colors ${
                     isActive
-                      ? 'bg-primary-900/30 text-primary-400 font-medium'
-                      : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
+                      ? 'border-primary-500 bg-gray-800 text-primary-300 font-semibold'
+                      : 'border-transparent text-gray-400 hover:bg-gray-800 hover:text-gray-200'
                   }`
                 }
               >
@@ -203,31 +203,20 @@ export default function Layout() {
       </div>
 
       {/* Mobile bottom nav */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-gray-900/90 backdrop-blur-md border-t border-gray-800 lg:hidden safe-bottom z-40">
+      <nav className="fixed bottom-0 left-0 right-0 bg-gray-900 border-t border-gray-800 lg:hidden safe-bottom z-40">
         <div className="flex justify-around py-1 px-2">
           {bottomTabs.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
               className={({ isActive }) =>
-                `relative flex flex-col items-center py-2 px-3 rounded-xl transition-colors ${
-                  isActive ? 'text-primary-400' : 'text-gray-500'
+                `flex flex-col items-center py-2 px-3 border-t-2 transition-colors ${
+                  isActive ? 'border-primary-500 text-primary-300' : 'border-transparent text-gray-500'
                 }`
               }
             >
-              {({ isActive }) => (
-                <>
-                  {isActive && (
-                    <motion.div
-                      layoutId="tab-indicator"
-                      className="absolute inset-0 bg-primary-900/30 rounded-xl"
-                      transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-                    />
-                  )}
-                  <item.icon size={22} className="relative z-10" />
-                  <span className="text-xs mt-0.5 relative z-10">{item.label}</span>
-                </>
-              )}
+              <item.icon size={22} />
+              <span className="text-xs mt-0.5">{item.label}</span>
             </NavLink>
           ))}
         </div>
