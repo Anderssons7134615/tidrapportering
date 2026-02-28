@@ -52,9 +52,7 @@ export default function Layout() {
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
 
-  const filteredNavItems = navItems.filter((item) =>
-    item.roles.includes(user?.role || '')
-  );
+  const filteredNavItems = navItems.filter((item) => item.roles.includes(user?.role || ''));
 
   const handleLogout = () => {
     logout();
@@ -62,139 +60,137 @@ export default function Layout() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-100">
-      {/* Header */}
-      <header className="bg-white text-slate-900 sticky top-0 z-50 safe-top border-b border-slate-200 shadow-sm">
-        <div className="px-4 py-3 flex items-center justify-between">
+    <div className="min-h-screen bg-slate-100 text-slate-800">
+      <header className="safe-top sticky top-0 z-50 border-b border-slate-200/80 bg-white/95 backdrop-blur">
+        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 lg:px-6">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setMenuOpen(!menuOpen)}
-              className="p-1 hover:bg-slate-100 rounded-lg lg:hidden"
+              className="rounded-xl border border-slate-200 bg-white p-2 text-slate-700 transition hover:bg-slate-50 lg:hidden"
+              aria-label="Meny"
             >
-              {menuOpen ? <X size={24} /> : <Menu size={24} />}
+              {menuOpen ? <X size={20} /> : <Menu size={20} />}
             </button>
             <div>
-              <h1 className="text-lg font-bold leading-tight text-primary-700">TidApp</h1>
-              {user?.companyName && (
-                <p className="text-xs text-slate-500 leading-tight">{user.companyName}</p>
-              )}
+              <h1 className="text-base font-semibold text-slate-900 sm:text-lg">TidApp</h1>
+              {user?.companyName && <p className="text-xs text-slate-500">{user.companyName}</p>}
             </div>
           </div>
+
           <div className="flex items-center gap-3">
-            {/* Offline-indikator */}
-            <div className="flex items-center gap-1 text-sm">
-              {isOnline ? (
-                <Wifi size={16} className="text-emerald-600" />
-              ) : (
-                <>
-                  <WifiOff size={16} className="text-amber-500" />
-                  {pendingEntries.length > 0 && (
-                    <span className="bg-yellow-500 text-xs px-1.5 py-0.5 rounded-full text-black">
-                      {pendingEntries.length}
-                    </span>
-                  )}
-                </>
+            <div
+              className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs font-medium ${
+                isOnline
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                  : 'border-amber-200 bg-amber-50 text-amber-700'
+              }`}
+            >
+              {isOnline ? <Wifi size={14} /> : <WifiOff size={14} />}
+              <span>{isOnline ? 'Online' : 'Offline'}</span>
+              {!isOnline && pendingEntries.length > 0 && (
+                <span className="rounded-full bg-amber-200 px-1.5 py-0.5 text-[11px] font-semibold text-amber-900">
+                  {pendingEntries.length}
+                </span>
               )}
             </div>
-            <span className="text-sm hidden sm:block text-slate-700">{user?.name}</span>
+            <span className="hidden text-sm text-slate-700 sm:block">{user?.name}</span>
             <button
               onClick={handleLogout}
-              className="p-1.5 hover:bg-slate-100 rounded-lg"
+              className="rounded-xl border border-slate-200 bg-white p-2 text-slate-600 transition hover:bg-slate-50 hover:text-slate-900"
               title="Logga ut"
             >
-              <LogOut size={20} />
+              <LogOut size={18} />
             </button>
           </div>
         </div>
       </header>
 
-      <div className="flex">
-        {/* Sidebar - Desktop */}
-        <aside className="hidden lg:block w-56 bg-white border-r border-slate-200 min-h-[calc(100vh-56px)] sticky top-14">
-          <nav className="p-3 space-y-1">
+      <div className="mx-auto flex w-full max-w-7xl">
+        <aside className="sticky top-16 hidden h-[calc(100vh-4rem)] w-64 border-r border-slate-200/80 bg-slate-50/65 px-3 py-4 lg:block">
+          <nav className="space-y-1">
             {filteredNavItems.map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}
                 className={({ isActive }) =>
-                  `flex items-center gap-3 px-3 py-2 border-l-2 transition-colors ${
+                  `group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
                     isActive
-                      ? 'border-primary-600 bg-primary-50 text-primary-800 font-semibold'
-                      : 'border-transparent text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                      ? 'bg-white text-slate-900 shadow-soft ring-1 ring-slate-200'
+                      : 'text-slate-600 hover:bg-white hover:text-slate-900'
                   }`
                 }
               >
-                <item.icon size={20} />
+                <item.icon size={18} className="text-slate-500 transition group-hover:text-slate-700" />
                 <span>{item.label}</span>
               </NavLink>
             ))}
           </nav>
         </aside>
 
-        {/* Mobile menu overlay */}
         <AnimatePresence>
           {menuOpen && (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              className="fixed inset-0 bg-black/60 z-40 lg:hidden"
+              transition={{ duration: 0.15 }}
+              className="fixed inset-0 z-40 bg-slate-900/45 lg:hidden"
               onClick={() => setMenuOpen(false)}
             />
           )}
         </AnimatePresence>
 
-        {/* Mobile sidebar */}
         <aside
-          className={`fixed top-0 left-0 w-64 h-full bg-white z-50 transform transition-transform lg:hidden ${
+          className={`fixed left-0 top-0 z-50 h-full w-72 border-r border-slate-200 bg-white p-4 transition-transform duration-200 lg:hidden ${
             menuOpen ? 'translate-x-0' : '-translate-x-full'
           }`}
         >
-          <div className="p-4 bg-white border-b border-slate-200 text-slate-900 flex items-center justify-between">
-            <span className="font-bold text-primary-700">TidApp</span>
-            <button onClick={() => setMenuOpen(false)}>
-              <X size={24} />
+          <div className="mb-4 flex items-center justify-between border-b border-slate-200 pb-3">
+            <div>
+              <p className="font-semibold text-slate-900">TidApp</p>
+              <p className="text-xs text-slate-500">Navigation</p>
+            </div>
+            <button onClick={() => setMenuOpen(false)} className="rounded-lg p-1.5 text-slate-600 hover:bg-slate-100">
+              <X size={20} />
             </button>
           </div>
-          <nav className="p-3 space-y-1">
+
+          <nav className="space-y-1">
             {filteredNavItems.map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}
                 onClick={() => setMenuOpen(false)}
                 className={({ isActive }) =>
-                  `flex items-center gap-3 px-3 py-2.5 border-l-2 transition-colors ${
-                    isActive
-                      ? 'border-primary-600 bg-primary-50 text-primary-800 font-semibold'
-                      : 'border-transparent text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                  `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
+                    isActive ? 'bg-primary-50 text-primary-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
                   }`
                 }
               >
-                <item.icon size={20} />
+                <item.icon size={18} />
                 <span>{item.label}</span>
               </NavLink>
             ))}
-            <hr className="my-3 border-slate-200" />
-            <button
-              onClick={handleLogout}
-              className="flex items-center gap-3 px-3 py-2.5 text-red-600 hover:bg-red-50 rounded-md w-full"
-            >
-              <LogOut size={20} />
-              <span>Logga ut</span>
-            </button>
           </nav>
+
+          <button
+            onClick={handleLogout}
+            className="mt-5 flex w-full items-center gap-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-sm font-medium text-rose-700 hover:bg-rose-100"
+          >
+            <LogOut size={18} />
+            <span>Logga ut</span>
+          </button>
         </aside>
 
-        {/* Main content with page transitions */}
-        <main className="flex-1 p-4 lg:p-6 max-w-5xl mx-auto w-full">
+        <main className="w-full flex-1 px-4 pb-20 pt-4 sm:px-6 sm:pt-6 lg:px-8 lg:pb-8">
           <AnimatePresence mode="wait">
             <motion.div
               key={location.pathname}
-              initial={{ opacity: 0, y: 8 }}
+              initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0 }}
-              transition={{ duration: 0.15, ease: 'easeOut' }}
+              transition={{ duration: 0.14, ease: 'easeOut' }}
+              className="mx-auto w-full max-w-5xl"
             >
               <Outlet />
             </motion.div>
@@ -202,28 +198,24 @@ export default function Layout() {
         </main>
       </div>
 
-      {/* Mobile bottom nav */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 lg:hidden safe-bottom z-40 shadow-[0_-1px_8px_rgba(15,23,42,0.04)]">
-        <div className="flex justify-around py-1 px-2">
+      <nav className="safe-bottom fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200 bg-white/95 backdrop-blur lg:hidden">
+        <div className="mx-auto flex max-w-md items-center justify-around px-2 py-1.5">
           {bottomTabs.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
               className={({ isActive }) =>
-                `flex flex-col items-center py-2 px-3 border-t-2 transition-colors ${
-                  isActive ? 'border-primary-600 text-primary-700' : 'border-transparent text-slate-500'
+                `flex min-w-[68px] flex-col items-center rounded-lg px-2 py-1.5 text-[11px] font-medium transition ${
+                  isActive ? 'text-primary-700' : 'text-slate-500'
                 }`
               }
             >
-              <item.icon size={22} />
-              <span className="text-xs mt-0.5">{item.label}</span>
+              <item.icon size={19} />
+              <span className="mt-0.5">{item.label}</span>
             </NavLink>
           ))}
         </div>
       </nav>
-
-      {/* Spacer for bottom nav on mobile */}
-      <div className="h-16 lg:hidden" />
     </div>
   );
 }

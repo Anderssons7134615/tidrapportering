@@ -46,8 +46,7 @@ export default function Projects() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<Project> }) =>
-      projectsApi.update(id, data),
+    mutationFn: ({ id, data }: { id: string; data: Partial<Project> }) => projectsApi.update(id, data),
     onSuccess: () => {
       toast.success('Projekt uppdaterat!');
       closeModal();
@@ -74,18 +73,14 @@ export default function Projects() {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
     const data = {
-      customerId: formData.get('customerId') as string || undefined,
+      customerId: (formData.get('customerId') as string) || undefined,
       name: formData.get('name') as string,
       code: formData.get('code') as string,
-      site: formData.get('site') as string || undefined,
+      site: (formData.get('site') as string) || undefined,
       status: formData.get('status') as Project['status'],
-      budgetHours: formData.get('budgetHours')
-        ? parseFloat(formData.get('budgetHours') as string)
-        : undefined,
+      budgetHours: formData.get('budgetHours') ? parseFloat(formData.get('budgetHours') as string) : undefined,
       billingModel: formData.get('billingModel') as Project['billingModel'],
-      defaultRate: formData.get('defaultRate')
-        ? parseFloat(formData.get('defaultRate') as string)
-        : undefined,
+      defaultRate: formData.get('defaultRate') ? parseFloat(formData.get('defaultRate') as string) : undefined,
     };
 
     if (editingProject) {
@@ -101,119 +96,109 @@ export default function Projects() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="page-title">Projekt</h1>
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="btn-primary"
-        >
-          <Plus className="w-4 h-4 mr-2" />
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="page-title">Projekt</h1>
+          <p className="text-sm text-slate-500">Översikt över aktiva och avslutade uppdrag.</p>
+        </div>
+        <button onClick={() => setIsModalOpen(true)} className="btn-primary">
+          <Plus className="h-4 w-4" />
           Nytt projekt
         </button>
       </div>
 
-      {/* Lista */}
       <div className="space-y-3">
         {projects?.length === 0 ? (
-          <div className="card text-center text-gray-500 py-8">
-            Inga projekt ännu
-          </div>
+          <div className="card py-10 text-center text-slate-500">Inga projekt ännu</div>
         ) : (
-          projects?.map((project) => (
-            <div
-              key={project.id}
-              className={`card ${!project.active ? 'opacity-50' : ''}`}
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-primary-900/30 rounded-lg">
-                    <FolderKanban className="w-5 h-5 text-primary-400" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <p className="font-medium">{project.name}</p>
-                      <span className={statusColors[project.status]}>
-                        {statusLabels[project.status]}
-                      </span>
+          projects?.map((project) => {
+            const budgetRatio = project.budgetHours ? (project.totalHours || 0) / project.budgetHours : 0;
+
+            return (
+              <div key={project.id} className={`card ${!project.active ? 'opacity-65' : ''}`}>
+                <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                  <div className="flex min-w-0 items-start gap-3">
+                    <div className="rounded-xl bg-primary-100 p-2.5">
+                      <FolderKanban className="h-5 w-5 text-primary-700" />
                     </div>
-                    <p className="text-sm text-gray-400">
-                      {project.code}
-                      {project.customer && ` · ${project.customer.name}`}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="text-right text-sm">
-                    <p className="font-medium">
-                      {project.totalHours?.toFixed(1)}h
-                      {project.budgetHours && ` / ${project.budgetHours}h`}
-                    </p>
-                    {project.budgetHours && (
-                      <div className="w-20 bg-gray-700 rounded-full h-1.5 mt-1">
-                        <div
-                          className={`h-1.5 rounded-full ${
-                            (project.totalHours || 0) / project.budgetHours > 0.9
-                              ? 'bg-red-500'
-                              : 'bg-green-500'
-                          }`}
-                          style={{
-                            width: `${Math.min(
-                              ((project.totalHours || 0) / project.budgetHours) * 100,
-                              100
-                            )}%`,
-                          }}
-                        />
+                    <div className="min-w-0 space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="truncate font-semibold text-slate-900">{project.name}</p>
+                        <span className={statusColors[project.status]}>{statusLabels[project.status]}</span>
                       </div>
-                    )}
+                      <p className="text-sm text-slate-500">
+                        {project.code}
+                        {project.customer && ` · ${project.customer.name}`}
+                      </p>
+                      {project.site && <p className="text-sm text-slate-500">{project.site}</p>}
+                    </div>
                   </div>
-                  <button
-                    onClick={() => {
-                      setEditingProject(project);
-                      setIsModalOpen(true);
-                    }}
-                    className="p-2 text-gray-500 hover:text-gray-300"
-                  >
-                    <Edit2 className="w-4 h-4" />
-                  </button>
-                  {project.active && (
-                    <button
-                      onClick={() => {
-                        if (confirm('Inaktivera projekt?')) {
-                          deleteMutation.mutate(project.id);
-                        }
-                      }}
-                      className="p-2 text-gray-500 hover:text-red-400"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  )}
+
+                  <div className="flex items-center justify-between gap-4 md:justify-end">
+                    <div className="min-w-[140px] text-right text-sm">
+                      <p className="font-semibold text-slate-900">
+                        {project.totalHours?.toFixed(1)} h
+                        {project.budgetHours && ` / ${project.budgetHours} h`}
+                      </p>
+                      {project.budgetHours ? (
+                        <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-slate-200">
+                          <div
+                            className={`h-full rounded-full ${budgetRatio > 0.9 ? 'bg-rose-500' : 'bg-emerald-500'}`}
+                            style={{ width: `${Math.min(budgetRatio * 100, 100)}%` }}
+                          />
+                        </div>
+                      ) : (
+                        <p className="mt-1 text-xs text-slate-400">Ingen budget satt</p>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => {
+                          setEditingProject(project);
+                          setIsModalOpen(true);
+                        }}
+                        className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+                        title="Redigera"
+                      >
+                        <Edit2 className="h-4 w-4" />
+                      </button>
+                      {project.active && (
+                        <button
+                          onClick={() => {
+                            if (confirm('Inaktivera projekt?')) {
+                              deleteMutation.mutate(project.id);
+                            }
+                          }}
+                          className="rounded-lg p-2 text-slate-500 transition hover:bg-rose-50 hover:text-rose-600"
+                          title="Inaktivera"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
 
-      {/* Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-900 rounded-xl max-w-md w-full max-h-[90vh] overflow-y-auto border border-gray-800">
-            <div className="p-4 border-b border-gray-800 flex items-center justify-between">
-              <h2 className="font-semibold">
-                {editingProject ? 'Redigera projekt' : 'Nytt projekt'}
-              </h2>
-              <button onClick={closeModal} className="p-1 hover:bg-gray-800 rounded">
-                <X className="w-5 h-5" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
+          <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+              <h2 className="text-lg font-semibold text-slate-900">{editingProject ? 'Redigera projekt' : 'Nytt projekt'}</h2>
+              <button onClick={closeModal} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100">
+                <X className="h-5 w-5" />
               </button>
             </div>
-            <form onSubmit={handleSubmit} className="p-4 space-y-4">
+
+            <form onSubmit={handleSubmit} className="space-y-4 p-5">
               <div>
                 <label className="label">Kund</label>
-                <select
-                  name="customerId"
-                  defaultValue={editingProject?.customerId || ''}
-                  className="input"
-                >
+                <select name="customerId" defaultValue={editingProject?.customerId || ''} className="input">
                   <option value="">-- Intern --</option>
                   {customers?.map((c) => (
                     <option key={c.id} value={c.id}>
@@ -222,41 +207,26 @@ export default function Projects() {
                   ))}
                 </select>
               </div>
+
               <div>
                 <label className="label">Projektnamn *</label>
-                <input
-                  name="name"
-                  defaultValue={editingProject?.name}
-                  className="input"
-                  required
-                />
+                <input name="name" defaultValue={editingProject?.name} className="input" required />
               </div>
+
               <div>
                 <label className="label">Projektkod *</label>
-                <input
-                  name="code"
-                  defaultValue={editingProject?.code}
-                  className="input"
-                  placeholder="P2024-001"
-                  required
-                />
+                <input name="code" defaultValue={editingProject?.code} className="input" placeholder="P2024-001" required />
               </div>
+
               <div>
                 <label className="label">Plats/Arbetsplats</label>
-                <input
-                  name="site"
-                  defaultValue={editingProject?.site || ''}
-                  className="input"
-                />
+                <input name="site" defaultValue={editingProject?.site || ''} className="input" />
               </div>
-              <div className="grid grid-cols-2 gap-4">
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <label className="label">Status</label>
-                  <select
-                    name="status"
-                    defaultValue={editingProject?.status || 'PLANNED'}
-                    className="input"
-                  >
+                  <select name="status" defaultValue={editingProject?.status || 'PLANNED'} className="input">
                     <option value="PLANNED">Planerad</option>
                     <option value="ONGOING">Pågår</option>
                     <option value="COMPLETED">Avslutad</option>
@@ -265,37 +235,25 @@ export default function Projects() {
                 </div>
                 <div>
                   <label className="label">Debiteringsmodell</label>
-                  <select
-                    name="billingModel"
-                    defaultValue={editingProject?.billingModel || 'HOURLY'}
-                    className="input"
-                  >
+                  <select name="billingModel" defaultValue={editingProject?.billingModel || 'HOURLY'} className="input">
                     <option value="HOURLY">Löpande</option>
                     <option value="FIXED">Fastpris</option>
                   </select>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <label className="label">Budget (timmar)</label>
-                  <input
-                    name="budgetHours"
-                    type="number"
-                    defaultValue={editingProject?.budgetHours || ''}
-                    className="input"
-                  />
+                  <input name="budgetHours" type="number" defaultValue={editingProject?.budgetHours || ''} className="input" />
                 </div>
                 <div>
                   <label className="label">Timpris (kr/h)</label>
-                  <input
-                    name="defaultRate"
-                    type="number"
-                    defaultValue={editingProject?.defaultRate || ''}
-                    className="input"
-                  />
+                  <input name="defaultRate" type="number" defaultValue={editingProject?.defaultRate || ''} className="input" />
                 </div>
               </div>
-              <div className="flex gap-3 pt-4">
+
+              <div className="flex gap-3 pt-2">
                 <button type="button" onClick={closeModal} className="btn-secondary flex-1">
                   Avbryt
                 </button>
@@ -304,8 +262,8 @@ export default function Projects() {
                   disabled={createMutation.isPending || updateMutation.isPending}
                   className="btn-primary flex-1"
                 >
-                  {(createMutation.isPending || updateMutation.isPending) ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
+                  {createMutation.isPending || updateMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
                   ) : editingProject ? (
                     'Spara'
                   ) : (

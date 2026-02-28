@@ -103,37 +103,25 @@ export default function TimeEntry() {
 
   return (
     <div className="space-y-6">
-      <div>
+      <div className="space-y-1">
         <h1 className="page-title">Rapportera tid</h1>
-        <p className="text-sm text-gray-400">Snabb registrering på en sida</p>
+        <p className="text-sm text-slate-500">Snabb registrering med tydliga val och minimalt klickande.</p>
       </div>
 
-      <form onSubmit={handleSubmit} className="card space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <form onSubmit={handleSubmit} className="card space-y-5">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div>
             <label className="label flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-gray-500" />
+              <Calendar className="h-4 w-4 text-slate-500" />
               Datum
             </label>
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              className="input"
-              required
-            />
-            <p className="text-sm text-gray-400 mt-1">
-              {format(new Date(date), 'EEEE d MMMM', { locale: sv })}
-            </p>
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="input" required />
+            <p className="mt-1.5 text-sm text-slate-500">{format(new Date(date), 'EEEE d MMMM', { locale: sv })}</p>
           </div>
 
           <div>
             <label className="label">Projekt</label>
-            <select
-              value={projectId}
-              onChange={(e) => setProjectId(e.target.value)}
-              className="input"
-            >
+            <select value={projectId} onChange={(e) => setProjectId(e.target.value)} className="input">
               <option value="">-- Intern tid --</option>
               {projects?.map((project) => (
                 <option key={project.id} value={project.id}>
@@ -145,15 +133,10 @@ export default function TimeEntry() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div>
             <label className="label">Aktivitet</label>
-            <select
-              value={activityId}
-              onChange={(e) => setActivityId(e.target.value)}
-              className="input"
-              required
-            >
+            <select value={activityId} onChange={(e) => setActivityId(e.target.value)} className="input" required>
               <option value="">Välj aktivitet...</option>
               {groupedActivities &&
                 Object.entries(groupedActivities).map(([category, acts]) => (
@@ -170,7 +153,7 @@ export default function TimeEntry() {
 
           <div>
             <label className="label flex items-center gap-2">
-              <Clock className="w-4 h-4 text-gray-500" />
+              <Clock className="h-4 w-4 text-slate-500" />
               Antal timmar
             </label>
             <input
@@ -184,13 +167,13 @@ export default function TimeEntry() {
               step="0.25"
               required
             />
-            <div className="flex gap-2 mt-2">
+            <div className="mt-2 flex gap-2">
               {[2, 4, 6, 8].map((h) => (
                 <button
                   key={h}
                   type="button"
                   onClick={() => setHours(h.toString())}
-                  className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm"
+                  className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
                 >
                   {h}h
                 </button>
@@ -199,21 +182,21 @@ export default function TimeEntry() {
           </div>
         </div>
 
-        <details className="bg-gray-800 rounded-lg p-3">
-          <summary className="cursor-pointer flex items-center justify-between font-medium text-gray-200 list-none">
+        <details className="rounded-xl border border-slate-200 bg-slate-50/80 p-3.5">
+          <summary className="flex cursor-pointer list-none items-center justify-between font-medium text-slate-700">
             Fler val (valfritt)
-            <ChevronDown className="w-4 h-4 text-gray-400" />
+            <ChevronDown className="h-4 w-4 text-slate-500" />
           </summary>
 
-          <div className="space-y-3 mt-3">
-            <label className="flex items-center gap-3 cursor-pointer">
+          <div className="mt-3 space-y-3">
+            <label className="flex items-center gap-3 rounded-lg p-1 text-slate-800">
               <input
                 type="checkbox"
                 checked={billable}
                 onChange={(e) => setBillable(e.target.checked)}
-                className="w-5 h-5 rounded border-gray-600 text-primary-500 focus:ring-primary-500 bg-gray-900"
+                className="h-4 w-4 rounded border-slate-300 text-primary-600 focus:ring-primary-500"
               />
-              <span className="font-medium">Fakturerbar tid</span>
+              <span className="text-sm font-medium">Fakturerbar tid</span>
             </label>
 
             <div>
@@ -232,22 +215,22 @@ export default function TimeEntry() {
         <button
           type="submit"
           disabled={createMutation.isPending || !activityId || !hours}
-          className={`w-full py-4 rounded-xl font-semibold text-white transition-all active:scale-[0.97] ${
+          className={`w-full rounded-xl py-3.5 text-sm font-semibold text-white transition ${
             saved
-              ? 'bg-green-500'
-              : 'bg-primary-500 hover:bg-primary-400 disabled:bg-gray-700 disabled:text-gray-500 disabled:active:scale-100'
+              ? 'bg-emerald-500'
+              : 'bg-primary-600 hover:bg-primary-500 disabled:cursor-not-allowed disabled:bg-slate-300'
           }`}
         >
           {createMutation.isPending ? (
-            <Loader2 className="w-5 h-5 animate-spin mx-auto" />
+            <Loader2 className="mx-auto h-5 w-5 animate-spin" />
           ) : saved ? (
             <span className="flex items-center justify-center gap-2">
-              <Check className="w-5 h-5" />
+              <Check className="h-5 w-5" />
               Sparad!
             </span>
           ) : (
             <span className="flex items-center justify-center gap-2">
-              <Save className="w-5 h-5" />
+              <Save className="h-5 w-5" />
               Spara tidrad
             </span>
           )}
