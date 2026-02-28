@@ -89,7 +89,7 @@ export default function Dashboard() {
                 <div
                   key={date}
                   className={`text-center p-2 rounded-lg ${
-                    isToday ? 'bg-primary-900/30 border-2 border-primary-700' : 'bg-gray-800'
+                    isToday ? 'bg-primary-100 border-2 border-primary-400' : 'bg-slate-50 border border-slate-200'
                   }`}
                 >
                   <p className="text-xs text-gray-400">
@@ -114,7 +114,7 @@ export default function Dashboard() {
             {data.projects.map((project) => {
               const budgetUsed = project.budgetUsedPercent ?? 0;
               return (
-                <div key={project.id} className="bg-gray-900 border border-gray-700 p-4 min-h-[130px]">
+                <div key={project.id} className="bg-slate-50 border border-slate-200 p-4 min-h-[130px]">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="font-semibold truncate">{project.name}</p>

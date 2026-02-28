@@ -62,21 +62,21 @@ export default function Layout() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-950">
+    <div className="min-h-screen bg-slate-100">
       {/* Header */}
-      <header className="bg-gray-900 text-white sticky top-0 z-50 safe-top border-b border-gray-800">
+      <header className="bg-white text-slate-900 sticky top-0 z-50 safe-top border-b border-slate-200">
         <div className="px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setMenuOpen(!menuOpen)}
-              className="p-1 hover:bg-gray-800 rounded-lg lg:hidden"
+              className="p-1 hover:bg-slate-100 rounded-lg lg:hidden"
             >
               {menuOpen ? <X size={24} /> : <Menu size={24} />}
             </button>
             <div>
-              <h1 className="text-lg font-bold leading-tight text-primary-400">TidApp</h1>
+              <h1 className="text-lg font-bold leading-tight text-primary-700">TidApp</h1>
               {user?.companyName && (
-                <p className="text-xs text-gray-400 leading-tight">{user.companyName}</p>
+                <p className="text-xs text-slate-500 leading-tight">{user.companyName}</p>
               )}
             </div>
           </div>
@@ -96,10 +96,10 @@ export default function Layout() {
                 </>
               )}
             </div>
-            <span className="text-sm hidden sm:block text-gray-300">{user?.name}</span>
+            <span className="text-sm hidden sm:block text-slate-700">{user?.name}</span>
             <button
               onClick={handleLogout}
-              className="p-1.5 hover:bg-gray-800 rounded-lg"
+              className="p-1.5 hover:bg-slate-100 rounded-lg"
               title="Logga ut"
             >
               <LogOut size={20} />
@@ -110,7 +110,7 @@ export default function Layout() {
 
       <div className="flex">
         {/* Sidebar - Desktop */}
-        <aside className="hidden lg:block w-56 bg-gray-900 border-r border-gray-800 min-h-[calc(100vh-56px)] sticky top-14">
+        <aside className="hidden lg:block w-56 bg-white border-r border-slate-200 min-h-[calc(100vh-56px)] sticky top-14">
           <nav className="p-3 space-y-1">
             {filteredNavItems.map((item) => (
               <NavLink
@@ -119,8 +119,8 @@ export default function Layout() {
                 className={({ isActive }) =>
                   `flex items-center gap-3 px-3 py-2 border-l-2 transition-colors ${
                     isActive
-                      ? 'border-primary-500 bg-gray-800 text-primary-300 font-semibold'
-                      : 'border-transparent text-gray-400 hover:bg-gray-800 hover:text-gray-200'
+                      ? 'border-primary-600 bg-primary-50 text-primary-800 font-semibold'
+                      : 'border-transparent text-slate-600 hover:bg-slate-100 hover:text-slate-900'
                   }`
                 }
               >
@@ -147,12 +147,12 @@ export default function Layout() {
 
         {/* Mobile sidebar */}
         <aside
-          className={`fixed top-0 left-0 w-64 h-full bg-gray-900 z-50 transform transition-transform lg:hidden ${
+          className={`fixed top-0 left-0 w-64 h-full bg-white z-50 transform transition-transform lg:hidden ${
             menuOpen ? 'translate-x-0' : '-translate-x-full'
           }`}
         >
-          <div className="p-4 bg-gray-800 text-white flex items-center justify-between">
-            <span className="font-bold text-primary-400">TidApp</span>
+          <div className="p-4 bg-white border-b border-slate-200 text-slate-900 flex items-center justify-between">
+            <span className="font-bold text-primary-700">TidApp</span>
             <button onClick={() => setMenuOpen(false)}>
               <X size={24} />
             </button>
@@ -166,8 +166,8 @@ export default function Layout() {
                 className={({ isActive }) =>
                   `flex items-center gap-3 px-3 py-2.5 border-l-2 transition-colors ${
                     isActive
-                      ? 'border-primary-500 bg-gray-800 text-primary-300 font-semibold'
-                      : 'border-transparent text-gray-400 hover:bg-gray-800 hover:text-gray-200'
+                      ? 'border-primary-600 bg-primary-50 text-primary-800 font-semibold'
+                      : 'border-transparent text-slate-600 hover:bg-slate-100 hover:text-slate-900'
                   }`
                 }
               >
@@ -175,10 +175,10 @@ export default function Layout() {
                 <span>{item.label}</span>
               </NavLink>
             ))}
-            <hr className="my-3 border-gray-800" />
+            <hr className="my-3 border-slate-200" />
             <button
               onClick={handleLogout}
-              className="flex items-center gap-3 px-3 py-2.5 text-red-400 hover:bg-red-950 rounded-lg w-full"
+              className="flex items-center gap-3 px-3 py-2.5 text-red-600 hover:bg-red-50 rounded-md w-full"
             >
               <LogOut size={20} />
               <span>Logga ut</span>
@@ -203,7 +203,7 @@ export default function Layout() {
       </div>
 
       {/* Mobile bottom nav */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-gray-900 border-t border-gray-800 lg:hidden safe-bottom z-40">
+      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 lg:hidden safe-bottom z-40">
         <div className="flex justify-around py-1 px-2">
           {bottomTabs.map((item) => (
             <NavLink
@@ -211,7 +211,7 @@ export default function Layout() {
               to={item.to}
               className={({ isActive }) =>
                 `flex flex-col items-center py-2 px-3 border-t-2 transition-colors ${
-                  isActive ? 'border-primary-500 text-primary-300' : 'border-transparent text-gray-500'
+                  isActive ? 'border-primary-600 text-primary-700' : 'border-transparent text-slate-500'
                 }`
               }
             >
