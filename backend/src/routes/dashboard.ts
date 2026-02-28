@@ -85,9 +85,20 @@ const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
           name: project.name,
           code: project.code,
           customerName: project.customer?.name || 'Intern',
+          defaultRate: project.defaultRate || 0,
           budgetHours: project.budgetHours,
           totalHours: stats._sum.hours || 0,
+          remainingHours: project.budgetHours
+            ? Math.max(project.budgetHours - (stats._sum.hours || 0), 0)
+            : null,
           monthlyHours: monthlyStats._sum.hours || 0,
+          economicUsed: (stats._sum.hours || 0) * (project.defaultRate || 0),
+          economicBudget: project.budgetHours && project.defaultRate
+            ? project.budgetHours * project.defaultRate
+            : null,
+          economicRemaining: project.budgetHours && project.defaultRate
+            ? Math.max((project.budgetHours - (stats._sum.hours || 0)) * project.defaultRate, 0)
+            : null,
           budgetUsedPercent: project.budgetHours
             ? Math.round(((stats._sum.hours || 0) / project.budgetHours) * 100)
             : null,

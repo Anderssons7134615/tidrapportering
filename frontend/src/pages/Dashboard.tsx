@@ -129,11 +129,30 @@ export default function Dashboard() {
                     </div>
                   </div>
 
-                  <div className="mt-3">
-                    <div className="flex items-center justify-between text-xs text-gray-400 mb-1">
+                  <div className="mt-3 space-y-1.5">
+                    <div className="flex items-center justify-between text-xs text-gray-400">
                       <span>Denna månad: {project.monthlyHours.toFixed(1)}h</span>
                       {project.budgetHours && <span>{budgetUsed.toFixed(0)}%</span>}
                     </div>
+
+                    <div className="flex items-center justify-between text-xs text-gray-300">
+                      <span>Kvar timmar</span>
+                      <span className="font-medium">
+                        {project.remainingHours !== null && project.remainingHours !== undefined
+                          ? `${project.remainingHours.toFixed(1)}h`
+                          : 'Ingen budget'}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs text-gray-300">
+                      <span>Ekonomi (använt/kvar)</span>
+                      <span className="font-medium">
+                        {project.economicUsed !== null && project.economicUsed !== undefined
+                          ? `${project.economicUsed.toFixed(0)} / ${(project.economicRemaining || 0).toFixed(0)} kr`
+                          : 'Sätt timpris'}
+                      </span>
+                    </div>
+
                     {project.budgetHours ? (
                       <div className="w-full bg-gray-700 rounded-full h-2">
                         <div

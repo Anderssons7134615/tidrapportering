@@ -124,9 +124,14 @@ export interface DashboardData {
     name: string;
     code: string;
     customerName: string;
+    defaultRate: number;
     budgetHours?: number;
     totalHours: number;
+    remainingHours?: number | null;
     monthlyHours: number;
+    economicUsed?: number | null;
+    economicBudget?: number | null;
+    economicRemaining?: number | null;
     budgetUsedPercent?: number;
   }[];
   pendingApprovals: WeekLock[];
