@@ -55,16 +55,18 @@ const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
       _sum: { hours: true },
     });
 
-    // Pågående projekt med timmar och budget
-    const ongoingProjects = await prisma.project.findMany({
-      where: { status: 'ONGOING', active: true, companyId: request.user.companyId },
+    // Aktiva projekt med timmar och budget
+    const activeProjects = await prisma.project.findMany({
+      where: { active: true, companyId: request.user.companyId },
       include: {
         customer: { select: { name: true } },
       },
+      orderBy: { updatedAt: 'desc' },
+      take: 24,
     });
 
     const projectsWithStats = await Promise.all(
-      ongoingProjects.map(async (project) => {
+      activeProjects.map(async (project) => {
         const stats = await prisma.timeEntry.aggregate({
           where: { projectId: project.id },
           _sum: { hours: true },
