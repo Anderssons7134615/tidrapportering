@@ -103,6 +103,61 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* Projektöversikt: rektanglar, 3 i sidled */}
+      {data?.projects && data.projects.length > 0 && (
+        <div className="card">
+          <h2 className="font-semibold mb-4 flex items-center gap-2">
+            <FolderKanban className="w-5 h-5 text-gray-500" />
+            Projektläge
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {data.projects.map((project) => {
+              const budgetUsed = project.budgetUsedPercent ?? 0;
+              return (
+                <div key={project.id} className="bg-gray-800 rounded-xl border border-gray-700 p-4 min-h-[130px]">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-semibold truncate">{project.name}</p>
+                      <p className="text-xs text-gray-400 truncate">
+                        {project.code}
+                        {project.customerName ? ` · ${project.customerName}` : ''}
+                      </p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-sm font-semibold">{project.totalHours.toFixed(1)}h</p>
+                      <p className="text-xs text-gray-400">totalt</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-3">
+                    <div className="flex items-center justify-between text-xs text-gray-400 mb-1">
+                      <span>Denna månad: {project.monthlyHours.toFixed(1)}h</span>
+                      {project.budgetHours && <span>{budgetUsed.toFixed(0)}%</span>}
+                    </div>
+                    {project.budgetHours ? (
+                      <div className="w-full bg-gray-700 rounded-full h-2">
+                        <div
+                          className={`h-2 rounded-full ${
+                            budgetUsed > 90
+                              ? 'bg-red-500'
+                              : budgetUsed > 75
+                              ? 'bg-yellow-500'
+                              : 'bg-green-500'
+                          }`}
+                          style={{ width: `${Math.min(budgetUsed, 100)}%` }}
+                        />
+                      </div>
+                    ) : (
+                      <p className="text-xs text-gray-500">Ingen budget satt</p>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Mina ej inskickade veckor */}
       {user?.role === 'EMPLOYEE' && data?.myPendingWeeks && data.myPendingWeeks.length > 0 && (
         <div className="card border-yellow-800 bg-yellow-900/20">
@@ -121,45 +176,6 @@ export default function Dashboard() {
                   {format(new Date(weekStart), 'd MMM', { locale: sv })}
                 </span>
               </Link>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Projekt med budget */}
-      {isAdminOrSupervisor && data?.projects && data.projects.length > 0 && (
-        <div className="card">
-          <h2 className="font-semibold mb-4 flex items-center gap-2">
-            <FolderKanban className="w-5 h-5 text-gray-500" />
-            Pågående projekt
-          </h2>
-          <div className="space-y-3">
-            {data.projects.slice(0, 5).map((project) => (
-              <div key={project.id} className="flex items-center gap-3">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between mb-1">
-                    <p className="font-medium truncate">{project.name}</p>
-                    <span className="text-sm text-gray-400">
-                      {project.totalHours.toFixed(1)}h
-                      {project.budgetHours && ` / ${project.budgetHours}h`}
-                    </span>
-                  </div>
-                  {project.budgetHours && (
-                    <div className="w-full bg-gray-700 rounded-full h-2">
-                      <div
-                        className={`h-2 rounded-full ${
-                          project.budgetUsedPercent! > 90
-                            ? 'bg-red-500'
-                            : project.budgetUsedPercent! > 75
-                            ? 'bg-yellow-500'
-                            : 'bg-green-500'
-                        }`}
-                        style={{ width: `${Math.min(project.budgetUsedPercent || 0, 100)}%` }}
-                      />
-                    </div>
-                  )}
-                </div>
-              </div>
             ))}
           </div>
         </div>

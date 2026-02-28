@@ -4,17 +4,7 @@ import { projectsApi, activitiesApi, timeEntriesApi } from '../services/api';
 import { useOfflineStore } from '../stores/offlineStore';
 import { format } from 'date-fns';
 import { sv } from 'date-fns/locale';
-import {
-  Calendar,
-  FolderKanban,
-  Tags,
-  Clock,
-  FileText,
-  MapPin,
-  Save,
-  Loader2,
-  Check,
-} from 'lucide-react';
+import { Calendar, Clock, Save, Loader2, Check, ChevronDown } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useHaptic } from '../hooks/useHaptic';
 
@@ -29,8 +19,6 @@ export default function TimeEntry() {
   const [hours, setHours] = useState<string>('');
   const [note, setNote] = useState('');
   const [billable, setBillable] = useState(true);
-  const [useGps, setUseGps] = useState(false);
-  const [gpsPosition, setGpsPosition] = useState<{ lat: number; lng: number } | null>(null);
   const [saved, setSaved] = useState(false);
 
   const { data: projects } = useQuery({
@@ -43,7 +31,6 @@ export default function TimeEntry() {
     queryFn: () => activitiesApi.list(true),
   });
 
-  // Uppdatera billable baserat på vald aktivitet
   useEffect(() => {
     if (activityId && activities) {
       const activity = activities.find((a) => a.id === activityId);
@@ -52,27 +39,6 @@ export default function TimeEntry() {
       }
     }
   }, [activityId, activities]);
-
-  // Hämta GPS-position
-  useEffect(() => {
-    if (useGps && 'geolocation' in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          setGpsPosition({
-            lat: position.coords.latitude,
-            lng: position.coords.longitude,
-          });
-        },
-        (error) => {
-          console.error('GPS error:', error);
-          toast.error('Kunde inte hämta GPS-position');
-          setUseGps(false);
-        }
-      );
-    } else {
-      setGpsPosition(null);
-    }
-  }, [useGps]);
 
   const createMutation = useMutation({
     mutationFn: (data: any) => timeEntriesApi.create(data),
@@ -84,7 +50,6 @@ export default function TimeEntry() {
       queryClient.invalidateQueries({ queryKey: ['timeEntries'] });
       queryClient.invalidateQueries({ queryKey: ['week'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      // Rensa formulär
       setHours('');
       setNote('');
     },
@@ -105,14 +70,11 @@ export default function TimeEntry() {
       hours: parseFloat(hours),
       billable,
       note: note || undefined,
-      gpsLat: gpsPosition?.lat,
-      gpsLng: gpsPosition?.lng,
     };
 
     if (isOnline) {
       createMutation.mutate(entryData);
     } else {
-      // Spara offline
       addPendingEntry(entryData);
       haptic('success');
       toast.success('Sparad offline - synkas när du är online');
@@ -123,7 +85,6 @@ export default function TimeEntry() {
     }
   };
 
-  // Gruppera aktiviteter per kategori
   const groupedActivities = activities?.reduce((acc, activity) => {
     const category = activity.category;
     if (!acc[category]) acc[category] = [];
@@ -142,100 +103,94 @@ export default function TimeEntry() {
 
   return (
     <div className="space-y-6">
-      <h1 className="page-title">Rapportera tid</h1>
+      <div>
+        <h1 className="page-title">Rapportera tid</h1>
+        <p className="text-sm text-gray-400">Snabb registrering på en sida</p>
+      </div>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
-        {/* Datum */}
-        <div className="card">
-          <label className="label flex items-center gap-2">
-            <Calendar className="w-4 h-4 text-gray-500" />
-            Datum
-          </label>
-          <input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            className="input"
-            required
-          />
-          <p className="text-sm text-gray-400 mt-1">
-            {format(new Date(date), 'EEEE d MMMM', { locale: sv })}
-          </p>
-        </div>
+      <form onSubmit={handleSubmit} className="card space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="label flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-gray-500" />
+              Datum
+            </label>
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="input"
+              required
+            />
+            <p className="text-sm text-gray-400 mt-1">
+              {format(new Date(date), 'EEEE d MMMM', { locale: sv })}
+            </p>
+          </div>
 
-        {/* Projekt */}
-        <div className="card">
-          <label className="label flex items-center gap-2">
-            <FolderKanban className="w-4 h-4 text-gray-500" />
-            Projekt
-          </label>
-          <select
-            value={projectId}
-            onChange={(e) => setProjectId(e.target.value)}
-            className="input"
-          >
-            <option value="">-- Intern tid --</option>
-            {projects?.map((project) => (
-              <option key={project.id} value={project.id}>
-                {project.code} - {project.name}
-                {project.customer && ` (${project.customer.name})`}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Aktivitet */}
-        <div className="card">
-          <label className="label flex items-center gap-2">
-            <Tags className="w-4 h-4 text-gray-500" />
-            Aktivitet
-          </label>
-          <select
-            value={activityId}
-            onChange={(e) => setActivityId(e.target.value)}
-            className="input"
-            required
-          >
-            <option value="">Välj aktivitet...</option>
-            {groupedActivities &&
-              Object.entries(groupedActivities).map(([category, acts]) => (
-                <optgroup key={category} label={categoryLabels[category] || category}>
-                  {acts?.map((activity) => (
-                    <option key={activity.id} value={activity.id}>
-                      {activity.name}
-                    </option>
-                  ))}
-                </optgroup>
+          <div>
+            <label className="label">Projekt</label>
+            <select
+              value={projectId}
+              onChange={(e) => setProjectId(e.target.value)}
+              className="input"
+            >
+              <option value="">-- Intern tid --</option>
+              {projects?.map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.code} - {project.name}
+                  {project.customer && ` (${project.customer.name})`}
+                </option>
               ))}
-          </select>
+            </select>
+          </div>
         </div>
 
-        {/* Timmar */}
-        <div className="card">
-          <label className="label flex items-center gap-2">
-            <Clock className="w-4 h-4 text-gray-500" />
-            Antal timmar
-          </label>
-          <div className="flex gap-2">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="label">Aktivitet</label>
+            <select
+              value={activityId}
+              onChange={(e) => setActivityId(e.target.value)}
+              className="input"
+              required
+            >
+              <option value="">Välj aktivitet...</option>
+              {groupedActivities &&
+                Object.entries(groupedActivities).map(([category, acts]) => (
+                  <optgroup key={category} label={categoryLabels[category] || category}>
+                    {acts?.map((activity) => (
+                      <option key={activity.id} value={activity.id}>
+                        {activity.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="label flex items-center gap-2">
+              <Clock className="w-4 h-4 text-gray-500" />
+              Antal timmar
+            </label>
             <input
               type="number"
               value={hours}
               onChange={(e) => setHours(e.target.value)}
-              className="input flex-1"
+              className="input"
               placeholder="0.0"
               min="0"
               max="24"
               step="0.25"
               required
             />
-            {/* Snabbknappar */}
-            <div className="flex gap-1">
-              {[4, 6, 8].map((h) => (
+            <div className="flex gap-2 mt-2">
+              {[2, 4, 6, 8].map((h) => (
                 <button
                   key={h}
                   type="button"
                   onClick={() => setHours(h.toString())}
-                  className="px-3 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm font-medium"
+                  className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm"
                 >
                   {h}h
                 </button>
@@ -244,54 +199,36 @@ export default function TimeEntry() {
           </div>
         </div>
 
-        {/* Fakturerbar */}
-        <div className="card">
-          <label className="flex items-center gap-3 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={billable}
-              onChange={(e) => setBillable(e.target.checked)}
-              className="w-5 h-5 rounded border-gray-600 text-primary-500 focus:ring-primary-500 bg-gray-800"
-            />
-            <span className="font-medium">Fakturerbar tid</span>
-          </label>
-        </div>
+        <details className="bg-gray-800 rounded-lg p-3">
+          <summary className="cursor-pointer flex items-center justify-between font-medium text-gray-200 list-none">
+            Fler val (valfritt)
+            <ChevronDown className="w-4 h-4 text-gray-400" />
+          </summary>
 
-        {/* Notering */}
-        <div className="card">
-          <label className="label flex items-center gap-2">
-            <FileText className="w-4 h-4 text-gray-500" />
-            Notering
-          </label>
-          <textarea
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            className="input"
-            rows={2}
-            placeholder="Valfri beskrivning..."
-          />
-        </div>
+          <div className="space-y-3 mt-3">
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={billable}
+                onChange={(e) => setBillable(e.target.checked)}
+                className="w-5 h-5 rounded border-gray-600 text-primary-500 focus:ring-primary-500 bg-gray-900"
+              />
+              <span className="font-medium">Fakturerbar tid</span>
+            </label>
 
-        {/* GPS */}
-        <div className="card">
-          <label className="flex items-center gap-3 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={useGps}
-              onChange={(e) => setUseGps(e.target.checked)}
-              className="w-5 h-5 rounded border-gray-600 text-primary-500 focus:ring-primary-500 bg-gray-800"
-            />
-            <MapPin className="w-4 h-4 text-gray-500" />
-            <span className="font-medium">Bifoga GPS-position</span>
-          </label>
-          {gpsPosition && (
-            <p className="text-sm text-gray-400 mt-2">
-              Position: {gpsPosition.lat.toFixed(6)}, {gpsPosition.lng.toFixed(6)}
-            </p>
-          )}
-        </div>
+            <div>
+              <label className="label">Notering</label>
+              <textarea
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                className="input"
+                rows={2}
+                placeholder="Valfri beskrivning..."
+              />
+            </div>
+          </div>
+        </details>
 
-        {/* Submit */}
         <button
           type="submit"
           disabled={createMutation.isPending || !activityId || !hours}
