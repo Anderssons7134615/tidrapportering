@@ -8,7 +8,7 @@
   }
 
   body {
-    @apply bg-slate-100 text-slate-900 antialiased;
+    @apply bg-slate-50 text-slate-800 antialiased;
   }
 
   input, select, textarea {
@@ -22,11 +22,11 @@
   }
 
   .btn-primary {
-    @apply btn bg-primary-600 text-white hover:bg-primary-700 focus:ring-primary-500;
+    @apply btn bg-primary-600 text-white hover:bg-primary-500 focus:ring-primary-500;
   }
 
   .btn-secondary {
-    @apply btn bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 focus:ring-slate-400;
+    @apply btn bg-white text-slate-700 border border-slate-200 hover:bg-slate-100 focus:ring-slate-300;
   }
 
   .btn-danger {
@@ -50,7 +50,7 @@
   }
 
   .card {
-    @apply bg-white rounded-md border border-slate-200 p-4 shadow-sm;
+    @apply bg-white rounded-lg border border-slate-200 p-4 shadow-sm;
   }
 
   .page-title {
@@ -62,23 +62,23 @@
   }
 
   .badge-blue {
-    @apply badge bg-blue-900/50 text-blue-300;
+    @apply badge bg-blue-100 text-blue-700;
   }
 
   .badge-green {
-    @apply badge bg-green-900/50 text-green-300;
+    @apply badge bg-green-100 text-green-700;
   }
 
   .badge-yellow {
-    @apply badge bg-yellow-900/50 text-yellow-300;
+    @apply badge bg-amber-100 text-amber-700;
   }
 
   .badge-red {
-    @apply badge bg-red-900/50 text-red-300;
+    @apply badge bg-red-100 text-red-700;
   }
 
   .badge-gray {
-    @apply badge bg-gray-800 text-gray-400;
+    @apply badge bg-slate-100 text-slate-600;
   }
 }
 
