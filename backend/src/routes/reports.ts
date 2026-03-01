@@ -277,6 +277,10 @@ const reportRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(404).send({ error: 'Projekt hittades inte' });
     }
 
+    if (request.user.role === 'EMPLOYEE' && !project.employeeCanSeeResults) {
+      return reply.status(403).send({ error: 'Projektresultat är inte synliga för anställda i detta projekt' });
+    }
+
     const where: any = { projectId: id };
     if (from) where.date = { ...where.date, gte: new Date(from) };
     if (to) where.date = { ...where.date, lte: new Date(to) };

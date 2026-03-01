@@ -11,6 +11,7 @@ const projectSchema = z.object({
   budgetHours: z.number().optional().nullable(),
   billingModel: z.enum(['HOURLY', 'FIXED']).optional(),
   defaultRate: z.number().optional().nullable(),
+  employeeCanSeeResults: z.boolean().optional(),
 });
 
 const requireAdminOrSupervisor = async (request: any, reply: any) => {
@@ -18,6 +19,10 @@ const requireAdminOrSupervisor = async (request: any, reply: any) => {
   if (!['ADMIN', 'SUPERVISOR'].includes(request.user.role)) {
     return reply.status(403).send({ error: 'Åtkomst nekad' });
   }
+};
+
+const shouldHideResultsForEmployee = (role: string, project: { employeeCanSeeResults: boolean }) => {
+  return role === 'EMPLOYEE' && !project.employeeCanSeeResults;
 };
 
 const projectRoutes: FastifyPluginAsync = async (fastify) => {
@@ -57,9 +62,12 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
           _sum: { hours: true },
         });
 
+        const hideResults = shouldHideResultsForEmployee(request.user.role, project);
+
         return {
           ...project,
-          totalHours: totalHours._sum.hours || 0,
+          resultsVisibleToCurrentUser: !hideResults,
+          totalHours: hideResults ? null : (totalHours._sum.hours || 0),
         };
       })
     );
@@ -84,21 +92,28 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(404).send({ error: 'Projekt hittades inte' });
     }
 
-    // Beräkna statistik
-    const stats = await prisma.timeEntry.aggregate({
-      where: { projectId: id },
-      _sum: { hours: true },
-    });
+    const hideResults = shouldHideResultsForEmployee(request.user.role, project);
 
-    const billableStats = await prisma.timeEntry.aggregate({
-      where: { projectId: id, billable: true },
-      _sum: { hours: true },
-    });
+    // Beräkna statistik
+    const stats = hideResults
+      ? null
+      : await prisma.timeEntry.aggregate({
+          where: { projectId: id },
+          _sum: { hours: true },
+        });
+
+    const billableStats = hideResults
+      ? null
+      : await prisma.timeEntry.aggregate({
+          where: { projectId: id, billable: true },
+          _sum: { hours: true },
+        });
 
     return {
       ...project,
-      totalHours: stats._sum.hours || 0,
-      billableHours: billableStats._sum.hours || 0,
+      resultsVisibleToCurrentUser: !hideResults,
+      totalHours: hideResults ? null : (stats?._sum.hours || 0),
+      billableHours: hideResults ? null : (billableStats?._sum.hours || 0),
     };
   });
 
@@ -115,6 +130,10 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(404).send({ error: 'Projekt hittades inte' });
     }
 
+    if (shouldHideResultsForEmployee(request.user.role, project)) {
+      return reply.status(403).send({ error: 'Projektresultat är inte synliga för anställda i detta projekt' });
+    }
+
     const where: any = { projectId: id };
     if (from) where.date = { ...where.date, gte: new Date(from) };
     if (to) where.date = { ...where.date, lte: new Date(to) };
@@ -129,6 +148,89 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     return entries;
+  });
+
+  // Manager summary by employee for project
+  fastify.get('/:id/manager-summary', {
+    preHandler: [requireAdminOrSupervisor],
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const { from, to } = request.query as { from?: string; to?: string };
+
+    const project = await prisma.project.findUnique({
+      where: { id },
+      include: {
+        customer: { select: { id: true, name: true } },
+      },
+    });
+
+    if (!project || project.companyId !== request.user.companyId) {
+      return reply.status(404).send({ error: 'Projekt hittades inte' });
+    }
+
+    const where: any = {
+      projectId: id,
+      user: { companyId: request.user.companyId },
+    };
+
+    if (from) where.date = { ...where.date, gte: new Date(from) };
+    if (to) where.date = { ...where.date, lte: new Date(to) };
+
+    const entries = await prisma.timeEntry.findMany({
+      where,
+      select: {
+        userId: true,
+        hours: true,
+        billable: true,
+        user: { select: { id: true, name: true, email: true } },
+      },
+    });
+
+    const byEmployee: Record<string, {
+      userId: string;
+      name: string;
+      email: string;
+      hours: number;
+      billableHours: number;
+      nonBillableHours: number;
+      entryCount: number;
+    }> = {};
+
+    for (const entry of entries) {
+      const key = entry.userId;
+      if (!byEmployee[key]) {
+        byEmployee[key] = {
+          userId: entry.user.id,
+          name: entry.user.name,
+          email: entry.user.email,
+          hours: 0,
+          billableHours: 0,
+          nonBillableHours: 0,
+          entryCount: 0,
+        };
+      }
+
+      byEmployee[key].hours += entry.hours;
+      byEmployee[key].entryCount += 1;
+      if (entry.billable) {
+        byEmployee[key].billableHours += entry.hours;
+      } else {
+        byEmployee[key].nonBillableHours += entry.hours;
+      }
+    }
+
+    const employees = Object.values(byEmployee).sort((a, b) => b.hours - a.hours);
+
+    return {
+      project,
+      period: { from: from || null, to: to || null },
+      employees,
+      totals: {
+        totalHours: employees.reduce((sum, e) => sum + e.hours, 0),
+        totalBillableHours: employees.reduce((sum, e) => sum + e.billableHours, 0),
+        employeeCount: employees.length,
+      },
+    };
   });
 
   // Create project
@@ -153,7 +255,11 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       const project = await prisma.project.create({
-        data: { ...body, companyId: request.user.companyId },
+        data: {
+          ...body,
+          employeeCanSeeResults: body.employeeCanSeeResults ?? false,
+          companyId: request.user.companyId,
+        },
         include: {
           customer: { select: { id: true, name: true } },
         },
@@ -166,7 +272,11 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
           action: 'CREATE',
           entityType: 'Project',
           entityId: project.id,
-          newValue: JSON.stringify({ name: project.name, code: project.code }),
+          newValue: JSON.stringify({
+            name: project.name,
+            code: project.code,
+            employeeCanSeeResults: project.employeeCanSeeResults,
+          }),
         },
       });
 
@@ -222,7 +332,11 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
           action: 'UPDATE',
           entityType: 'Project',
           entityId: id,
-          oldValue: JSON.stringify({ name: project.name, status: project.status }),
+          oldValue: JSON.stringify({
+            name: project.name,
+            status: project.status,
+            employeeCanSeeResults: project.employeeCanSeeResults,
+          }),
           newValue: JSON.stringify(body),
         },
       });

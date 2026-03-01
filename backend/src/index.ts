@@ -119,9 +119,38 @@ fastify.get('/api/health', async () => {
   return { status: 'ok', timestamp: new Date().toISOString() };
 });
 
+// Enkel migrationssäkring för miljöer som inte hunnit köra Prisma migration/db push
+const ensureProjectResultsVisibilityColumn = async () => {
+  try {
+    await prisma.$executeRawUnsafe(`
+      ALTER TABLE "Project"
+      ADD COLUMN "employeeCanSeeResults" BOOLEAN NOT NULL DEFAULT false
+    `);
+    fastify.log.info('La till Project.employeeCanSeeResults');
+  } catch (error: any) {
+    const message = String(error?.message || '').toLowerCase();
+    const code = String(error?.code || '');
+
+    // Kolumnen finns redan -> OK
+    if (
+      code === 'P2010' ||
+      message.includes('duplicate column') ||
+      message.includes('already exists') ||
+      message.includes('duplicate column name')
+    ) {
+      fastify.log.debug('Project.employeeCanSeeResults finns redan');
+      return;
+    }
+
+    throw error;
+  }
+};
+
 // Start server
 const start = async () => {
   try {
+    await ensureProjectResultsVisibilityColumn();
+
     const port = parseInt(process.env.PORT || '3001');
     await fastify.listen({ port, host: '0.0.0.0' });
     console.log(`🚀 Server körs på http://localhost:${port}`);

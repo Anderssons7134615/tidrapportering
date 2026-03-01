@@ -79,6 +79,7 @@ model Project {
   budgetHours  Float?
   billingModel String   @default("HOURLY") // HOURLY (löpande), FIXED (fastpris)
   defaultRate  Float?   // Projektspecifikt pris kr/h
+  employeeCanSeeResults Boolean @default(false) // Om anställda får se projektresultat/statistik
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
