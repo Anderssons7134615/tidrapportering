@@ -1,21 +1,25 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { projectsApi, activitiesApi, timeEntriesApi } from '../services/api';
+import { projectsApi, activitiesApi, timeEntriesApi, usersApi } from '../services/api';
 import { useOfflineStore } from '../stores/offlineStore';
 import { format } from 'date-fns';
 import { sv } from 'date-fns/locale';
 import { Calendar, Clock, Save, Loader2, Check, ChevronDown } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useHaptic } from '../hooks/useHaptic';
+import { useAuthStore } from '../stores/authStore';
 
 export default function TimeEntry() {
   const queryClient = useQueryClient();
   const { isOnline, addPendingEntry } = useOfflineStore();
   const { trigger: haptic } = useHaptic();
+  const { user } = useAuthStore();
+  const canReportForOthers = ['ADMIN', 'SUPERVISOR'].includes(user?.role || '');
 
   const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [projectId, setProjectId] = useState<string>('');
   const [activityId, setActivityId] = useState<string>('');
+  const [selectedUserId, setSelectedUserId] = useState<string>('');
   const [hours, setHours] = useState<string>('');
   const [note, setNote] = useState('');
   const [billable, setBillable] = useState(true);
@@ -29,6 +33,12 @@ export default function TimeEntry() {
   const { data: activities } = useQuery({
     queryKey: ['activities', 'active'],
     queryFn: () => activitiesApi.list(true),
+  });
+
+  const { data: users } = useQuery({
+    queryKey: ['users'],
+    queryFn: usersApi.list,
+    enabled: canReportForOthers,
   });
 
   useEffect(() => {
@@ -67,6 +77,7 @@ export default function TimeEntry() {
       date,
       projectId: projectId || undefined,
       activityId,
+      userId: canReportForOthers ? (selectedUserId || undefined) : undefined,
       hours: parseFloat(hours),
       billable,
       note: note || undefined,
@@ -110,6 +121,18 @@ export default function TimeEntry() {
 
       <form onSubmit={handleSubmit} className="card space-y-5">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          {canReportForOthers && (
+            <div>
+              <label className="label">Anställd</label>
+              <select value={selectedUserId} onChange={(e) => setSelectedUserId(e.target.value)} className="input">
+                <option value="">Jag själv</option>
+                {users?.map((u) => (
+                  <option key={u.id} value={u.id}>{u.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
           <div>
             <label className="label flex items-center gap-2">
               <Calendar className="h-4 w-4 text-slate-500" />

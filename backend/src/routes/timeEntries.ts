@@ -8,6 +8,7 @@ import { pipeline } from 'stream/promises';
 const timeEntrySchema = z.object({
   projectId: z.string().uuid().optional().nullable(),
   activityId: z.string().uuid(),
+  userId: z.string().uuid().optional(),
   date: z.string().transform((d) => new Date(d)),
   startTime: z.string().optional().nullable(),
   endTime: z.string().optional().nullable(),
@@ -167,12 +168,16 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
     try {
       const body = timeEntrySchema.parse(request.body);
 
+      const targetUserId = body.userId && ['ADMIN', 'SUPERVISOR'].includes(request.user.role)
+        ? body.userId
+        : request.user.id;
+
       // Kontrollera om veckan är låst
       const weekStart = getWeekStart(body.date);
       const weekLock = await prisma.weekLock.findUnique({
         where: {
           userId_weekStartDate: {
-            userId: request.user.id,
+            userId: targetUserId,
             weekStartDate: weekStart,
           },
         },
@@ -190,7 +195,7 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
       const entry = await prisma.timeEntry.create({
         data: {
           ...body,
-          userId: request.user.id,
+          userId: targetUserId,
           billable: body.billable ?? activity?.billableDefault ?? true,
         },
         include: {
