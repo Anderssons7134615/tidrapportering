@@ -25,7 +25,7 @@ export default function Projects() {
   const queryClient = useQueryClient();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
-  const [activityFilter, setActivityFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
+  const [activityFilter, setActivityFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ACTIVE');
   const [statusFilter, setStatusFilter] = useState<'ALL' | Project['status']>('ALL');
 
   const projectParams = useMemo(() => {

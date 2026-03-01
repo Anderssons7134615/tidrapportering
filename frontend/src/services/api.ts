@@ -110,8 +110,29 @@ export const projectsApi = {
     return fetchApi<Project[]>(`/projects${query ? `?${query}` : ''}`);
   },
   get: (id: string) => fetchApi<Project>(`/projects/${id}`),
-  getManagerSummary: (id: string) =>
-    fetchApi<ProjectManagerSummary>(`/projects/${id}/manager-summary`),
+  getManagerSummary: async (id: string) => {
+    const raw = await fetchApi<any>(`/projects/${id}/manager-summary`);
+
+    // Stöd både ny och äldre backend-shape
+    if (raw?.employeeBreakdown) {
+      return raw as ProjectManagerSummary;
+    }
+
+    const employeeBreakdown = (raw?.employees || []).map((e: any) => ({
+      userId: e.userId,
+      userName: e.name,
+      totalHours: e.hours || 0,
+      billableHours: e.billableHours || 0,
+      amount: 0,
+    }));
+
+    return {
+      totalHours: raw?.totals?.totalHours || 0,
+      billableHours: raw?.totals?.totalBillableHours || 0,
+      totalAmount: 0,
+      employeeBreakdown,
+    } as ProjectManagerSummary;
+  },
   create: (data: Partial<Project>) =>
     fetchApi<Project>('/projects', { method: 'POST', body: JSON.stringify(data) }),
   update: (id: string, data: Partial<Project>) =>
