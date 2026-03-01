@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { projectsApi, customersApi } from '../services/api';
 import type { Project } from '../types';
@@ -123,7 +124,9 @@ export default function Projects() {
                     </div>
                     <div className="min-w-0 space-y-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <p className="truncate font-semibold text-slate-900">{project.name}</p>
+                        <Link to={`/projects/${project.id}`} className="truncate font-semibold text-slate-900 hover:text-primary-700">
+                          {project.name}
+                        </Link>
                         <span className={statusColors[project.status]}>{statusLabels[project.status]}</span>
                       </div>
                       <p className="text-sm text-slate-500">
@@ -153,6 +156,13 @@ export default function Projects() {
                     </div>
 
                     <div className="flex items-center gap-1">
+                      <Link
+                        to={`/projects/${project.id}`}
+                        className="rounded-lg px-2.5 py-1.5 text-xs font-medium text-primary-700 transition hover:bg-primary-50"
+                        title="Öppna projekt"
+                      >
+                        Öppna
+                      </Link>
                       <button
                         onClick={() => {
                           setEditingProject(project);

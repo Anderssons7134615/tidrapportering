@@ -12,6 +12,7 @@ const WeekView = lazy(() => import('./pages/WeekView'));
 const Approval = lazy(() => import('./pages/Approval'));
 const Customers = lazy(() => import('./pages/Customers'));
 const Projects = lazy(() => import('./pages/Projects'));
+const ProjectDetail = lazy(() => import('./pages/ProjectDetail'));
 const Activities = lazy(() => import('./pages/Activities'));
 const Users = lazy(() => import('./pages/Users'));
 const Reports = lazy(() => import('./pages/Reports'));
@@ -73,6 +74,14 @@ export default function App() {
           element={
             <AdminRoute>
               <Projects />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path="projects/:id"
+          element={
+            <AdminRoute>
+              <ProjectDetail />
             </AdminRoute>
           }
         />
