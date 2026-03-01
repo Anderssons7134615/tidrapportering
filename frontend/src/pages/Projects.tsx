@@ -92,6 +92,7 @@ export default function Projects() {
       budgetHours: formData.get('budgetHours') ? parseFloat(formData.get('budgetHours') as string) : undefined,
       billingModel: formData.get('billingModel') as Project['billingModel'],
       defaultRate: formData.get('defaultRate') ? parseFloat(formData.get('defaultRate') as string) : undefined,
+      employeeCanSeeResults: formData.get('employeeCanSeeResults') === 'on',
     };
 
     if (editingProject) {
@@ -303,6 +304,19 @@ export default function Projects() {
                   <input name="defaultRate" type="number" defaultValue={editingProject?.defaultRate || ''} className="input" />
                 </div>
               </div>
+
+              <label className="surface-muted flex items-start gap-3 rounded-xl border border-slate-200 p-3">
+                <input
+                  name="employeeCanSeeResults"
+                  type="checkbox"
+                  defaultChecked={editingProject?.employeeCanSeeResults ?? false}
+                  className="mt-1 h-4 w-4 rounded border-slate-300 text-primary-600 focus:ring-primary-500"
+                />
+                <span>
+                  <span className="block text-sm font-medium text-slate-900">Visa projektresultat för anställda</span>
+                  <span className="block text-xs text-slate-500">Om aktiverat kan anställda se timmar och fakturerbart utfall i projektvyn.</span>
+                </span>
+              </label>
 
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={closeModal} className="btn-secondary flex-1">

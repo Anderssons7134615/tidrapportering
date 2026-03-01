@@ -35,8 +35,26 @@ export interface Project {
   budgetHours?: number;
   billingModel: 'HOURLY' | 'FIXED';
   defaultRate?: number;
+  employeeCanSeeResults?: boolean;
   active: boolean;
   totalHours?: number;
+  billableHours?: number;
+}
+
+export interface ProjectEmployeeSummary {
+  userId: string;
+  userName: string;
+  totalHours: number;
+  billableHours?: number;
+  billableRate?: number;
+  amount?: number;
+}
+
+export interface ProjectManagerSummary {
+  totalHours: number;
+  billableHours?: number;
+  totalAmount?: number;
+  employeeBreakdown: ProjectEmployeeSummary[];
 }
 
 export interface Activity {

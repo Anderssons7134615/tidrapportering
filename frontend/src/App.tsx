@@ -80,9 +80,9 @@ export default function App() {
         <Route
           path="projects/:id"
           element={
-            <AdminRoute>
+            <ProtectedRoute>
               <ProjectDetail />
-            </AdminRoute>
+            </ProtectedRoute>
           }
         />
         <Route

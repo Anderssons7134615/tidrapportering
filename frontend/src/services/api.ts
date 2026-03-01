@@ -12,6 +12,7 @@ import type {
   WorkItem,
   WorkLog,
   WorkLogStats,
+  ProjectManagerSummary,
 } from '../types';
 
 const API_BASE = '/api';
@@ -109,6 +110,8 @@ export const projectsApi = {
     return fetchApi<Project[]>(`/projects${query ? `?${query}` : ''}`);
   },
   get: (id: string) => fetchApi<Project>(`/projects/${id}`),
+  getManagerSummary: (id: string) =>
+    fetchApi<ProjectManagerSummary>(`/projects/${id}/manager-summary`),
   create: (data: Partial<Project>) =>
     fetchApi<Project>('/projects', { method: 'POST', body: JSON.stringify(data) }),
   update: (id: string, data: Partial<Project>) =>
