@@ -138,6 +138,7 @@ export const projectsApi = {
   update: (id: string, data: Partial<Project>) =>
     fetchApi<Project>(`/projects/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   delete: (id: string) => fetchApi<{ message: string }>(`/projects/${id}`, { method: 'DELETE' }),
+  permanentDelete: (id: string) => fetchApi<{ message: string }>(`/projects/${id}/permanent`, { method: 'DELETE' }),
 };
 
 // Activities

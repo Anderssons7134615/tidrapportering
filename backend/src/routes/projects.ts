@@ -379,6 +379,37 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
 
     return { message: 'Projekt inaktiverat' };
   });
+
+  // Delete project permanently (hard delete)
+  fastify.delete('/:id/permanent', {
+    preHandler: [requireAdminOrSupervisor],
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+
+    const project = await prisma.project.findUnique({ where: { id } });
+    if (!project || project.companyId !== request.user.companyId) {
+      return reply.status(404).send({ error: 'Projekt hittades inte' });
+    }
+
+    await prisma.$transaction([
+      prisma.attachment.deleteMany({ where: { timeEntry: { projectId: id } } }),
+      prisma.timeEntry.deleteMany({ where: { projectId: id } }),
+      prisma.workLog.deleteMany({ where: { projectId: id } }),
+      prisma.project.delete({ where: { id } }),
+    ]);
+
+    await prisma.auditLog.create({
+      data: {
+        userId: request.user.id,
+        action: 'DELETE',
+        entityType: 'Project',
+        entityId: id,
+        oldValue: JSON.stringify({ name: project.name, code: project.code, permanent: true }),
+      },
+    });
+
+    return { message: 'Projekt raderat permanent' };
+  });
 };
 
 export default projectRoutes;
