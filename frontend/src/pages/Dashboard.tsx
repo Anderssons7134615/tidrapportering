@@ -129,7 +129,11 @@ export default function Dashboard() {
             {data.projects.map((project) => {
               const budgetUsed = project.budgetUsedPercent ?? 0;
               return (
-                <div key={project.id} className="surface-muted p-4">
+                <Link
+                  key={project.id}
+                  to={`/projects/${project.id}`}
+                  className="surface-muted block p-4 transition hover:border-primary-300 hover:bg-white"
+                >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="truncate font-semibold text-slate-900">{project.name}</p>
@@ -176,7 +180,7 @@ export default function Dashboard() {
                       </div>
                     )}
                   </div>
-                </div>
+                </Link>
               );
             })}
           </div>
