@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { projectsApi, customersApi } from '../services/api';
@@ -25,10 +25,20 @@ export default function Projects() {
   const queryClient = useQueryClient();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [activityFilter, setActivityFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
+  const [statusFilter, setStatusFilter] = useState<'ALL' | Project['status']>('ALL');
+
+  const projectParams = useMemo(() => {
+    const params: { status?: string; active?: boolean } = {};
+    if (activityFilter === 'ACTIVE') params.active = true;
+    if (activityFilter === 'INACTIVE') params.active = false;
+    if (statusFilter !== 'ALL') params.status = statusFilter;
+    return params;
+  }, [activityFilter, statusFilter]);
 
   const { data: projects, isLoading } = useQuery({
-    queryKey: ['projects'],
-    queryFn: () => projectsApi.list(),
+    queryKey: ['projects', projectParams],
+    queryFn: () => projectsApi.list(projectParams),
   });
 
   const { data: customers } = useQuery({
@@ -106,6 +116,37 @@ export default function Projects() {
           <Plus className="h-4 w-4" />
           Nytt projekt
         </button>
+      </div>
+
+      <div className="card">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div>
+            <label className="label">Visa</label>
+            <select
+              className="input"
+              value={activityFilter}
+              onChange={(e) => setActivityFilter(e.target.value as 'ALL' | 'ACTIVE' | 'INACTIVE')}
+            >
+              <option value="ALL">Alla</option>
+              <option value="ACTIVE">Aktiva</option>
+              <option value="INACTIVE">Inaktiva</option>
+            </select>
+          </div>
+          <div>
+            <label className="label">Projektstatus</label>
+            <select
+              className="input"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as 'ALL' | Project['status'])}
+            >
+              <option value="ALL">Alla statusar</option>
+              <option value="PLANNED">Planerad</option>
+              <option value="ONGOING">Pågår</option>
+              <option value="COMPLETED">Färdig</option>
+              <option value="INVOICED">Fakturerad</option>
+            </select>
+          </div>
+        </div>
       </div>
 
       <div className="space-y-3">
