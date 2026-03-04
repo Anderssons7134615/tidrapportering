@@ -39,10 +39,27 @@ const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:3000',
   ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : []),
+  ...(process.env.EXTRA_CORS_ORIGINS
+    ? process.env.EXTRA_CORS_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean)
+    : []),
 ];
 
 await fastify.register(cors, {
-  origin: allowedOrigins,
+  origin: (origin, cb) => {
+    if (!origin) return cb(null, true);
+
+    const normalized = origin.replace(/\/$/, '');
+    const isAllowed = allowedOrigins.some((o) => o.replace(/\/$/, '') === normalized);
+
+    // Tillåt även Cloudflare Pages-domäner under uppsättning
+    const isPagesDomain = /^https:\/\/[a-z0-9-]+\.pages\.dev$/i.test(normalized);
+
+    if (isAllowed || isPagesDomain) {
+      cb(null, true);
+    } else {
+      cb(new Error('Origin not allowed by CORS'), false);
+    }
+  },
   credentials: true,
 });
 
