@@ -6,6 +6,7 @@ import rateLimit from '@fastify/rate-limit';
 import fastifyStatic from '@fastify/static';
 import { PrismaClient } from '@prisma/client';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 
 // Routes
@@ -61,7 +62,14 @@ await fastify.register(rateLimit, {
 });
 
 // Static files for uploads
-const uploadDir = path.resolve(__dirname, '../../uploads');
+const uploadDir = process.env.UPLOAD_DIR
+  ? path.resolve(process.env.UPLOAD_DIR)
+  : path.resolve(__dirname, '../../uploads');
+
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
+
 await fastify.register(fastifyStatic, {
   root: uploadDir,
   prefix: '/uploads/',
