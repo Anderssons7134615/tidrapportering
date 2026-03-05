@@ -205,3 +205,21 @@ export interface WeekData {
     dailyTotals: Record<string, number>;
   };
 }
+
+export interface TeamWeekSummary {
+  weekStart: string;
+  weekEnd: string;
+  totals: {
+    totalHours: number;
+    billableHours: number;
+  };
+  users: {
+    userId: string;
+    userName: string;
+    role: string;
+    totalHours: number;
+    billableHours: number;
+    entryCount: number;
+    status: 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED';
+  }[];
+}

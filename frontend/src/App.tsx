@@ -9,6 +9,7 @@ const Register = lazy(() => import('./pages/Register'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const TimeEntry = lazy(() => import('./pages/TimeEntry'));
 const WeekView = lazy(() => import('./pages/WeekView'));
+const TeamWeekOverview = lazy(() => import('./pages/TeamWeekOverview'));
 const Approval = lazy(() => import('./pages/Approval'));
 const Customers = lazy(() => import('./pages/Customers'));
 const Projects = lazy(() => import('./pages/Projects'));
@@ -53,6 +54,14 @@ export default function App() {
         <Route index element={<Dashboard />} />
         <Route path="time-entry" element={<TimeEntry />} />
         <Route path="week" element={<WeekView />} />
+        <Route
+          path="team-week"
+          element={
+            <AdminRoute>
+              <TeamWeekOverview />
+            </AdminRoute>
+          }
+        />
         <Route
           path="approval"
           element={

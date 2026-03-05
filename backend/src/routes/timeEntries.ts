@@ -68,6 +68,76 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
     return entries;
   });
 
+  // Get team week summary (admin/supervisor)
+  fastify.get('/week-summary/:weekStart', {
+    preHandler: [fastify.authenticate],
+  }, async (request, reply) => {
+    if (!['ADMIN', 'SUPERVISOR'].includes(request.user.role)) {
+      return reply.status(403).send({ error: 'Åtkomst nekad' });
+    }
+
+    const { weekStart } = request.params as { weekStart: string };
+    const startDate = new Date(weekStart);
+    const endDate = new Date(startDate);
+    endDate.setDate(endDate.getDate() + 6);
+
+    const users = await prisma.user.findMany({
+      where: { companyId: request.user.companyId, active: true },
+      select: { id: true, name: true, role: true },
+      orderBy: { name: 'asc' },
+    });
+
+    const summaries = await Promise.all(users.map(async (u) => {
+      const stats = await prisma.timeEntry.aggregate({
+        where: {
+          userId: u.id,
+          date: { gte: startDate, lte: endDate },
+        },
+        _sum: { hours: true },
+        _count: { id: true },
+      });
+
+      const billable = await prisma.timeEntry.aggregate({
+        where: {
+          userId: u.id,
+          billable: true,
+          date: { gte: startDate, lte: endDate },
+        },
+        _sum: { hours: true },
+      });
+
+      const weekLock = await prisma.weekLock.findUnique({
+        where: {
+          userId_weekStartDate: {
+            userId: u.id,
+            weekStartDate: startDate,
+          },
+        },
+        select: { status: true },
+      });
+
+      return {
+        userId: u.id,
+        userName: u.name,
+        role: u.role,
+        totalHours: stats._sum.hours || 0,
+        billableHours: billable._sum.hours || 0,
+        entryCount: stats._count.id || 0,
+        status: weekLock?.status || 'DRAFT',
+      };
+    }));
+
+    return {
+      weekStart: startDate,
+      weekEnd: endDate,
+      totals: {
+        totalHours: summaries.reduce((s, x) => s + x.totalHours, 0),
+        billableHours: summaries.reduce((s, x) => s + x.billableHours, 0),
+      },
+      users: summaries,
+    };
+  });
+
   // Get entries for a specific week
   fastify.get('/week/:weekStart', {
     preHandler: [fastify.authenticate],

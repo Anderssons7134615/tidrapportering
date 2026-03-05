@@ -13,6 +13,7 @@ import type {
   WorkLog,
   WorkLogStats,
   ProjectManagerSummary,
+  TeamWeekSummary,
 } from '../types';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
@@ -171,6 +172,8 @@ export const timeEntriesApi = {
     const query = params.toString();
     return fetchApi<WeekData>(`/time-entries/week/${weekStart}${query ? `?${query}` : ''}`);
   },
+  getTeamWeekSummary: (weekStart: string) =>
+    fetchApi<TeamWeekSummary>(`/time-entries/week-summary/${weekStart}`),
   get: (id: string) => fetchApi<TimeEntry>(`/time-entries/${id}`),
   create: (data: Partial<TimeEntry>) =>
     fetchApi<TimeEntry>('/time-entries', { method: 'POST', body: JSON.stringify(data) }),
