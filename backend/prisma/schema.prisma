@@ -42,8 +42,26 @@ model User {
   timeEntries     TimeEntry[]
   approvedEntries TimeEntry[]  @relation("Approver")
   weekLocks       WeekLock[]
-  auditLogs       AuditLog[]
-  workLogs        WorkLog[]
+  auditLogs          AuditLog[]
+  workLogs           WorkLog[]
+  pushSubscriptions  PushSubscription[]
+}
+
+// Web Push subscriptions per enhet/browser
+model PushSubscription {
+  id                 String   @id @default(uuid())
+  userId             String
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint           String   @unique
+  p256dh             String
+  auth               String
+  userAgent          String?
+  contentEncoding    String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  lastSuccessAt      DateTime?
+  lastFailureAt      DateTime?
+  failureReason      String?
 }
 
 // Kunder

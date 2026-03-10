@@ -14,6 +14,7 @@ import type {
   WorkLogStats,
   ProjectManagerSummary,
   TeamWeekSummary,
+  PushSubscriptionInfo,
 } from '../types';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
@@ -241,6 +242,22 @@ export const settingsApi = {
   get: () => fetchApi<Settings>('/settings'),
   update: (data: Partial<Settings>) =>
     fetchApi<Settings>('/settings', { method: 'PUT', body: JSON.stringify(data) }),
+};
+
+// Push Subscriptions
+export const pushSubscriptionsApi = {
+  getPublicKey: () => fetchApi<{ publicKey: string }>('/push-subscriptions/vapid-public-key'),
+  list: () => fetchApi<PushSubscriptionInfo[]>('/push-subscriptions'),
+  register: (subscription: PushSubscriptionJSON & { userAgent?: string }) =>
+    fetchApi<{ id: string; endpoint: string; createdAt: string }>('/push-subscriptions', {
+      method: 'POST',
+      body: JSON.stringify(subscription),
+    }),
+  unregister: (endpoint: string) =>
+    fetchApi<{ message: string }>('/push-subscriptions', {
+      method: 'DELETE',
+      body: JSON.stringify({ endpoint }),
+    }),
 };
 
 // Work Items

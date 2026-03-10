@@ -77,6 +77,21 @@ npm run dev
 - Frontend: http://localhost:5173
 - Backend API: http://localhost:3001
 
+### Miljövariabler för push-notiser (backend)
+Lägg i `backend/.env`:
+
+```env
+WEB_PUSH_PUBLIC_KEY=...
+WEB_PUSH_PRIVATE_KEY=...
+WEB_PUSH_CONTACT=mailto:it@dittbolag.se
+REMINDER_JOB_TOKEN=valfri-hemlig-token-for-schemalagd-trigger
+```
+
+Skapa VAPID-nycklar (engångs):
+```bash
+npx web-push generate-vapid-keys
+```
+
 ### Installation (Docker)
 
 ```bash
@@ -110,6 +125,12 @@ Appen blir tillgänglig på http://localhost:5173
 - `/api/time-entries` - Tidrader
 - `/api/week-locks` - Veckolås (attestflöde)
 - `/api/settings` - Inställningar
+- `/api/push-subscriptions` - Egna push-subscriptions (lista/registrera/ta bort)
+
+### Push påminnelser (veckolås)
+- `GET /api/push-subscriptions/vapid-public-key` - Hämta publik VAPID-nyckel till webbläsaren
+- `POST /api/reminders/weekly-attestation` - Trigga påminnelsejobb för medarbetare som inte skickat in aktuell vecka
+  - Auth antingen via vanlig JWT (ADMIN/SUPERVISOR) eller `Authorization: Bearer <REMINDER_JOB_TOKEN>`
 
 ### Rapporter
 - `GET /api/reports/salary?from=X&to=Y&format=csv` - Löneunderlag
@@ -130,6 +151,7 @@ WeekLock (id, userId, weekStartDate, status, comment)
 Attachment (id, timeEntryId, filename, mimeType, path)
 AuditLog (id, userId, action, entityType, entityId, oldValue, newValue)
 Settings (id, companyName, vatRate, csvDelimiter, reminderTime, reminderEnabled)
+PushSubscription (id, userId, endpoint, p256dh, auth, lastSuccessAt, lastFailureAt)
 ```
 
 ## Säkerhet
@@ -172,7 +194,6 @@ Appen fungerar offline genom:
 
 ### Planerade förbättringar
 - Magic link för inbjudan av nya användare
-- Push-notifikationer för påminnelser
 - Filuppladdning till S3
 - Integration med bokföringssystem
 - Mobil-app (React Native)

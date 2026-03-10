@@ -22,6 +22,8 @@ import settingsRoutes from './routes/settings.js';
 import dashboardRoutes from './routes/dashboard.js';
 import workItemRoutes from './routes/workItems.js';
 import workLogRoutes from './routes/workLogs.js';
+import pushSubscriptionRoutes from './routes/pushSubscriptions.js';
+import reminderRoutes from './routes/reminders.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -138,6 +140,8 @@ fastify.register(settingsRoutes, { prefix: '/api/settings' });
 fastify.register(dashboardRoutes, { prefix: '/api/dashboard' });
 fastify.register(workItemRoutes, { prefix: '/api/work-items' });
 fastify.register(workLogRoutes, { prefix: '/api/work-logs' });
+fastify.register(pushSubscriptionRoutes, { prefix: '/api/push-subscriptions' });
+fastify.register(reminderRoutes, { prefix: '/api/reminders' });
 
 // Health check
 fastify.get('/api/health', async () => {

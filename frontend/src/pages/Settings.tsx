@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { settingsApi, authApi } from '../services/api';
+import { settingsApi, authApi, pushSubscriptionsApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
-import { Settings as SettingsIcon, Loader2, Lock, Building } from 'lucide-react';
+import { Settings as SettingsIcon, Loader2, Lock, Building, Bell } from 'lucide-react';
+import { disablePushNotifications, enablePushNotifications, getPushStatus } from '../services/pushNotifications';
 import toast from 'react-hot-toast';
 import { SettingsSkeleton } from '../components/ui/Skeleton';
 
@@ -18,6 +19,16 @@ export default function Settings() {
   const { data: settings, isLoading } = useQuery({
     queryKey: ['settings'],
     queryFn: settingsApi.get,
+  });
+
+  const { data: pushSubscriptions = [] } = useQuery({
+    queryKey: ['push-subscriptions'],
+    queryFn: pushSubscriptionsApi.list,
+  });
+
+  const { data: pushStatus } = useQuery({
+    queryKey: ['push-status'],
+    queryFn: getPushStatus,
   });
 
   const updateSettingsMutation = useMutation({
@@ -36,6 +47,26 @@ export default function Settings() {
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const enablePushMutation = useMutation({
+    mutationFn: enablePushNotifications,
+    onSuccess: () => {
+      toast.success('Push-notiser aktiverade');
+      queryClient.invalidateQueries({ queryKey: ['push-subscriptions'] });
+      queryClient.invalidateQueries({ queryKey: ['push-status'] });
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const disablePushMutation = useMutation({
+    mutationFn: disablePushNotifications,
+    onSuccess: () => {
+      toast.success('Push-notiser avaktiverade');
+      queryClient.invalidateQueries({ queryKey: ['push-subscriptions'] });
+      queryClient.invalidateQueries({ queryKey: ['push-status'] });
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -64,6 +95,14 @@ export default function Settings() {
       return;
     }
     changePasswordMutation.mutate();
+  };
+
+  const handleEnableNotifications = () => {
+    enablePushMutation.mutate();
+  };
+
+  const handleDisableNotifications = () => {
+    disablePushMutation.mutate();
   };
 
   if (isLoading) {
@@ -203,6 +242,45 @@ export default function Settings() {
           </form>
         </div>
       )}
+
+      {/* Push-notiser */}
+      <div className="card">
+        <div className="flex items-center gap-2 mb-4">
+          <Bell className="w-5 h-5 text-gray-500" />
+          <h2 className="font-semibold">Push-notiser</h2>
+        </div>
+
+        {!pushStatus?.supported ? (
+          <p className="text-sm text-red-400">Din webbläsare stödjer inte push-notiser.</p>
+        ) : (
+          <div className="space-y-3 text-sm text-gray-300">
+            <p><strong>Behörighet:</strong> {pushStatus.permission}</p>
+            <p><strong>Registrerade enheter:</strong> {pushSubscriptions.length}</p>
+            {pushSubscriptions.length > 0 && (
+              <p className="text-xs text-gray-400 break-all">Senaste endpoint: {pushSubscriptions[0].endpoint}</p>
+            )}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={handleEnableNotifications}
+                disabled={enablePushMutation.isPending}
+                className="btn-primary"
+              >
+                {enablePushMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Aktivera notiser'}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleDisableNotifications}
+                disabled={disablePushMutation.isPending || pushSubscriptions.length === 0}
+                className="btn-secondary"
+              >
+                {disablePushMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Avaktivera'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* App-info */}
       <div className="card">
