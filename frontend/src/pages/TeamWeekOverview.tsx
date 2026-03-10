@@ -37,7 +37,8 @@ export default function TeamWeekOverview() {
 
     return data.users.filter((u) => {
       const userMatch = u.userName.toLowerCase().includes(q);
-      const projectMatch = u.projects.some((p) =>
+      const projects = u.projects || [];
+      const projectMatch = projects.some((p) =>
         `${p.projectCode} ${p.projectName}`.toLowerCase().includes(q)
       );
       return userMatch || projectMatch;
@@ -150,14 +151,20 @@ export default function TeamWeekOverview() {
                                 </tr>
                               </thead>
                               <tbody>
-                                {u.projects.map((p) => (
-                                  <tr key={`${u.userId}-${p.projectId || 'intern'}`} className="border-b border-slate-100 last:border-b-0">
-                                    <td className="px-2 py-2 font-medium text-slate-900">{p.projectName}</td>
-                                    <td className="px-2 py-2 text-slate-600">{p.projectCode}</td>
-                                    <td className="px-2 py-2">{p.hours.toFixed(1)} h</td>
-                                    <td className="px-2 py-2">{p.billableHours.toFixed(1)} h</td>
+                                {(u.projects || []).length === 0 ? (
+                                  <tr>
+                                    <td colSpan={4} className="px-2 py-3 text-slate-500">Ingen projektrad för veckan.</td>
                                   </tr>
-                                ))}
+                                ) : (
+                                  (u.projects || []).map((p) => (
+                                    <tr key={`${u.userId}-${p.projectId || 'intern'}`} className="border-b border-slate-100 last:border-b-0">
+                                      <td className="px-2 py-2 font-medium text-slate-900">{p.projectName}</td>
+                                      <td className="px-2 py-2 text-slate-600">{p.projectCode}</td>
+                                      <td className="px-2 py-2">{p.hours.toFixed(1)} h</td>
+                                      <td className="px-2 py-2">{p.billableHours.toFixed(1)} h</td>
+                                    </tr>
+                                  ))
+                                )}
                               </tbody>
                             </table>
                           </div>
