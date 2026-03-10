@@ -108,7 +108,7 @@ export default function Layout() {
 
       <div className="mx-auto flex w-full max-w-7xl">
         <aside className="sticky top-16 hidden h-[calc(100vh-4rem)] w-64 border-r border-slate-200/80 bg-slate-50/65 px-3 py-4 lg:block">
-          <nav className="space-y-1">
+          <nav className="space-y-1.5">
             {filteredNavItems.map((item) => (
               <NavLink
                 key={item.to}
@@ -116,7 +116,7 @@ export default function Layout() {
                 className={({ isActive }) =>
                   `group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
                     isActive
-                      ? 'bg-white text-slate-900 shadow-soft ring-1 ring-slate-200'
+                      ? 'bg-white text-primary-700 shadow-soft ring-1 ring-primary-200/70'
                       : 'text-slate-600 hover:bg-white hover:text-slate-900'
                   }`
                 }
@@ -156,7 +156,7 @@ export default function Layout() {
             </button>
           </div>
 
-          <nav className="space-y-1">
+          <nav className="space-y-1.5">
             {filteredNavItems.map((item) => (
               <NavLink
                 key={item.to}
@@ -164,7 +164,7 @@ export default function Layout() {
                 onClick={() => setMenuOpen(false)}
                 className={({ isActive }) =>
                   `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
-                    isActive ? 'bg-primary-50 text-primary-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                    isActive ? 'bg-primary-50 text-primary-700 ring-1 ring-primary-100' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
                   }`
                 }
               >
@@ -187,10 +187,10 @@ export default function Layout() {
           <AnimatePresence mode="wait">
             <motion.div
               key={location.pathname}
-              initial={{ opacity: 0, y: 6 }}
+              initial={{ opacity: 0, y: 4 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0 }}
-              transition={{ duration: 0.14, ease: 'easeOut' }}
+              transition={{ duration: 0.12, ease: 'easeOut' }}
               className="mx-auto w-full max-w-5xl"
             >
               <Outlet />
@@ -207,7 +207,7 @@ export default function Layout() {
               to={item.to}
               className={({ isActive }) =>
                 `flex min-w-[68px] flex-col items-center rounded-lg px-2 py-1.5 text-[11px] font-medium transition ${
-                  isActive ? 'text-primary-700' : 'text-slate-500'
+                  isActive ? 'bg-primary-50 text-primary-700' : 'text-slate-500'
                 }`
               }
             >

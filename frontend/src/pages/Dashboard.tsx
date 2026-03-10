@@ -66,18 +66,9 @@ export default function Dashboard() {
         <p className="text-sm text-slate-500">{format(new Date(), 'EEEE d MMMM yyyy', { locale: sv })}</p>
       </div>
 
-      <motion.div
-        className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4"
-        initial="hidden"
-        animate="visible"
-        variants={{ visible: { transition: { staggerChildren: 0.05 } } }}
-      >
+      <motion.div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4" initial="hidden" animate="visible" variants={{ visible: { transition: { staggerChildren: 0.05 } } }}>
         {stats.map((stat, i) => (
-          <motion.div
-            key={i}
-            className="card"
-            variants={{ hidden: { opacity: 0, y: 8 }, visible: { opacity: 1, y: 0 } }}
-          >
+          <motion.div key={i} className="card" variants={{ hidden: { opacity: 0, y: 8 }, visible: { opacity: 1, y: 0 } }}>
             <div className="flex items-center gap-3">
               <div className={`rounded-xl p-2.5 ${stat.iconBg}`}>
                 <stat.icon className={`h-5 w-5 ${stat.iconClass}`} />
@@ -102,15 +93,8 @@ export default function Dashboard() {
               const day = new Date(date);
               const isToday = format(new Date(), 'yyyy-MM-dd') === date;
               return (
-                <div
-                  key={date}
-                  className={`rounded-xl border p-2 text-center ${
-                    isToday ? 'border-primary-300 bg-primary-50' : 'border-slate-200 bg-slate-50'
-                  }`}
-                >
-                  <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
-                    {format(day, 'EEE', { locale: sv })}
-                  </p>
+                <div key={date} className={`rounded-xl border p-2 text-center ${isToday ? 'border-primary-300 bg-primary-50' : 'border-slate-200 bg-slate-50'}`}>
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">{format(day, 'EEE', { locale: sv })}</p>
                   <p className="mt-1 text-lg font-semibold text-slate-900">{hours.toFixed(1)}</p>
                 </div>
               );
@@ -129,18 +113,11 @@ export default function Dashboard() {
             {data.projects.map((project) => {
               const budgetUsed = project.budgetUsedPercent ?? 0;
               return (
-                <Link
-                  key={project.id}
-                  to={`/projects/${project.id}`}
-                  className="surface-muted block p-4 transition hover:border-primary-300 hover:bg-white"
-                >
+                <Link key={project.id} to={`/projects/${project.id}`} className="surface-muted block p-4 transition hover:border-primary-300 hover:bg-white">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="truncate font-semibold text-slate-900">{project.name}</p>
-                      <p className="truncate text-xs text-slate-500">
-                        {project.code}
-                        {project.customerName ? ` · ${project.customerName}` : ''}
-                      </p>
+                      <p className="truncate text-xs text-slate-500">{project.code}{project.customerName ? ` · ${project.customerName}` : ''}</p>
                     </div>
                     <div className="text-right text-xs">
                       <p className="text-sm font-semibold text-slate-900">{project.totalHours.toFixed(1)} h</p>
@@ -149,34 +126,12 @@ export default function Dashboard() {
                   </div>
 
                   <div className="mt-3 space-y-2 text-xs">
-                    <div className="flex items-center justify-between text-slate-600">
-                      <span>Denna månad</span>
-                      <span className="font-semibold">{project.monthlyHours.toFixed(1)} h</span>
-                    </div>
-                    <div className="flex items-center justify-between text-slate-600">
-                      <span>Kvar timmar</span>
-                      <span className="font-semibold">
-                        {project.remainingHours !== null && project.remainingHours !== undefined
-                          ? `${project.remainingHours.toFixed(1)} h`
-                          : 'Ingen budget'}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between text-slate-600">
-                      <span>Ekonomi (använt/kvar)</span>
-                      <span className="font-semibold">
-                        {project.economicUsed !== null && project.economicUsed !== undefined
-                          ? `${project.economicUsed.toFixed(0)} / ${(project.economicRemaining || 0).toFixed(0)} kr`
-                          : 'Sätt timpris'}
-                      </span>
-                    </div>
+                    <div className="flex items-center justify-between text-slate-600"><span>Denna månad</span><span className="font-semibold">{project.monthlyHours.toFixed(1)} h</span></div>
+                    <div className="flex items-center justify-between text-slate-600"><span>Kvar timmar</span><span className="font-semibold">{project.remainingHours !== null && project.remainingHours !== undefined ? `${project.remainingHours.toFixed(1)} h` : 'Ingen budget'}</span></div>
+                    <div className="flex items-center justify-between text-slate-600"><span>Ekonomi (använt/kvar)</span><span className="font-semibold">{project.economicUsed !== null && project.economicUsed !== undefined ? `${project.economicUsed.toFixed(0)} / ${(project.economicRemaining || 0).toFixed(0)} kr` : 'Sätt timpris'}</span></div>
                     {project.budgetHours && (
                       <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200">
-                        <div
-                          className={`h-full rounded-full ${
-                            budgetUsed > 90 ? 'bg-rose-500' : budgetUsed > 75 ? 'bg-amber-500' : 'bg-emerald-500'
-                          }`}
-                          style={{ width: `${Math.min(budgetUsed, 100)}%` }}
-                        />
+                        <div className={`h-full rounded-full ${budgetUsed > 90 ? 'bg-rose-500' : budgetUsed > 75 ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${Math.min(budgetUsed, 100)}%` }} />
                       </div>
                     )}
                   </div>
@@ -192,14 +147,8 @@ export default function Dashboard() {
           <h2 className="section-title mb-3 text-amber-900">Veckor att skicka in</h2>
           <div className="space-y-2">
             {data.myPendingWeeks.map((weekStart) => (
-              <Link
-                key={weekStart}
-                to={`/week?date=${weekStart}`}
-                className="flex items-center justify-between rounded-xl border border-amber-200 bg-white px-3 py-2.5 transition hover:bg-amber-50"
-              >
-                <span className="font-medium text-slate-800">
-                  Vecka {format(new Date(weekStart), 'w', { locale: sv })}
-                </span>
+              <Link key={weekStart} to={`/week?date=${weekStart}`} className="flex items-center justify-between rounded-xl border border-amber-200 bg-white px-3 py-2.5 transition hover:bg-amber-50">
+                <span className="font-medium text-slate-800">Vecka {format(new Date(weekStart), 'w', { locale: sv })}</span>
                 <span className="text-sm text-slate-500">{format(new Date(weekStart), 'd MMM', { locale: sv })}</span>
               </Link>
             ))}
@@ -211,18 +160,14 @@ export default function Dashboard() {
         <div className="card">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="section-title">Att attestera</h2>
-            <Link to="/approval" className="text-sm font-semibold text-primary-700 hover:text-primary-600">
-              Visa alla
-            </Link>
+            <Link to="/approval" className="text-sm font-semibold text-primary-700 hover:text-primary-600">Visa alla</Link>
           </div>
           <div className="space-y-2">
             {data.pendingApprovals.slice(0, 3).map((lock) => (
               <div key={lock.id} className="surface-muted flex items-center justify-between px-3 py-3">
                 <div>
                   <p className="font-medium text-slate-900">{lock.user?.name}</p>
-                  <p className="text-sm text-slate-500">
-                    Vecka {format(new Date(lock.weekStartDate), 'w', { locale: sv })}
-                  </p>
+                  <p className="text-sm text-slate-500">Vecka {format(new Date(lock.weekStartDate), 'w', { locale: sv })}</p>
                 </div>
                 <span className="badge-yellow">Väntar</span>
               </div>
@@ -232,24 +177,14 @@ export default function Dashboard() {
       )}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Link to="/time-entry" className="card flex items-center gap-3 transition hover:-translate-y-0.5 hover:shadow-md">
-          <div className="rounded-xl bg-primary-100 p-3">
-            <Clock className="h-5 w-5 text-primary-700" />
-          </div>
-          <div>
-            <p className="font-semibold text-slate-900">Rapportera tid</p>
-            <p className="text-sm text-slate-500">Ny tidrad</p>
-          </div>
+        <Link to="/time-entry" className="card flex items-center gap-3 transition hover:shadow-md">
+          <div className="rounded-xl bg-primary-100 p-3"><Clock className="h-5 w-5 text-primary-700" /></div>
+          <div><p className="font-semibold text-slate-900">Rapportera tid</p><p className="text-sm text-slate-500">Ny tidrad</p></div>
         </Link>
 
-        <Link to="/week" className="card flex items-center gap-3 transition hover:-translate-y-0.5 hover:shadow-md">
-          <div className="rounded-xl bg-emerald-100 p-3">
-            <Calendar className="h-5 w-5 text-emerald-700" />
-          </div>
-          <div>
-            <p className="font-semibold text-slate-900">Min vecka</p>
-            <p className="text-sm text-slate-500">Översikt & attest</p>
-          </div>
+        <Link to="/week" className="card flex items-center gap-3 transition hover:shadow-md">
+          <div className="rounded-xl bg-emerald-100 p-3"><Calendar className="h-5 w-5 text-emerald-700" /></div>
+          <div><p className="font-semibold text-slate-900">Min vecka</p><p className="text-sm text-slate-500">Översikt & attest</p></div>
         </Link>
       </div>
     </div>

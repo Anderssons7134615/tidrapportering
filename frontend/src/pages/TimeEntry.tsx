@@ -196,7 +196,7 @@ export default function TimeEntry() {
                   key={h}
                   type="button"
                   onClick={() => setHours(h.toString())}
-                  className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
                 >
                   {h}h
                 </button>
@@ -205,7 +205,7 @@ export default function TimeEntry() {
           </div>
         </div>
 
-        <details className="rounded-xl border border-slate-200 bg-slate-50/80 p-3.5">
+        <details className="rounded-xl border border-slate-200 bg-slate-50/70 p-3.5">
           <summary className="flex cursor-pointer list-none items-center justify-between font-medium text-slate-700">
             Fler val (valfritt)
             <ChevronDown className="h-4 w-4 text-slate-500" />

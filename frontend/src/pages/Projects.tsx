@@ -128,7 +128,7 @@ export default function Projects() {
         </button>
       </div>
 
-      <div className="card">
+      <div className="card space-y-3">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
             <label className="label">Visa</label>
@@ -167,7 +167,7 @@ export default function Projects() {
             const budgetRatio = project.budgetHours ? (project.totalHours || 0) / project.budgetHours : 0;
 
             return (
-              <div key={project.id} className={`card ${!project.active ? 'opacity-65' : ''}`}>
+              <div key={project.id} className={`card transition ${!project.active ? 'opacity-65' : 'hover:shadow-md'}`}>
                 <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                   <div className="flex min-w-0 items-start gap-3">
                     <div className="rounded-xl bg-primary-100 p-2.5">
