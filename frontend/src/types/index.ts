@@ -130,6 +130,16 @@ export interface Settings {
   reminderEnabled: boolean;
 }
 
+export interface PushSubscriptionInfo {
+  id: string;
+  endpoint: string;
+  contentEncoding?: string | null;
+  createdAt: string;
+  lastSuccessAt?: string | null;
+  lastFailureAt?: string | null;
+  failureReason?: string | null;
+}
+
 export interface DashboardData {
   summary: {
     monthlyHours: number;
@@ -206,6 +216,25 @@ export interface WeekData {
   };
 }
 
+export interface TeamWeekSummaryProject {
+  projectId: string | null;
+  projectName: string;
+  projectCode: string;
+  hours: number;
+  billableHours: number;
+}
+
+export interface TeamWeekSummaryUser {
+  userId: string;
+  userName: string;
+  role: string;
+  totalHours: number;
+  billableHours: number;
+  entryCount: number;
+  status: 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED';
+  projects: TeamWeekSummaryProject[];
+}
+
 export interface TeamWeekSummary {
   weekStart: string;
   weekEnd: string;
@@ -213,13 +242,5 @@ export interface TeamWeekSummary {
     totalHours: number;
     billableHours: number;
   };
-  users: {
-    userId: string;
-    userName: string;
-    role: string;
-    totalHours: number;
-    billableHours: number;
-    entryCount: number;
-    status: 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED';
-  }[];
+  users: TeamWeekSummaryUser[];
 }

@@ -87,45 +87,86 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
       orderBy: { name: 'asc' },
     });
 
-    const summaries = await Promise.all(users.map(async (u) => {
-      const stats = await prisma.timeEntry.aggregate({
+    const [entries, weekLocks] = await Promise.all([
+      prisma.timeEntry.findMany({
         where: {
-          userId: u.id,
+          userId: { in: users.map((u) => u.id) },
           date: { gte: startDate, lte: endDate },
         },
-        _sum: { hours: true },
-        _count: { id: true },
-      });
-
-      const billable = await prisma.timeEntry.aggregate({
-        where: {
-          userId: u.id,
+        select: {
+          id: true,
+          userId: true,
+          hours: true,
           billable: true,
-          date: { gte: startDate, lte: endDate },
+          projectId: true,
+          project: { select: { id: true, name: true, code: true } },
         },
-        _sum: { hours: true },
-      });
-
-      const weekLock = await prisma.weekLock.findUnique({
+      }),
+      prisma.weekLock.findMany({
         where: {
-          userId_weekStartDate: {
-            userId: u.id,
-            weekStartDate: startDate,
-          },
+          userId: { in: users.map((u) => u.id) },
+          weekStartDate: startDate,
         },
-        select: { status: true },
-      });
+        select: { userId: true, status: true },
+      }),
+    ]);
+
+    const weekLockByUser = new Map(weekLocks.map((lock) => [lock.userId, lock.status]));
+    const entriesByUser = new Map<string, typeof entries>();
+
+    for (const entry of entries) {
+      if (!entriesByUser.has(entry.userId)) {
+        entriesByUser.set(entry.userId, []);
+      }
+      entriesByUser.get(entry.userId)!.push(entry);
+    }
+
+    const summaries = users.map((u) => {
+      const userEntries = entriesByUser.get(u.id) || [];
+
+      const projectMap = new Map<string, {
+        projectId: string | null;
+        projectName: string;
+        projectCode: string;
+        hours: number;
+        billableHours: number;
+      }>();
+
+      for (const entry of userEntries) {
+        const isInternal = !entry.projectId;
+        const projectKey = isInternal ? 'INTERNAL' : entry.projectId!;
+
+        if (!projectMap.has(projectKey)) {
+          projectMap.set(projectKey, {
+            projectId: isInternal ? null : entry.project?.id || entry.projectId,
+            projectName: isInternal ? 'Intern' : (entry.project?.name || 'Okänt projekt'),
+            projectCode: isInternal ? 'INTERN' : (entry.project?.code || '-'),
+            hours: 0,
+            billableHours: 0,
+          });
+        }
+
+        const projectSummary = projectMap.get(projectKey)!;
+        projectSummary.hours += entry.hours;
+        if (entry.billable) {
+          projectSummary.billableHours += entry.hours;
+        }
+      }
+
+      const totalHours = userEntries.reduce((sum, entry) => sum + entry.hours, 0);
+      const billableHours = userEntries.reduce((sum, entry) => sum + (entry.billable ? entry.hours : 0), 0);
 
       return {
         userId: u.id,
         userName: u.name,
         role: u.role,
-        totalHours: stats._sum.hours || 0,
-        billableHours: billable._sum.hours || 0,
-        entryCount: stats._count.id || 0,
-        status: weekLock?.status || 'DRAFT',
+        totalHours,
+        billableHours,
+        entryCount: userEntries.length,
+        status: weekLockByUser.get(u.id) || 'DRAFT',
+        projects: Array.from(projectMap.values()).sort((a, b) => b.hours - a.hours),
       };
-    }));
+    });
 
     return {
       weekStart: startDate,
