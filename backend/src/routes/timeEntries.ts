@@ -294,7 +294,7 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
         },
       });
 
-      if (weekLock && ['SUBMITTED', 'APPROVED'].includes(weekLock.status)) {
+      if (weekLock && ['APPROVED'].includes(weekLock.status)) {
         return reply.status(400).send({ error: 'Veckan är låst för redigering' });
       }
 
@@ -308,10 +308,35 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
           ...body,
           userId: targetUserId,
           billable: body.billable ?? activity?.billableDefault ?? true,
+          status: 'SUBMITTED',
+          submittedAt: new Date(),
+          rejectNote: null,
         },
         include: {
           project: { select: { id: true, name: true, code: true } },
           activity: { select: { id: true, name: true, code: true } },
+        },
+      });
+
+      // Säkerställ att vecka syns för attest direkt (realtime)
+      await prisma.weekLock.upsert({
+        where: {
+          userId_weekStartDate: {
+            userId: targetUserId,
+            weekStartDate: weekStart,
+          },
+        },
+        update: {
+          status: 'SUBMITTED',
+          submittedAt: new Date(),
+          comment: null,
+          reviewedAt: null,
+          reviewerId: null,
+        },
+        create: {
+          userId: targetUserId,
+          weekStartDate: weekStart,
+          status: 'SUBMITTED',
         },
       });
 
@@ -357,7 +382,7 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
           },
         });
 
-        if (weekLock && ['SUBMITTED', 'APPROVED'].includes(weekLock.status)) {
+        if (weekLock && ['APPROVED'].includes(weekLock.status)) {
           results.push({ localId, error: 'Veckan är låst' });
           continue;
         }
@@ -370,14 +395,41 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
         if (id) {
           // Uppdatera befintlig
           const existing = await prisma.timeEntry.findUnique({ where: { id } });
-          if (existing && existing.userId === request.user.id && existing.status === 'DRAFT') {
+          if (existing && existing.userId === request.user.id && existing.status !== 'APPROVED') {
             const updated = await prisma.timeEntry.update({
               where: { id },
               data: {
                 ...data,
                 billable: data.billable ?? activity?.billableDefault ?? true,
+                status: 'SUBMITTED',
+                submittedAt: new Date(),
+                approvedAt: null,
+                approverId: null,
+                rejectNote: null,
               },
             });
+
+            await prisma.weekLock.upsert({
+              where: {
+                userId_weekStartDate: {
+                  userId: request.user.id,
+                  weekStartDate: weekStart,
+                },
+              },
+              update: {
+                status: 'SUBMITTED',
+                submittedAt: new Date(),
+                comment: null,
+                reviewedAt: null,
+                reviewerId: null,
+              },
+              create: {
+                userId: request.user.id,
+                weekStartDate: weekStart,
+                status: 'SUBMITTED',
+              },
+            });
+
             results.push({ localId, id: updated.id, synced: true });
           } else {
             results.push({ localId, id, error: 'Kan inte uppdatera' });
@@ -389,8 +441,33 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
               ...data,
               userId: request.user.id,
               billable: data.billable ?? activity?.billableDefault ?? true,
+              status: 'SUBMITTED',
+              submittedAt: new Date(),
+              rejectNote: null,
             },
           });
+
+          await prisma.weekLock.upsert({
+            where: {
+              userId_weekStartDate: {
+                userId: request.user.id,
+                weekStartDate: weekStart,
+              },
+            },
+            update: {
+              status: 'SUBMITTED',
+              submittedAt: new Date(),
+              comment: null,
+              reviewedAt: null,
+              reviewerId: null,
+            },
+            create: {
+              userId: request.user.id,
+              weekStartDate: weekStart,
+              status: 'SUBMITTED',
+            },
+          });
+
           results.push({ localId, id: created.id, synced: true });
         }
       }
@@ -423,18 +500,49 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       // Kontrollera status
-      if (entry.status !== 'DRAFT' && request.user.role === 'EMPLOYEE') {
-        return reply.status(400).send({ error: 'Kan inte redigera inskickad tidrad' });
+      if (entry.status === 'APPROVED' && request.user.role === 'EMPLOYEE') {
+        return reply.status(400).send({ error: 'Kan inte redigera godkänd tidrad' });
       }
 
       const oldValue = { date: entry.date, hours: entry.hours, note: entry.note };
 
       const updatedEntry = await prisma.timeEntry.update({
         where: { id },
-        data: body,
+        data: entry.status === 'APPROVED'
+          ? body
+          : {
+              ...body,
+              status: 'SUBMITTED',
+              submittedAt: new Date(),
+              approvedAt: null,
+              approverId: null,
+              rejectNote: null,
+            },
         include: {
           project: { select: { id: true, name: true, code: true } },
           activity: { select: { id: true, name: true, code: true } },
+        },
+      });
+
+      const entryWeekStart = getWeekStart(entry.date);
+      await prisma.weekLock.upsert({
+        where: {
+          userId_weekStartDate: {
+            userId: entry.userId,
+            weekStartDate: entryWeekStart,
+          },
+        },
+        update: {
+          status: 'SUBMITTED',
+          submittedAt: new Date(),
+          comment: null,
+          reviewedAt: null,
+          reviewerId: null,
+        },
+        create: {
+          userId: entry.userId,
+          weekStartDate: entryWeekStart,
+          status: 'SUBMITTED',
         },
       });
 
@@ -476,11 +584,52 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     // Kontrollera status
-    if (entry.status !== 'DRAFT' && request.user.role === 'EMPLOYEE') {
-      return reply.status(400).send({ error: 'Kan inte ta bort inskickad tidrad' });
+    if (entry.status === 'APPROVED' && request.user.role === 'EMPLOYEE') {
+      return reply.status(400).send({ error: 'Kan inte ta bort godkänd tidrad' });
     }
 
     await prisma.timeEntry.delete({ where: { id } });
+
+    const weekStart = getWeekStart(entry.date);
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekEnd.getDate() + 6);
+
+    const remainingCount = await prisma.timeEntry.count({
+      where: {
+        userId: entry.userId,
+        date: { gte: weekStart, lte: weekEnd },
+      },
+    });
+
+    if (remainingCount === 0) {
+      await prisma.weekLock.deleteMany({
+        where: {
+          userId: entry.userId,
+          weekStartDate: weekStart,
+        },
+      });
+    } else {
+      await prisma.weekLock.upsert({
+        where: {
+          userId_weekStartDate: {
+            userId: entry.userId,
+            weekStartDate: weekStart,
+          },
+        },
+        update: {
+          status: 'SUBMITTED',
+          submittedAt: new Date(),
+          comment: null,
+          reviewedAt: null,
+          reviewerId: null,
+        },
+        create: {
+          userId: entry.userId,
+          weekStartDate: weekStart,
+          status: 'SUBMITTED',
+        },
+      });
+    }
 
     // Audit log
     await prisma.auditLog.create({

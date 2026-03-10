@@ -1,15 +1,14 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams, Link } from 'react-router-dom';
-import { timeEntriesApi, weekLocksApi } from '../services/api';
+import { timeEntriesApi } from '../services/api';
 import { format, startOfWeek, addDays, addWeeks, subWeeks } from 'date-fns';
 import { sv } from 'date-fns/locale';
 import {
   ChevronLeft,
   ChevronRight,
-  Send,
+
   Trash2,
-  Loader2,
   CheckCircle,
   XCircle,
 } from 'lucide-react';
@@ -118,19 +117,6 @@ export default function WeekView() {
     queryFn: () => timeEntriesApi.getWeek(weekStartStr),
   });
 
-  const submitMutation = useMutation({
-    mutationFn: () => weekLocksApi.submit(weekStartStr),
-    onSuccess: () => {
-      haptic('success');
-      toast.success('Veckan skickad för attest!');
-      refetch();
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-    },
-    onError: (error: Error) => {
-      haptic('error');
-      toast.error(error.message);
-    },
-  });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => timeEntriesApi.delete(id),
@@ -163,7 +149,7 @@ export default function WeekView() {
     ) || [];
   };
 
-  const isLocked = data?.weekLock && ['SUBMITTED', 'APPROVED'].includes(data.weekLock.status);
+  const isLocked = data?.weekLock && ['APPROVED'].includes(data.weekLock.status);
   const isRejected = data?.weekLock?.status === 'REJECTED';
 
   const getStatusBadge = () => {
@@ -297,24 +283,6 @@ export default function WeekView() {
           );
         })}
       </motion.div>
-
-      {/* Skicka för attest */}
-      {data?.entries && data.entries.length > 0 && !isLocked && (
-        <button
-          onClick={() => submitMutation.mutate()}
-          disabled={submitMutation.isPending}
-          className="btn-primary w-full py-4"
-        >
-          {submitMutation.isPending ? (
-            <Loader2 className="w-5 h-5 animate-spin" />
-          ) : (
-            <span className="flex items-center justify-center gap-2">
-              <Send className="w-5 h-5" />
-              Skicka vecka för attest
-            </span>
-          )}
-        </button>
-      )}
 
       {/* Lägg till tid */}
       {!isLocked && (
