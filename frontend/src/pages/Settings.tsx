@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { settingsApi, authApi, pushSubscriptionsApi } from '../services/api';
-import { useAuthStore } from '../stores/authStore';
-import { Settings as SettingsIcon, Loader2, Lock, Building, Bell } from 'lucide-react';
-import { disablePushNotifications, enablePushNotifications, getPushStatus } from '../services/pushNotifications';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Bell, Building, Loader2, Lock, Settings as SettingsIcon } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { authApi, pushSubscriptionsApi, settingsApi } from '../services/api';
+import { useAuthStore } from '../stores/authStore';
+import { disablePushNotifications, enablePushNotifications, getPushStatus } from '../services/pushNotifications';
 import { SettingsSkeleton } from '../components/ui/Skeleton';
 
 export default function Settings() {
@@ -34,7 +34,7 @@ export default function Settings() {
   const updateSettingsMutation = useMutation({
     mutationFn: settingsApi.update,
     onSuccess: () => {
-      toast.success('Inställningar sparade!');
+      toast.success('Installningar sparade');
       queryClient.invalidateQueries({ queryKey: ['settings'] });
     },
     onError: (error: Error) => toast.error(error.message),
@@ -43,7 +43,7 @@ export default function Settings() {
   const changePasswordMutation = useMutation({
     mutationFn: () => authApi.changePassword(currentPassword, newPassword),
     onSuccess: () => {
-      toast.success('Lösenord ändrat!');
+      toast.success('Losenord andrat');
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
@@ -74,35 +74,26 @@ export default function Settings() {
   const handleSettingsSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
-    const data = {
+    updateSettingsMutation.mutate({
       companyName: formData.get('companyName') as string,
       vatRate: parseFloat(formData.get('vatRate') as string),
       csvDelimiter: formData.get('csvDelimiter') as string,
       reminderTime: formData.get('reminderTime') as string,
       reminderEnabled: formData.get('reminderEnabled') === 'true',
-    };
-    updateSettingsMutation.mutate(data);
+    });
   };
 
   const handlePasswordSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (newPassword !== confirmPassword) {
-      toast.error('Lösenorden matchar inte');
+      toast.error('Losenorden matchar inte');
       return;
     }
     if (newPassword.length < 6) {
-      toast.error('Lösenordet måste vara minst 6 tecken');
+      toast.error('Losenordet maste vara minst 6 tecken');
       return;
     }
     changePasswordMutation.mutate();
-  };
-
-  const handleEnableNotifications = () => {
-    enablePushMutation.mutate();
-  };
-
-  const handleDisableNotifications = () => {
-    disablePushMutation.mutate();
   };
 
   if (isLoading) {
@@ -111,187 +102,196 @@ export default function Settings() {
 
   return (
     <div className="space-y-6">
-      <h1 className="page-title">Inställningar</h1>
-
-      {/* Lösenord */}
-      <div className="card">
-        <div className="flex items-center gap-2 mb-4">
-          <Lock className="w-5 h-5 text-gray-500" />
-          <h2 className="font-semibold">Byt lösenord</h2>
+      <section className="hero-card">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <h1 className="page-title">Installningar</h1>
+            <p className="mt-2 max-w-2xl text-sm text-slate-600">
+              Hantera konto, foretag och notiser pa ett satt som fungerar lika bra i mobilen som pa datorn.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            <div className="chip justify-center">{user?.role === 'ADMIN' ? 'Admin' : user?.role === 'SUPERVISOR' ? 'Arbetsledare' : 'Medarbetare'}</div>
+            <div className="chip justify-center">{pushSubscriptions.length} enhet(er)</div>
+            <div className="chip justify-center">{pushStatus?.permission || 'standard'}</div>
+          </div>
         </div>
-        <form onSubmit={handlePasswordSubmit} className="space-y-4">
-          <div>
-            <label className="label">Nuvarande lösenord</label>
-            <input
-              type="password"
-              value={currentPassword}
-              onChange={(e) => setCurrentPassword(e.target.value)}
-              className="input"
-              required
-            />
+      </section>
+
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+        <div className="space-y-6">
+          <div className="card">
+            <div className="mb-4 flex items-center gap-3">
+              <div className="rounded-2xl bg-slate-100 p-3 text-slate-700">
+                <Lock className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 className="section-title">Sakerhet</h2>
+                <p className="text-sm text-slate-500">Byt losenord utan att lamna sidan.</p>
+              </div>
+            </div>
+
+            <form onSubmit={handlePasswordSubmit} className="space-y-4">
+              <div>
+                <label className="label">Nuvarande losenord</label>
+                <input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} className="input" required />
+              </div>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div>
+                  <label className="label">Nytt losenord</label>
+                  <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="input" required minLength={6} />
+                </div>
+                <div>
+                  <label className="label">Bekrafta nytt losenord</label>
+                  <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="input" required />
+                </div>
+              </div>
+              <button type="submit" disabled={changePasswordMutation.isPending} className="btn-primary">
+                {changePasswordMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Byt losenord'}
+              </button>
+            </form>
           </div>
-          <div>
-            <label className="label">Nytt lösenord</label>
-            <input
-              type="password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              className="input"
-              required
-              minLength={6}
-            />
-          </div>
-          <div>
-            <label className="label">Bekräfta nytt lösenord</label>
-            <input
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              className="input"
-              required
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={changePasswordMutation.isPending}
-            className="btn-primary"
-          >
-            {changePasswordMutation.isPending ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
+
+          {isAdmin && settings && (
+            <div className="card">
+              <div className="mb-4 flex items-center gap-3">
+                <div className="rounded-2xl bg-sky-100 p-3 text-sky-700">
+                  <Building className="h-5 w-5" />
+                </div>
+                <div>
+                  <h2 className="section-title">Foretagsinstallningar</h2>
+                  <p className="text-sm text-slate-500">Grundvarden for export, paminnelser och bolagsnamn.</p>
+                </div>
+              </div>
+
+              <form onSubmit={handleSettingsSubmit} className="space-y-4">
+                <div>
+                  <label className="label">Foretagsnamn</label>
+                  <input name="companyName" defaultValue={settings.companyName} className="input" />
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div>
+                    <label className="label">Momssats (%)</label>
+                    <input name="vatRate" type="number" defaultValue={settings.vatRate} className="input" min="0" max="100" />
+                  </div>
+                  <div>
+                    <label className="label">CSV-separator</label>
+                    <select name="csvDelimiter" defaultValue={settings.csvDelimiter} className="input">
+                      <option value=";">Semikolon (;)</option>
+                      <option value=",">Komma (,)</option>
+                      <option value="\t">Tab</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div>
+                    <label className="label">Paminnelsetid</label>
+                    <input name="reminderTime" type="time" defaultValue={settings.reminderTime} className="input" />
+                  </div>
+                  <div>
+                    <label className="label">Paminnelser</label>
+                    <select name="reminderEnabled" defaultValue={settings.reminderEnabled ? 'true' : 'false'} className="input">
+                      <option value="true">Aktiverade</option>
+                      <option value="false">Avaktiverade</option>
+                    </select>
+                  </div>
+                </div>
+
+                <button type="submit" disabled={updateSettingsMutation.isPending} className="btn-primary">
+                  {updateSettingsMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Spara installningar'}
+                </button>
+              </form>
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-6">
+          <div className="card">
+            <div className="mb-4 flex items-center gap-3">
+              <div className="rounded-2xl bg-amber-100 p-3 text-amber-700">
+                <Bell className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 className="section-title">Push-notiser</h2>
+                <p className="text-sm text-slate-500">Se status och hantera registrerade enheter.</p>
+              </div>
+            </div>
+
+            {!pushStatus?.supported ? (
+              <p className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                Din webblasare stodjer inte push-notiser.
+              </p>
             ) : (
-              'Byt lösenord'
-            )}
-          </button>
-        </form>
-      </div>
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="soft-panel p-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Behorighet</p>
+                    <p className="mt-2 text-lg font-semibold text-slate-900">{pushStatus.permission}</p>
+                  </div>
+                  <div className="soft-panel p-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Registrerade enheter</p>
+                    <p className="mt-2 text-lg font-semibold text-slate-900">{pushSubscriptions.length}</p>
+                  </div>
+                </div>
 
-      {/* Företagsinställningar - endast admin */}
-      {isAdmin && settings && (
-        <div className="card">
-          <div className="flex items-center gap-2 mb-4">
-            <Building className="w-5 h-5 text-gray-500" />
-            <h2 className="font-semibold">Företagsinställningar</h2>
+                {pushSubscriptions.length > 0 && (
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-500">
+                    <p className="font-semibold uppercase tracking-[0.14em] text-slate-400">Senaste endpoint</p>
+                    <p className="mt-2 break-all">{pushSubscriptions[0].endpoint}</p>
+                  </div>
+                )}
+
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <button type="button" onClick={() => enablePushMutation.mutate()} disabled={enablePushMutation.isPending} className="btn-primary">
+                    {enablePushMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Aktivera notiser'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => disablePushMutation.mutate()}
+                    disabled={disablePushMutation.isPending || pushSubscriptions.length === 0}
+                    className="btn-secondary"
+                  >
+                    {disablePushMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Avaktivera'}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
-          <form onSubmit={handleSettingsSubmit} className="space-y-4">
-            <div>
-              <label className="label">Företagsnamn</label>
-              <input
-                name="companyName"
-                defaultValue={settings.companyName}
-                className="input"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="label">Momssats (%)</label>
-                <input
-                  name="vatRate"
-                  type="number"
-                  defaultValue={settings.vatRate}
-                  className="input"
-                  min="0"
-                  max="100"
-                />
+
+          <div className="card">
+            <div className="mb-4 flex items-center gap-3">
+              <div className="rounded-2xl bg-slate-100 p-3 text-slate-700">
+                <SettingsIcon className="h-5 w-5" />
               </div>
               <div>
-                <label className="label">CSV-separator</label>
-                <select
-                  name="csvDelimiter"
-                  defaultValue={settings.csvDelimiter}
-                  className="input"
-                >
-                  <option value=";">Semikolon (;)</option>
-                  <option value=",">Komma (,)</option>
-                  <option value="\t">Tab</option>
-                </select>
+                <h2 className="section-title">Om appen</h2>
+                <p className="text-sm text-slate-500">En snabb oversikt over ditt konto.</p>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="label">Påminnelsetid</label>
-                <input
-                  name="reminderTime"
-                  type="time"
-                  defaultValue={settings.reminderTime}
-                  className="input"
-                />
+
+            <div className="space-y-3 text-sm text-slate-600">
+              <div className="flex items-center justify-between gap-3 rounded-2xl bg-slate-50 px-4 py-3">
+                <span>Version</span>
+                <span className="font-semibold text-slate-900">1.0.0</span>
               </div>
-              <div>
-                <label className="label">Påminnelser</label>
-                <select
-                  name="reminderEnabled"
-                  defaultValue={settings.reminderEnabled ? 'true' : 'false'}
-                  className="input"
-                >
-                  <option value="true">Aktiverade</option>
-                  <option value="false">Avaktiverade</option>
-                </select>
+              <div className="flex items-center justify-between gap-3 rounded-2xl bg-slate-50 px-4 py-3">
+                <span>Inloggad som</span>
+                <span className="font-semibold text-slate-900">{user?.name}</span>
               </div>
-            </div>
-            <button
-              type="submit"
-              disabled={updateSettingsMutation.isPending}
-              className="btn-primary"
-            >
-              {updateSettingsMutation.isPending ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                'Spara inställningar'
-              )}
-            </button>
-          </form>
-        </div>
-      )}
-
-      {/* Push-notiser */}
-      <div className="card">
-        <div className="flex items-center gap-2 mb-4">
-          <Bell className="w-5 h-5 text-gray-500" />
-          <h2 className="font-semibold">Push-notiser</h2>
-        </div>
-
-        {!pushStatus?.supported ? (
-          <p className="text-sm text-red-400">Din webbläsare stödjer inte push-notiser.</p>
-        ) : (
-          <div className="space-y-3 text-sm text-gray-300">
-            <p><strong>Behörighet:</strong> {pushStatus.permission}</p>
-            <p><strong>Registrerade enheter:</strong> {pushSubscriptions.length}</p>
-            {pushSubscriptions.length > 0 && (
-              <p className="text-xs text-gray-400 break-all">Senaste endpoint: {pushSubscriptions[0].endpoint}</p>
-            )}
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={handleEnableNotifications}
-                disabled={enablePushMutation.isPending}
-                className="btn-primary"
-              >
-                {enablePushMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Aktivera notiser'}
-              </button>
-
-              <button
-                type="button"
-                onClick={handleDisableNotifications}
-                disabled={disablePushMutation.isPending || pushSubscriptions.length === 0}
-                className="btn-secondary"
-              >
-                {disablePushMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Avaktivera'}
-              </button>
+              <div className="flex items-center justify-between gap-3 rounded-2xl bg-slate-50 px-4 py-3">
+                <span>E-post</span>
+                <span className="font-semibold text-slate-900">{user?.email}</span>
+              </div>
+              <div className="flex items-center justify-between gap-3 rounded-2xl bg-slate-50 px-4 py-3">
+                <span>Roll</span>
+                <span className="font-semibold text-slate-900">
+                  {user?.role === 'ADMIN' ? 'Admin' : user?.role === 'SUPERVISOR' ? 'Arbetsledare' : 'Medarbetare'}
+                </span>
+              </div>
             </div>
           </div>
-        )}
-      </div>
-
-      {/* App-info */}
-      <div className="card">
-        <div className="flex items-center gap-2 mb-4">
-          <SettingsIcon className="w-5 h-5 text-gray-500" />
-          <h2 className="font-semibold">Om appen</h2>
-        </div>
-        <div className="space-y-2 text-sm text-gray-400">
-          <p><strong>Version:</strong> 1.0.0</p>
-          <p><strong>Inloggad som:</strong> {user?.name} ({user?.email})</p>
-          <p><strong>Roll:</strong> {user?.role === 'ADMIN' ? 'Admin' : user?.role === 'SUPERVISOR' ? 'Arbetsledare' : 'Medarbetare'}</p>
         </div>
       </div>
     </div>
