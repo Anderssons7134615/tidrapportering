@@ -73,7 +73,7 @@ export interface TimeEntry {
   userId: string;
   user?: { id: string; name: string };
   projectId?: string;
-  project?: { id: string; name: string; code: string; customer?: { id: string; name: string } };
+  project?: { id: string; name: string; code: string; site?: string; customer?: { id: string; name: string } };
   activityId: string;
   activity?: { id: string; name: string; code: string };
   date: string;

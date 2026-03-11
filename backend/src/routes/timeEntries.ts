@@ -203,7 +203,7 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
         },
       },
       include: {
-        project: { select: { id: true, name: true, code: true } },
+        project: { select: { id: true, name: true, code: true, site: true } },
         activity: { select: { id: true, name: true, code: true } },
         attachments: true,
       },
@@ -313,7 +313,7 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
           rejectNote: null,
         },
         include: {
-          project: { select: { id: true, name: true, code: true } },
+          project: { select: { id: true, name: true, code: true, site: true } },
           activity: { select: { id: true, name: true, code: true } },
         },
       });
@@ -519,7 +519,7 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
               rejectNote: null,
             },
         include: {
-          project: { select: { id: true, name: true, code: true } },
+          project: { select: { id: true, name: true, code: true, site: true } },
           activity: { select: { id: true, name: true, code: true } },
         },
       });

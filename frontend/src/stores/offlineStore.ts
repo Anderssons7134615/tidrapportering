@@ -6,6 +6,8 @@ interface PendingEntry {
   projectId?: string;
   activityId: string;
   date: string;
+  startTime?: string;
+  endTime?: string;
   hours: number;
   billable: boolean;
   note?: string;
@@ -19,6 +21,7 @@ interface OfflineState {
   isOnline: boolean;
   addPendingEntry: (entry: Omit<PendingEntry, 'localId' | 'createdAt'>) => void;
   removePendingEntry: (localId: string) => void;
+  setPendingEntries: (entries: PendingEntry[]) => void;
   clearPendingEntries: () => void;
   setOnline: (online: boolean) => void;
 }
@@ -43,6 +46,7 @@ export const useOfflineStore = create<OfflineState>()(
         set((state) => ({
           pendingEntries: state.pendingEntries.filter((e) => e.localId !== localId),
         })),
+      setPendingEntries: (entries) => set({ pendingEntries: entries }),
       clearPendingEntries: () => set({ pendingEntries: [] }),
       setOnline: (online) => set({ isOnline: online }),
     }),

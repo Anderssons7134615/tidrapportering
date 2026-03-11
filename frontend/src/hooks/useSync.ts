@@ -6,7 +6,7 @@ import toast from 'react-hot-toast';
 
 export function useSync() {
   const queryClient = useQueryClient();
-  const { pendingEntries, clearPendingEntries, isOnline } = useOfflineStore();
+  const { pendingEntries, setPendingEntries, isOnline } = useOfflineStore();
 
   useEffect(() => {
     if (!isOnline || pendingEntries.length === 0) return;
@@ -22,7 +22,15 @@ export function useSync() {
           toast.success(`${results.length} rad(er) synkade`);
         }
 
-        clearPendingEntries();
+        const failedLocalIds = new Set(
+          failed
+            .map((result) => result.localId)
+            .filter((localId): localId is string => Boolean(localId))
+        );
+
+        setPendingEntries(
+          pendingEntries.filter((entry) => failedLocalIds.has(entry.localId))
+        );
         queryClient.invalidateQueries({ queryKey: ['timeEntries'] });
         queryClient.invalidateQueries({ queryKey: ['week'] });
         queryClient.invalidateQueries({ queryKey: ['dashboard'] });
@@ -34,5 +42,5 @@ export function useSync() {
     // Fördröj lite för att undvika spam
     const timeout = setTimeout(sync, 1000);
     return () => clearTimeout(timeout);
-  }, [isOnline, pendingEntries, clearPendingEntries, queryClient]);
+  }, [isOnline, pendingEntries, queryClient, setPendingEntries]);
 }
