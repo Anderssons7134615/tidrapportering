@@ -147,21 +147,6 @@ export interface DashboardData {
     weeklyHours: number;
     pendingApprovalCount: number;
   };
-  projects: {
-    id: string;
-    name: string;
-    code: string;
-    customerName: string;
-    defaultRate: number;
-    budgetHours?: number;
-    totalHours: number;
-    remainingHours?: number | null;
-    monthlyHours: number;
-    economicUsed?: number | null;
-    economicBudget?: number | null;
-    economicRemaining?: number | null;
-    budgetUsedPercent?: number;
-  }[];
   pendingApprovals: WeekLock[];
   myPendingWeeks: string[];
   recentEntries: TimeEntry[];
@@ -173,6 +158,42 @@ export interface DashboardData {
     weekEnd: string;
   };
 }
+
+export type DashboardMetric =
+  | 'weekly-hours'
+  | 'monthly-hours'
+  | 'billable-hours'
+  | 'pending-approval';
+
+export interface DashboardTimeEntryDrilldown {
+  kind: 'time-entries';
+  metric: DashboardMetric;
+  title: string;
+  description: string;
+  totalHours: number;
+  period: {
+    start: string;
+    end: string;
+  };
+  entries: TimeEntry[];
+}
+
+export interface DashboardPendingApprovalDrilldown {
+  kind: 'pending-approvals';
+  metric: DashboardMetric;
+  title: string;
+  description: string;
+  totalCount: number;
+  period: {
+    start: string;
+    end: string;
+  };
+  approvals: WeekLock[];
+}
+
+export type DashboardDrilldownData =
+  | DashboardTimeEntryDrilldown
+  | DashboardPendingApprovalDrilldown;
 
 export interface WorkItem {
   id: string;

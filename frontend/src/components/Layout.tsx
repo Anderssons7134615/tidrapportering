@@ -54,7 +54,8 @@ export default function Layout() {
   const [menuOpen, setMenuOpen] = useState(false);
 
   const filteredNavItems = navItems.filter((item) => item.roles.includes(user?.role || ''));
-  const activeItem = filteredNavItems.find((item) => location.pathname === item.to) ||
+  const activeItem =
+    filteredNavItems.find((item) => location.pathname === item.to) ||
     filteredNavItems.find((item) => item.to !== '/' && location.pathname.startsWith(item.to));
 
   const handleLogout = () => {
@@ -117,7 +118,7 @@ export default function Layout() {
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Workspace</p>
             <p className="mt-2 text-lg font-semibold text-slate-900">{user?.companyName || 'TidApp'}</p>
             <p className="mt-1 text-sm text-slate-500">
-              {user?.role === 'ADMIN' ? 'Adminoversikt' : user?.role === 'SUPERVISOR' ? 'Arbetsledare' : 'Medarbetare'}
+              {user?.role === 'ADMIN' ? 'Adminöversikt' : user?.role === 'SUPERVISOR' ? 'Arbetsledare' : 'Medarbetare'}
             </p>
           </div>
           <nav className="space-y-1.5">

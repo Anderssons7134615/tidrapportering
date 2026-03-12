@@ -53,7 +53,7 @@ function SwipeableEntry({
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <span className="truncate text-sm font-semibold text-slate-900">
-                {entry.project?.code ? `${entry.project.code} · ${entry.project.name}` : 'Intern tid'}
+                {entry.project?.code ? `${entry.project.code} • ${entry.project.name}` : 'Intern tid'}
               </span>
               {entry.billable ? (
                 <span className="h-2 w-2 rounded-full bg-green-500" title="Fakturerbar" />
@@ -64,13 +64,13 @@ function SwipeableEntry({
 
             <p className="mt-1 text-xs text-slate-500">
               {entry.activity?.name}
-              {entry.project?.site ? ` · ${entry.project.site}` : ''}
+              {entry.project?.site ? ` • ${entry.project.site}` : ''}
             </p>
 
             {(entry.startTime || entry.endTime || entry.note) && (
               <p className="mt-1 text-xs text-slate-500">
                 {entry.startTime || entry.endTime ? `${entry.startTime || '--:--'}-${entry.endTime || '--:--'}` : ''}
-                {entry.note ? `${entry.startTime || entry.endTime ? ' · ' : ''}${entry.note}` : ''}
+                {entry.note ? `${entry.startTime || entry.endTime ? ' • ' : ''}${entry.note}` : ''}
               </p>
             )}
           </div>
@@ -165,7 +165,7 @@ export default function WeekView() {
       case 'SUBMITTED':
         return <span className="badge-yellow">Inskickad</span>;
       case 'APPROVED':
-        return <span className="badge-green">Godkand</span>;
+        return <span className="badge-green">Godkänd</span>;
       case 'REJECTED':
         return <span className="badge-red">Nekad</span>;
       default:
@@ -280,7 +280,7 @@ export default function WeekView() {
           to="/time-entry"
           className="block rounded-xl border-2 border-dashed border-slate-300 py-3 text-center text-slate-500 transition-colors hover:border-primary-600 hover:text-primary-700"
         >
-          + Lagg till tid
+          + Lägg till tid
         </Link>
       )}
     </div>

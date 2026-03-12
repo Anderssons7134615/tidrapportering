@@ -7,6 +7,7 @@ import LoadingSpinner from './components/ui/LoadingSpinner';
 const Login = lazy(() => import('./pages/Login'));
 const Register = lazy(() => import('./pages/Register'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
+const DashboardDetail = lazy(() => import('./pages/DashboardDetail'));
 const TimeEntry = lazy(() => import('./pages/TimeEntry'));
 const WeekView = lazy(() => import('./pages/WeekView'));
 const TeamWeekOverview = lazy(() => import('./pages/TeamWeekOverview'));
@@ -52,6 +53,7 @@ export default function App() {
         }
       >
         <Route index element={<Dashboard />} />
+        <Route path="overview/details/:metric" element={<DashboardDetail />} />
         <Route path="time-entry" element={<TimeEntry />} />
         <Route path="week" element={<WeekView />} />
         <Route

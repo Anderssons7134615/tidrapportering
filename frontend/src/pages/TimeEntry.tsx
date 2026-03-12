@@ -135,7 +135,7 @@ export default function TimeEntry() {
 
     if (isEditMode) {
       if (!isOnline) {
-        toast.error('Redigering kraver uppkoppling');
+        toast.error('Redigering kräver uppkoppling');
         return;
       }
 
@@ -150,7 +150,7 @@ export default function TimeEntry() {
 
     addPendingEntry(entryData);
     haptic('success');
-    toast.success('Sparad offline - synkas nar du ar online');
+    toast.success('Sparad offline - synkas när du är online');
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
     setHours('');
@@ -169,10 +169,10 @@ export default function TimeEntry() {
   const categoryLabels: Record<string, string> = {
     WORK: 'Arbete',
     TRAVEL: 'Resa',
-    MEETING: 'Mote',
+    MEETING: 'Möte',
     INTERNAL: 'Internt',
-    CHANGE_ORDER: 'ATA',
-    ABSENCE: 'Franvaro',
+    CHANGE_ORDER: 'ÄTA',
+    ABSENCE: 'Frånvaro',
   };
 
   const isSaving = createMutation.isPending || updateMutation.isPending;
@@ -191,7 +191,7 @@ export default function TimeEntry() {
       <div className="space-y-4">
         <h1 className="page-title">Redigera tidrad</h1>
         <div className="card">
-          <p className="text-sm text-slate-600">Godkanda tidrader kan inte andras.</p>
+          <p className="text-sm text-slate-600">Godkända tidrader kan inte ändras.</p>
         </div>
       </div>
     );
@@ -203,7 +203,7 @@ export default function TimeEntry() {
         <h1 className="page-title">{isEditMode ? 'Redigera tidrad' : 'Rapportera tid'}</h1>
         <p className="text-sm text-slate-500">
           {isEditMode
-            ? 'Andra projekt, datum, tider och timmar innan raden ar godkand.'
+            ? 'Ändra projekt, datum, tider och timmar innan raden är godkänd.'
             : 'Snabb registrering med tydliga val och minimalt klickande.'}
         </p>
       </div>
@@ -212,9 +212,9 @@ export default function TimeEntry() {
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {canReportForOthers && !isEditMode && (
             <div>
-              <label className="label">Anstalld</label>
+              <label className="label">Anställd</label>
               <select value={selectedUserId} onChange={(e) => setSelectedUserId(e.target.value)} className="input">
-                <option value="">Jag sjalv</option>
+                <option value="">Jag själv</option>
                 {users?.map((entryUser) => (
                   <option key={entryUser.id} value={entryUser.id}>
                     {entryUser.name}
@@ -294,7 +294,7 @@ export default function TimeEntry() {
           <div>
             <label className="label">Aktivitet</label>
             <select value={activityId} onChange={(e) => setActivityId(e.target.value)} className="input" required>
-              <option value="">Valj aktivitet...</option>
+              <option value="">Välj aktivitet...</option>
               {groupedActivities &&
                 Object.entries(groupedActivities).map(([category, items]) => (
                   <optgroup key={category} label={categoryLabels[category] || category}>

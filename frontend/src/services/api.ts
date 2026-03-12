@@ -8,6 +8,8 @@ import type {
   WeekLock,
   Settings,
   DashboardData,
+  DashboardDrilldownData,
+  DashboardMetric,
   WeekData,
   WorkItem,
   WorkLog,
@@ -299,5 +301,10 @@ export const workLogsApi = {
 // Dashboard
 export const dashboardApi = {
   get: () => fetchApi<DashboardData>('/dashboard'),
+  getDrilldown: (metric: DashboardMetric, date?: string) => {
+    const params = new URLSearchParams({ metric });
+    if (date) params.set('date', date);
+    return fetchApi<DashboardDrilldownData>(`/dashboard/drilldown?${params.toString()}`);
+  },
   quickStats: () => fetchApi<{ todayHours: number; weekHours: number }>('/dashboard/quick-stats'),
 };

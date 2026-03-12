@@ -141,7 +141,7 @@ export default function ProjectDetail() {
                 <p className="mb-1 flex items-center gap-1 text-xs text-slate-500"><Receipt className="h-4 w-4" /> Debitering</p>
                 <p className="font-medium text-slate-900">
                   {p.billingModel === 'FIXED' ? 'Fastpris' : 'Löpande'}
-                  {p.defaultRate ? ` · ${p.defaultRate} kr/h` : ''}
+                  {p.defaultRate ? ` • ${p.defaultRate} kr/h` : ''}
                 </p>
                 <p className="mt-1 text-xs text-slate-500">
                   Fakturerbara timmar: {(p.billableHours || 0).toFixed(1)} h

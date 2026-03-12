@@ -182,7 +182,7 @@ export default function Projects() {
                       </div>
                       <p className="text-sm text-slate-500">
                         {project.code}
-                        {project.customer && ` · ${project.customer.name}`}
+                        {project.customer && ` • ${project.customer.name}`}
                       </p>
                       {project.site && <p className="text-sm text-slate-500">{project.site}</p>}
                     </div>
