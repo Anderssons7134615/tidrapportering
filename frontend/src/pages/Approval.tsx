@@ -130,18 +130,18 @@ export default function Approval() {
                         {weekDetails.entries.map((entry) => (
                           <div
                             key={entry.id}
-                            className="flex items-center justify-between p-2 bg-gray-800 rounded-lg text-sm"
+                            className="flex items-center justify-between p-2 bg-gray-800 rounded-lg text-sm text-gray-100"
                           >
-                            <div>
-                              <span className="font-medium">
+                            <div className="min-w-0">
+                              <span className="font-medium text-gray-100">
                                 {format(new Date(entry.date), 'EEE d/M', { locale: sv })}
                               </span>
-                              <span className="mx-2">·</span>
-                              <span>{entry.project?.name || 'Intern'}</span>
-                              <span className="mx-2">·</span>
-                              <span className="text-gray-400">{entry.activity?.name}</span>
+                              <span className="mx-2 text-gray-500">·</span>
+                              <span className="font-semibold text-white">{entry.project?.name || 'Intern'}</span>
+                              <span className="mx-2 text-gray-500">·</span>
+                              <span className="text-gray-300">{entry.activity?.name}</span>
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 text-gray-100">
                               <span className="font-medium">{entry.hours}h</span>
                               {entry.billable && (
                                 <span className="w-2 h-2 bg-green-500 rounded-full" />
