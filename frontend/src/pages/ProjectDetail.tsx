@@ -50,6 +50,7 @@ export default function ProjectDetail() {
   const [newMaterialName, setNewMaterialName] = useState('');
   const [newMaterialUnit, setNewMaterialUnit] = useState('st');
   const [importFile, setImportFile] = useState<File | null>(null);
+  const [showMaterialSuggestions, setShowMaterialSuggestions] = useState(false);
 
   const { data: project, isLoading, error } = useQuery({
     queryKey: ['project', id],
@@ -142,6 +143,11 @@ export default function ProjectDetail() {
     if (!materialSearch.trim()) return list;
     return list.filter((w) => w.name.toLowerCase().includes(materialSearch.toLowerCase()));
   }, [workItems, materialSearch]);
+
+  const selectedWorkItem = useMemo(
+    () => (workItems || []).find((w) => w.id === selectedWorkItemId),
+    [workItems, selectedWorkItemId]
+  );
 
   if (isLoading) {
     return <div className="card">Laddar projekt...</div>;
@@ -298,24 +304,48 @@ export default function ProjectDetail() {
         </div>
 
         <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-          <input
-            value={materialSearch}
-            onChange={(e) => setMaterialSearch(e.target.value)}
-            placeholder="Sök material"
-            className="input md:col-span-2"
-          />
-          <select
-            value={selectedWorkItemId}
-            onChange={(e) => setSelectedWorkItemId(e.target.value)}
-            className="input"
-          >
-            <option value="">Välj material</option>
-            {filteredWorkItems.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name} ({item.unit}){isManager && item.unitPrice ? ` · ${item.unitPrice.toLocaleString('sv-SE')} kr` : ''}
-              </option>
-            ))}
-          </select>
+          <div className="md:col-span-3 space-y-2">
+            <input
+              value={materialSearch}
+              onChange={(e) => {
+                setMaterialSearch(e.target.value);
+                setShowMaterialSuggestions(true);
+              }}
+              onFocus={() => setShowMaterialSuggestions(true)}
+              placeholder="Sök material"
+              className="input"
+            />
+            {showMaterialSuggestions && (
+              <div className="max-h-56 overflow-y-auto rounded-xl border border-slate-200 bg-white">
+                {filteredWorkItems.slice(0, 30).map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedWorkItemId(item.id);
+                      setMaterialSearch(item.name);
+                      setShowMaterialSuggestions(false);
+                    }}
+                    className={`w-full px-3 py-2 text-left text-sm hover:bg-slate-50 ${selectedWorkItemId === item.id ? 'bg-slate-100' : ''}`}
+                  >
+                    <span className="font-medium text-slate-900">{item.name}</span>
+                    <span className="ml-2 text-slate-500">({item.unit})</span>
+                    {isManager && item.unitPrice ? (
+                      <span className="ml-2 text-slate-600">· {item.unitPrice.toLocaleString('sv-SE')} kr</span>
+                    ) : null}
+                  </button>
+                ))}
+                {filteredWorkItems.length === 0 && (
+                  <div className="px-3 py-2 text-sm text-slate-500">Ingen träff i materiallistan.</div>
+                )}
+              </div>
+            )}
+            {selectedWorkItem && (
+              <p className="text-xs text-slate-600">
+                Valt material: <span className="font-medium text-slate-800">{selectedWorkItem.name}</span> ({selectedWorkItem.unit})
+              </p>
+            )}
+          </div>
           <input
             value={materialQuantity}
             onChange={(e) => setMaterialQuantity(e.target.value)}
