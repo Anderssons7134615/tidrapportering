@@ -175,10 +175,42 @@ const ensureProjectResultsVisibilityColumn = async () => {
   }
 };
 
+const ensureWorkItemPriceColumns = async () => {
+  const addColumnIfMissing = async (columnSql: string, debugLabel: string) => {
+    try {
+      await prisma.$executeRawUnsafe(columnSql);
+      fastify.log.info(`La till ${debugLabel}`);
+    } catch (error: any) {
+      const message = String(error?.message || '').toLowerCase();
+      const code = String(error?.code || '');
+      if (
+        code === 'P2010' ||
+        message.includes('duplicate column') ||
+        message.includes('already exists') ||
+        message.includes('duplicate column name')
+      ) {
+        fastify.log.debug(`${debugLabel} finns redan`);
+        return;
+      }
+      throw error;
+    }
+  };
+
+  await addColumnIfMissing(
+    `ALTER TABLE "WorkItem" ADD COLUMN "unitPrice" DOUBLE PRECISION`,
+    'WorkItem.unitPrice'
+  );
+  await addColumnIfMissing(
+    `ALTER TABLE "WorkItem" ADD COLUMN "grossPrice" DOUBLE PRECISION`,
+    'WorkItem.grossPrice'
+  );
+};
+
 // Start server
 const start = async () => {
   try {
     await ensureProjectResultsVisibilityColumn();
+    await ensureWorkItemPriceColumns();
 
     const port = parseInt(process.env.PORT || '3001');
     await fastify.listen({ port, host: '0.0.0.0' });

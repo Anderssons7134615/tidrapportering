@@ -49,6 +49,7 @@ export default function ProjectDetail() {
   const [materialComment, setMaterialComment] = useState('');
   const [newMaterialName, setNewMaterialName] = useState('');
   const [newMaterialUnit, setNewMaterialUnit] = useState('st');
+  const [importFile, setImportFile] = useState<File | null>(null);
 
   const { data: project, isLoading, error } = useQuery({
     queryKey: ['project', id],
@@ -109,6 +110,16 @@ export default function ProjectDetail() {
       toast.success('Material skapat');
       setSelectedWorkItemId(item.id);
       setNewMaterialName('');
+      queryClient.invalidateQueries({ queryKey: ['workItems'] });
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const importExcelMutation = useMutation({
+    mutationFn: (file: File) => workItemsApi.importExcel(file),
+    onSuccess: (result) => {
+      toast.success(`Import klar: ${result.created} nya, ${result.updated} uppdaterade`);
+      setImportFile(null);
       queryClient.invalidateQueries({ queryKey: ['workItems'] });
     },
     onError: (error: Error) => toast.error(error.message),
@@ -300,7 +311,9 @@ export default function ProjectDetail() {
           >
             <option value="">Välj material</option>
             {filteredWorkItems.map((item) => (
-              <option key={item.id} value={item.id}>{item.name} ({item.unit})</option>
+              <option key={item.id} value={item.id}>
+                {item.name} ({item.unit}){isManager && item.unitPrice ? ` · ${item.unitPrice.toLocaleString('sv-SE')} kr` : ''}
+              </option>
             ))}
           </select>
           <input
@@ -337,6 +350,21 @@ export default function ProjectDetail() {
         {user?.role === 'ADMIN' && (
           <div className="surface-muted p-3 space-y-3">
             <p className="text-sm font-medium text-slate-800">Saknas material i listan? Lägg till direkt:</p>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+              <input
+                type="file"
+                accept=".xlsx,.xls"
+                onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+                className="input md:col-span-3"
+              />
+              <button
+                className="btn-primary"
+                onClick={() => importFile && importExcelMutation.mutate(importFile)}
+                disabled={!importFile || importExcelMutation.isPending}
+              >
+                Importera Excel
+              </button>
+            </div>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
               <input
                 value={newMaterialName}
@@ -372,6 +400,7 @@ export default function ProjectDetail() {
                 <th className="px-3 py-2">Anställd</th>
                 <th className="px-3 py-2">Material</th>
                 <th className="px-3 py-2">Antal</th>
+                {isManager && <th className="px-3 py-2">Pris</th>}
                 <th className="px-3 py-2">Kommentar</th>
               </tr>
             </thead>
@@ -382,11 +411,16 @@ export default function ProjectDetail() {
                   <td className="px-3 py-2">{log.user?.name || '-'}</td>
                   <td className="px-3 py-2 font-medium text-slate-900">{log.workItem?.name || '-'}</td>
                   <td className="px-3 py-2">{log.quantity} {log.workItem?.unit || ''}</td>
+                  {isManager && (
+                    <td className="px-3 py-2">
+                      {log.workItem?.unitPrice ? `${log.workItem.unitPrice.toLocaleString('sv-SE')} kr` : '-'}
+                    </td>
+                  )}
                   <td className="px-3 py-2">{log.note || '-'}</td>
                 </tr>
               )) : (
                 <tr>
-                  <td colSpan={5} className="px-3 py-5 text-center text-slate-500">Ingen materialregistrering ännu.</td>
+                  <td colSpan={isManager ? 6 : 5} className="px-3 py-5 text-center text-slate-500">Ingen materialregistrering ännu.</td>
                 </tr>
               )}
             </tbody>

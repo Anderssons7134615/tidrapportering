@@ -25,6 +25,7 @@
     "bcryptjs": "^2.4.3",
     "fastify": "^4.26.0",
     "web-push": "^3.6.7",
+    "xlsx": "^0.18.5",
     "zod": "^3.22.4"
   },
   "devDependencies": {

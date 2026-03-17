@@ -1,10 +1,13 @@
 import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../index.js';
+import * as XLSX from 'xlsx';
 
 const workItemSchema = z.object({
   name: z.string().min(2),
   unit: z.string().min(1),
+  unitPrice: z.number().nonnegative().optional().nullable(),
+  grossPrice: z.number().nonnegative().optional().nullable(),
   description: z.string().optional().nullable(),
   active: z.boolean().optional(),
 });
@@ -26,10 +29,123 @@ const workItemRoutes: FastifyPluginAsync = async (fastify) => {
     const where: any = { companyId: request.user.companyId };
     if (active !== undefined) where.active = active === 'true';
 
-    return prisma.workItem.findMany({
+    const rows = await prisma.workItem.findMany({
       where,
       orderBy: { name: 'asc' },
     });
+
+    if (request.user.role === 'EMPLOYEE') {
+      return rows.map(({ unitPrice, grossPrice, ...rest }) => rest);
+    }
+
+    return rows;
+  });
+
+  // Import work items from Excel (admin)
+  fastify.post('/import-excel', {
+    preHandler: [requireAdmin],
+  }, async (request, reply) => {
+    const file = await request.file();
+
+    if (!file) {
+      return reply.status(400).send({ error: 'Ingen fil skickades med' });
+    }
+
+    const chunks: Buffer[] = [];
+    for await (const chunk of file.file) {
+      chunks.push(chunk);
+    }
+
+    const buffer = Buffer.concat(chunks);
+    const workbook = XLSX.read(buffer, { type: 'buffer' });
+    const sheetName = workbook.SheetNames[0];
+    if (!sheetName) {
+      return reply.status(400).send({ error: 'Excel-filen saknar blad' });
+    }
+
+    const sheet = workbook.Sheets[sheetName];
+    const rows = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, { defval: null });
+
+    if (!rows.length) {
+      return reply.status(400).send({ error: 'Excel-filen innehåller inga rader' });
+    }
+
+    let created = 0;
+    let updated = 0;
+    const seenNames = new Set<string>();
+
+    for (const row of rows) {
+      const nameRaw = row['Artikelnamn'] ?? row['artikelnamn'] ?? row['Namn'] ?? row['name'];
+      const unitRaw = row['Enhet'] ?? row['enhet'] ?? 'st';
+      const nettoRaw = row['Netto'] ?? row['netto'];
+      const bruttoRaw = row['Bruttopris'] ?? row['bruttopris'];
+
+      const name = String(nameRaw || '').trim();
+      if (!name) continue;
+
+      const unit = String(unitRaw || 'st').trim().toUpperCase();
+      const unitPrice = nettoRaw !== null && nettoRaw !== undefined && nettoRaw !== '' ? Number(nettoRaw) : null;
+      const grossPrice = bruttoRaw !== null && bruttoRaw !== undefined && bruttoRaw !== '' ? Number(bruttoRaw) : null;
+
+      seenNames.add(name.toLowerCase());
+
+      const existing = await prisma.workItem.findUnique({
+        where: {
+          companyId_name: {
+            companyId: request.user.companyId,
+            name,
+          },
+        },
+      });
+
+      if (existing) {
+        await prisma.workItem.update({
+          where: { id: existing.id },
+          data: {
+            unit,
+            unitPrice: Number.isFinite(unitPrice as number) ? unitPrice : null,
+            grossPrice: Number.isFinite(grossPrice as number) ? grossPrice : null,
+            active: true,
+          },
+        });
+        updated += 1;
+      } else {
+        await prisma.workItem.create({
+          data: {
+            companyId: request.user.companyId,
+            name,
+            unit,
+            unitPrice: Number.isFinite(unitPrice as number) ? unitPrice : null,
+            grossPrice: Number.isFinite(grossPrice as number) ? grossPrice : null,
+            active: true,
+          },
+        });
+        created += 1;
+      }
+    }
+
+    const current = await prisma.workItem.findMany({
+      where: { companyId: request.user.companyId },
+      select: { id: true, name: true },
+    });
+
+    const toDeactivate = current
+      .filter((w) => !seenNames.has(w.name.toLowerCase()))
+      .map((w) => w.id);
+
+    if (toDeactivate.length > 0) {
+      await prisma.workItem.updateMany({
+        where: { id: { in: toDeactivate } },
+        data: { active: false },
+      });
+    }
+
+    return {
+      created,
+      updated,
+      deactivated: toDeactivate.length,
+      totalRows: rows.length,
+    };
   });
 
   // Create work item

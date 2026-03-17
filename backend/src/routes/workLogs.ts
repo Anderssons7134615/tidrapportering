@@ -38,15 +38,26 @@ const workLogRoutes: FastifyPluginAsync = async (fastify) => {
       if (to) where.date.lte = new Date(to);
     }
 
-    return prisma.workLog.findMany({
+    const rows = await prisma.workLog.findMany({
       where,
       include: {
         user: { select: { id: true, name: true } },
-        workItem: { select: { id: true, name: true, unit: true } },
+        workItem: { select: { id: true, name: true, unit: true, unitPrice: true, grossPrice: true } },
         project: { select: { id: true, name: true } },
       },
       orderBy: { date: 'desc' },
     });
+
+    if (request.user.role === 'EMPLOYEE') {
+      return rows.map((row) => ({
+        ...row,
+        workItem: row.workItem
+          ? { id: row.workItem.id, name: row.workItem.name, unit: row.workItem.unit }
+          : row.workItem,
+      }));
+    }
+
+    return rows;
   });
 
   // Get stats per work item
@@ -128,7 +139,7 @@ const workLogRoutes: FastifyPluginAsync = async (fastify) => {
         },
         include: {
           user: { select: { id: true, name: true } },
-          workItem: { select: { id: true, name: true, unit: true } },
+          workItem: { select: { id: true, name: true, unit: true, unitPrice: true, grossPrice: true } },
           project: { select: { id: true, name: true } },
         },
       });

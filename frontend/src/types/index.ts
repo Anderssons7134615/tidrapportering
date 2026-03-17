@@ -202,6 +202,8 @@ export interface WorkItem {
   id: string;
   name: string;
   unit: string;
+  unitPrice?: number;
+  grossPrice?: number;
   description?: string;
   active: boolean;
 }

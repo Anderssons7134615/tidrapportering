@@ -208,6 +208,8 @@ model WorkItem {
   company     Company  @relation(fields: [companyId], references: [id])
   name        String
   unit        String   // "meter", "m²", "styck", "löpmeter"
+  unitPrice   Float?
+  grossPrice  Float?
   description String?
   active      Boolean  @default(true)
   createdAt   DateTime @default(now())

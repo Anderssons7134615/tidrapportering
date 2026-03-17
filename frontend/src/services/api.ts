@@ -280,6 +280,26 @@ export const workItemsApi = {
     fetchApi<WorkItem>(`/work-items/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   delete: (id: string) =>
     fetchApi<{ message: string }>(`/work-items/${id}`, { method: 'DELETE' }),
+  importExcel: async (file: File) => {
+    const token = useAuthStore.getState().token;
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await fetch(`${API_BASE}/work-items/import-excel`, {
+      method: 'POST',
+      headers: {
+        ...(token && { Authorization: `Bearer ${token}` }),
+      },
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Ett fel uppstod' }));
+      throw new Error(error.error || 'Ett fel uppstod vid import');
+    }
+
+    return response.json() as Promise<{ created: number; updated: number; deactivated: number; totalRows: number }>;
+  },
 };
 
 // Work Logs
