@@ -180,55 +180,104 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
       where,
       select: {
         userId: true,
+        date: true,
         hours: true,
         billable: true,
         user: { select: { id: true, name: true, email: true } },
       },
     });
 
-    const byEmployee: Record<string, {
+    const getWeekStart = (date: Date) => {
+      const d = new Date(date);
+      const day = d.getDay();
+      const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+      d.setDate(diff);
+      d.setHours(0, 0, 0, 0);
+      return d;
+    };
+
+    const getIsoWeek = (date: Date) => {
+      const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+      const dayNum = d.getUTCDay() || 7;
+      d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+      const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+      return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+    };
+
+    const weekdayLabels = ['Sön', 'Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör'];
+
+    const byEmployeeWeek: Record<string, {
       userId: string;
       name: string;
       email: string;
+      weekStartDate: Date;
+      weekNumber: number;
       hours: number;
       billableHours: number;
       nonBillableHours: number;
       entryCount: number;
+      dayHours: Record<string, number>;
     }> = {};
 
     for (const entry of entries) {
-      const key = entry.userId;
-      if (!byEmployee[key]) {
-        byEmployee[key] = {
+      const weekStartDate = getWeekStart(entry.date);
+      const key = `${entry.userId}_${weekStartDate.toISOString()}`;
+
+      if (!byEmployeeWeek[key]) {
+        byEmployeeWeek[key] = {
           userId: entry.user.id,
           name: entry.user.name,
           email: entry.user.email,
+          weekStartDate,
+          weekNumber: getIsoWeek(weekStartDate),
           hours: 0,
           billableHours: 0,
           nonBillableHours: 0,
           entryCount: 0,
+          dayHours: { Mån: 0, Tis: 0, Ons: 0, Tor: 0, Fre: 0, Lör: 0, Sön: 0 },
         };
       }
 
-      byEmployee[key].hours += entry.hours;
-      byEmployee[key].entryCount += 1;
+      byEmployeeWeek[key].hours += entry.hours;
+      byEmployeeWeek[key].entryCount += 1;
+      const dayLabel = weekdayLabels[entry.date.getDay()] || 'Okänd';
+      byEmployeeWeek[key].dayHours[dayLabel] = (byEmployeeWeek[key].dayHours[dayLabel] || 0) + entry.hours;
+
       if (entry.billable) {
-        byEmployee[key].billableHours += entry.hours;
+        byEmployeeWeek[key].billableHours += entry.hours;
       } else {
-        byEmployee[key].nonBillableHours += entry.hours;
+        byEmployeeWeek[key].nonBillableHours += entry.hours;
       }
     }
 
-    const employees = Object.values(byEmployee).sort((a, b) => b.hours - a.hours);
+    const employeeWeekBreakdown = Object.values(byEmployeeWeek)
+      .sort((a, b) => {
+        if (b.weekStartDate.getTime() !== a.weekStartDate.getTime()) {
+          return b.weekStartDate.getTime() - a.weekStartDate.getTime();
+        }
+        return b.hours - a.hours;
+      })
+      .map((row) => ({
+        userId: row.userId,
+        userName: row.name,
+        weekStartDate: row.weekStartDate,
+        weekNumber: row.weekNumber,
+        totalHours: row.hours,
+        billableHours: row.billableHours,
+        nonBillableHours: row.nonBillableHours,
+        entryCount: row.entryCount,
+        dayHours: row.dayHours,
+        amount: 0,
+      }));
 
     return {
       project,
       period: { from: from || null, to: to || null },
-      employees,
+      employeeBreakdown: employeeWeekBreakdown,
       totals: {
-        totalHours: employees.reduce((sum, e) => sum + e.hours, 0),
-        totalBillableHours: employees.reduce((sum, e) => sum + e.billableHours, 0),
-        employeeCount: employees.length,
+        totalHours: employeeWeekBreakdown.reduce((sum, e) => sum + e.totalHours, 0),
+        totalBillableHours: employeeWeekBreakdown.reduce((sum, e) => sum + e.billableHours, 0),
+        employeeCount: new Set(employeeWeekBreakdown.map((e) => e.userId)).size,
       },
     };
   });

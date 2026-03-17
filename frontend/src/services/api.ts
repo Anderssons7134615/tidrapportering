@@ -117,9 +117,14 @@ export const projectsApi = {
   getManagerSummary: async (id: string) => {
     const raw = await fetchApi<any>(`/projects/${id}/manager-summary`);
 
-    // Stöd både ny och äldre backend-shape
+    // Nyare shape: kan ha employeeBreakdown + totals
     if (raw?.employeeBreakdown) {
-      return raw as ProjectManagerSummary;
+      return {
+        totalHours: raw?.totalHours ?? raw?.totals?.totalHours ?? 0,
+        billableHours: raw?.billableHours ?? raw?.totals?.totalBillableHours ?? 0,
+        totalAmount: raw?.totalAmount ?? 0,
+        employeeBreakdown: raw.employeeBreakdown,
+      } as ProjectManagerSummary;
     }
 
     const employeeBreakdown = (raw?.employees || []).map((e: any) => ({
@@ -128,6 +133,9 @@ export const projectsApi = {
       totalHours: e.hours || 0,
       billableHours: e.billableHours || 0,
       amount: 0,
+      weekStartDate: e.weekStartDate,
+      weekNumber: e.weekNumber,
+      dayHours: e.dayHours,
     }));
 
     return {

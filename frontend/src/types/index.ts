@@ -48,6 +48,9 @@ export interface ProjectEmployeeSummary {
   billableHours?: number;
   billableRate?: number;
   amount?: number;
+  weekStartDate?: string;
+  weekNumber?: number;
+  dayHours?: Record<string, number>;
 }
 
 export interface ProjectManagerSummary {
