@@ -45,16 +45,18 @@ const backfillDraftWeeksToSubmitted = async (companyId: string) => {
         weekStartDate: pair.weekStartDate,
       })),
     },
-    select: { userId: true, weekStartDate: true },
+    select: { userId: true, weekStartDate: true, status: true },
   });
-  const lockedWeeks = new Set(
-    existingLocks.map((lock) => `${lock.userId}_${lock.weekStartDate.toISOString()}`)
+  const protectedWeeks = new Set(
+    existingLocks
+      .filter((lock) => ['APPROVED', 'REJECTED'].includes(lock.status))
+      .map((lock) => `${lock.userId}_${lock.weekStartDate.toISOString()}`)
   );
   const eligibleEntryIds = draftEntries
-    .filter((entry) => !lockedWeeks.has(weekKeyByEntryId.get(entry.id) || ''))
+    .filter((entry) => !protectedWeeks.has(weekKeyByEntryId.get(entry.id) || ''))
     .map((entry) => entry.id);
   const eligibleWeekPairs = weekPairs.filter(
-    (pair) => !lockedWeeks.has(`${pair.userId}_${pair.weekStartDate.toISOString()}`)
+    (pair) => !protectedWeeks.has(`${pair.userId}_${pair.weekStartDate.toISOString()}`)
   );
 
   if (!eligibleEntryIds.length) {

@@ -80,21 +80,20 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
     const startDate = new Date(weekStart);
     const endDate = getWeekEnd(startDate);
 
-    const users = await prisma.user.findMany({
-      where: { companyId: request.user.companyId, active: true },
-      select: { id: true, name: true, role: true },
-      orderBy: { name: 'asc' },
-    });
-
-    const [entries, weekLocks] = await Promise.all([
+    const [activeUsers, entries, weekLocks] = await Promise.all([
+      prisma.user.findMany({
+        where: { companyId: request.user.companyId, active: true },
+        select: { id: true, name: true, role: true },
+      }),
       prisma.timeEntry.findMany({
         where: {
-          userId: { in: users.map((u) => u.id) },
+          user: { companyId: request.user.companyId },
           date: { gte: startDate, lte: endDate },
         },
         select: {
           id: true,
           userId: true,
+          user: { select: { id: true, name: true, role: true } },
           date: true,
           createdAt: true,
           hours: true,
@@ -106,12 +105,28 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
       }),
       prisma.weekLock.findMany({
         where: {
-          userId: { in: users.map((u) => u.id) },
+          user: { companyId: request.user.companyId },
           weekStartDate: startDate,
         },
-        select: { userId: true, status: true },
+        select: {
+          userId: true,
+          status: true,
+          user: { select: { id: true, name: true, role: true } },
+        },
       }),
     ]);
+
+    const usersById = new Map<string, { id: string; name: string; role: string }>();
+    for (const user of activeUsers) {
+      usersById.set(user.id, user);
+    }
+    for (const entry of entries) {
+      usersById.set(entry.user.id, entry.user);
+    }
+    for (const lock of weekLocks) {
+      usersById.set(lock.user.id, lock.user);
+    }
+    const users = Array.from(usersById.values()).sort((a, b) => a.name.localeCompare(b.name, 'sv'));
 
     const weekLockByUser = new Map(weekLocks.map((lock) => [lock.userId, lock.status]));
     const entriesByUser = new Map<string, typeof entries>();
