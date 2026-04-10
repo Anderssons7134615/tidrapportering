@@ -111,6 +111,34 @@ const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
       const period = getPeriodBounds(referenceDate);
       const userFilter = getUserFilter(request.user.id, request.user.companyId, isAdminOrSupervisor);
 
+      if (metric === 'weekly-hours' && isAdminOrSupervisor) {
+        const entries = await prisma.timeEntry.findMany({
+          where: {
+            user: { companyId: request.user.companyId },
+            date: { gte: period.weekStart, lte: period.weekEnd },
+          },
+          include: {
+            user: { select: { id: true, name: true } },
+            project: { select: { id: true, name: true, code: true } },
+            activity: { select: { id: true, name: true, code: true } },
+          },
+          orderBy: [{ user: { name: 'asc' } }, { date: 'asc' }, { createdAt: 'asc' }],
+        });
+
+        return {
+          kind: 'weekly-user-summary',
+          metric,
+          title: 'Denna vecka',
+          description: 'Kompakt veckovy per anställd.',
+          totalHours: entries.reduce((sum, entry) => sum + entry.hours, 0),
+          period: {
+            start: period.weekStart,
+            end: period.weekEnd,
+          },
+          users: buildWeeklyUserSummary(period.weekStart, entries),
+        };
+      }
+
       if (metric === 'pending-approval') {
         if (!isAdminOrSupervisor) {
           return reply.status(403).send({ error: 'Åtkomst nekad' });
@@ -301,6 +329,58 @@ function createDailyHoursMap(weekStart: Date, entries: { date: Date; hours: numb
   });
 
   return dailyHours;
+}
+
+function buildWeeklyUserSummary(weekStart: Date, entries: any[]) {
+  const users = new Map<string, {
+    userId: string;
+    userName: string;
+    totalHours: number;
+    days: Array<{
+      date: string;
+      hours: number;
+      projectCodes: string[];
+      projectNames: string[];
+    }>;
+  }>();
+
+  for (const entry of entries) {
+    if (!users.has(entry.userId)) {
+      users.set(entry.userId, {
+        userId: entry.userId,
+        userName: entry.user.name,
+        totalHours: 0,
+        days: Array.from({ length: 7 }, (_, index) => {
+          const day = new Date(weekStart);
+          day.setDate(day.getDate() + index);
+          return {
+            date: day.toISOString().split('T')[0],
+            hours: 0,
+            projectCodes: [],
+            projectNames: [],
+          };
+        }),
+      });
+    }
+
+    const summary = users.get(entry.userId)!;
+    const entryDate = new Date(entry.date);
+    entryDate.setHours(0, 0, 0, 0);
+    const weekStartDate = new Date(weekStart);
+    weekStartDate.setHours(0, 0, 0, 0);
+    const dayIndex = Math.round((entryDate.getTime() - weekStartDate.getTime()) / 86400000);
+    const safeDayIndex = Math.max(0, Math.min(6, dayIndex));
+    const day = summary.days[safeDayIndex];
+    const projectCode = entry.project?.code || 'INTERN';
+    const projectName = entry.project?.name || 'Intern';
+
+    summary.totalHours += entry.hours;
+    day.hours += entry.hours;
+    if (!day.projectCodes.includes(projectCode)) day.projectCodes.push(projectCode);
+    if (!day.projectNames.includes(projectName)) day.projectNames.push(projectName);
+  }
+
+  return Array.from(users.values()).sort((a, b) => a.userName.localeCompare(b.userName, 'sv'));
 }
 
 async function getPendingApprovals(companyId: string, take?: number) {

@@ -14,6 +14,9 @@ export default function Reports() {
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
   const [selectedProjectId, setSelectedProjectId] = useState('');
   const [isExporting, setIsExporting] = useState(false);
+  const [isExportingBackup, setIsExportingBackup] = useState(false);
+  const [backupFromDate, setBackupFromDate] = useState(format(new Date(new Date().getFullYear(), 0, 1), 'yyyy-MM-dd'));
+  const [backupToDate, setBackupToDate] = useState(format(new Date(new Date().getFullYear(), 11, 31), 'yyyy-MM-dd'));
 
   const { data: users } = useQuery({
     queryKey: ['users'],
@@ -78,6 +81,26 @@ export default function Reports() {
       toast.error(error.message || 'Export misslyckades');
     } finally {
       setIsExporting(false);
+    }
+  };
+
+  const handleExcelBackupExport = async () => {
+    setIsExportingBackup(true);
+    try {
+      const blob = await reportsApi.timeBackupExcel(backupFromDate, backupToDate);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `tidbackup_${backupFromDate}_${backupToDate}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+      toast.success('Excel-backup klar');
+    } catch (error: any) {
+      toast.error(error.message || 'Excel-backup misslyckades');
+    } finally {
+      setIsExportingBackup(false);
     }
   };
 
@@ -245,6 +268,47 @@ export default function Reports() {
             </>
           )}
         </button>
+
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+          <div className="mb-3">
+            <h2 className="font-semibold text-slate-900">Excel-backup</h2>
+            <p className="text-sm text-slate-500">Laddar ner attesterade tider med en flik per vecka.</p>
+          </div>
+          <div className="mb-3 grid grid-cols-2 gap-4">
+            <div>
+              <label className="label">Från</label>
+              <input
+                type="date"
+                value={backupFromDate}
+                onChange={(e) => setBackupFromDate(e.target.value)}
+                className="input"
+              />
+            </div>
+            <div>
+              <label className="label">Till</label>
+              <input
+                type="date"
+                value={backupToDate}
+                onChange={(e) => setBackupToDate(e.target.value)}
+                className="input"
+              />
+            </div>
+          </div>
+          <button
+            onClick={handleExcelBackupExport}
+            disabled={isExportingBackup}
+            className="btn-secondary w-full"
+          >
+            {isExportingBackup ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <>
+                <Download className="w-4 h-4 mr-2" />
+                Ladda ner Excel-backup
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Resultat */}

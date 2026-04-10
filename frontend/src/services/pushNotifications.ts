@@ -16,7 +16,12 @@ export async function getPushStatus() {
     return { supported: false, permission: Notification.permission, hasLocalSubscription: false };
   }
 
-  const registration = await navigator.serviceWorker.register(PUSH_SW_PATH);
+  const registrations = await navigator.serviceWorker.getRegistrations();
+  const registration = registrations.find((item) => item.active?.scriptURL.endsWith(PUSH_SW_PATH));
+  if (!registration) {
+    return { supported: true, permission: Notification.permission, hasLocalSubscription: false };
+  }
+
   const subscription = await registration.pushManager.getSubscription();
 
   return {

@@ -24,11 +24,15 @@ export default function Settings() {
   const { data: pushSubscriptions = [] } = useQuery({
     queryKey: ['push-subscriptions'],
     queryFn: pushSubscriptionsApi.list,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 
   const { data: pushStatus } = useQuery({
     queryKey: ['push-status'],
     queryFn: getPushStatus,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 
   const updateSettingsMutation = useMutation({

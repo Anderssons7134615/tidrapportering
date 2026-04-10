@@ -72,7 +72,47 @@ export default function DashboardDetail() {
         </div>
       </section>
 
-      {data.kind === 'pending-approvals' ? (
+      {data.kind === 'weekly-user-summary' ? (
+        <div className="card">
+          {data.users.length === 0 ? (
+            <p className="text-sm text-slate-500">Inga tider hittades för den valda veckan.</p>
+          ) : (
+            <div className="space-y-2">
+              {data.users.map((summary) => (
+                <div key={summary.userId} className="rounded-lg border border-slate-200 bg-white px-3 py-3">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="min-w-0 lg:w-44">
+                      <p className="truncate font-semibold text-slate-900">{summary.userName}</p>
+                      <p className="text-sm text-slate-500">{summary.totalHours.toFixed(1)} h totalt</p>
+                    </div>
+                    <div className="grid flex-1 grid-cols-7 gap-1">
+                      {summary.days.map((day) => (
+                        <div key={`${summary.userId}-${day.date}`} className="min-h-16 rounded-lg bg-slate-50 px-2 py-2 text-center">
+                          <p className="text-[11px] font-semibold uppercase text-slate-500">
+                            {format(new Date(day.date), 'EEE', { locale: sv })}
+                          </p>
+                          <p className="mt-1 text-sm font-bold text-slate-900">{day.hours > 0 ? `${day.hours.toFixed(1)} h` : '-'}</p>
+                          {day.projectCodes.length > 0 && (
+                            <p className="mt-1 truncate text-[11px] text-slate-500" title={day.projectNames.join(', ')}>
+                              {day.projectCodes.join(', ')}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    <Link
+                      to={`/week?date=${format(new Date(data.period.start), 'yyyy-MM-dd')}&userId=${summary.userId}`}
+                      className="btn-secondary inline-flex shrink-0"
+                    >
+                      Öppna/rätta
+                    </Link>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : data.kind === 'pending-approvals' ? (
         <div className="card space-y-3">
           {data.approvals.length === 0 ? (
             <p className="text-sm text-slate-500">Det finns inga veckor att attestera just nu.</p>

@@ -194,9 +194,37 @@ export interface DashboardPendingApprovalDrilldown {
   approvals: WeekLock[];
 }
 
+export interface DashboardWeeklyUserDay {
+  date: string;
+  hours: number;
+  projectCodes: string[];
+  projectNames: string[];
+}
+
+export interface DashboardWeeklyUserSummary {
+  userId: string;
+  userName: string;
+  totalHours: number;
+  days: DashboardWeeklyUserDay[];
+}
+
+export interface DashboardWeeklyUserDrilldown {
+  kind: 'weekly-user-summary';
+  metric: 'weekly-hours';
+  title: string;
+  description: string;
+  totalHours: number;
+  period: {
+    start: string;
+    end: string;
+  };
+  users: DashboardWeeklyUserSummary[];
+}
+
 export type DashboardDrilldownData =
   | DashboardTimeEntryDrilldown
-  | DashboardPendingApprovalDrilldown;
+  | DashboardPendingApprovalDrilldown
+  | DashboardWeeklyUserDrilldown;
 
 export interface WeekData {
   entries: TimeEntry[];

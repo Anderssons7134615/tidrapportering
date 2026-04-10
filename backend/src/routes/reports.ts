@@ -1,4 +1,5 @@
 import { FastifyPluginAsync } from 'fastify';
+import ExcelJS from 'exceljs';
 import { prisma } from '../index.js';
 
 const requireAdminOrSupervisor = async (request: any, reply: any) => {
@@ -16,6 +17,67 @@ const requireAdminOrSupervisor = async (request: any, reply: any) => {
 };
 
 const reportRoutes: FastifyPluginAsync = async (fastify) => {
+  fastify.get('/time-backup.xlsx', {
+    preHandler: [requireAdminOrSupervisor],
+  }, async (request, reply) => {
+    const { from, to } = request.query as { from?: string; to?: string };
+
+    if (!from || !to) {
+      return reply.status(400).send({ error: 'from och to krävs' });
+    }
+
+    const entries = await prisma.timeEntry.findMany({
+      where: {
+        date: {
+          gte: new Date(from),
+          lte: getDayEnd(to),
+        },
+        status: 'APPROVED',
+        user: { companyId: request.user.companyId },
+      },
+      include: {
+        user: { select: { name: true } },
+        project: { select: { name: true, code: true } },
+        activity: { select: { name: true } },
+      },
+      orderBy: [{ date: 'asc' }, { user: { name: 'asc' } }, { createdAt: 'asc' }],
+    });
+
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'TidApp';
+    workbook.created = new Date();
+
+    const entriesByWeek = new Map<string, typeof entries>();
+    for (const entry of entries) {
+      const weekStart = getWeekStart(entry.date);
+      const key = weekStart.toISOString();
+      if (!entriesByWeek.has(key)) entriesByWeek.set(key, []);
+      entriesByWeek.get(key)!.push(entry);
+    }
+
+    if (entriesByWeek.size === 0) {
+      addBackupWorksheet(workbook, `Tom ${from}`, []);
+    } else {
+      for (const [weekKey, weekEntries] of Array.from(entriesByWeek.entries()).sort(([a], [b]) => a.localeCompare(b))) {
+        const weekStart = new Date(weekKey);
+        addBackupWorksheet(workbook, `v${getISOWeek(weekStart)} ${weekStart.getFullYear()}`, weekEntries);
+      }
+    }
+
+    await prisma.auditLog.create({
+      data: {
+        userId: request.user.id,
+        action: 'EXPORT',
+        entityType: 'TimeBackupExcel',
+        newValue: JSON.stringify({ from, to, rowCount: entries.length }),
+      },
+    });
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    reply.header('Content-Disposition', `attachment; filename="tidbackup_${from}_${to}.xlsx"`);
+    return reply.send(Buffer.from(buffer));
+  });
   // Löneunderlag
   fastify.get('/salary', {
     preHandler: [requireAdminOrSupervisor],
@@ -336,6 +398,66 @@ function getDayEnd(date: string): Date {
   const d = new Date(date);
   d.setHours(23, 59, 59, 999);
   return d;
+}
+
+function getWeekStart(date: Date): Date {
+  const d = new Date(date);
+  const day = d.getDay();
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+  d.setDate(diff);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function getISOWeek(date: Date): number {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNumber = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNumber);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+}
+
+function addBackupWorksheet(workbook: ExcelJS.Workbook, name: string, entries: any[]) {
+  const worksheet = workbook.addWorksheet(name.slice(0, 31));
+  worksheet.columns = [
+    { header: 'Datum', key: 'date', width: 14 },
+    { header: 'Anställd', key: 'user', width: 24 },
+    { header: 'Projektkod', key: 'projectCode', width: 14 },
+    { header: 'Projekt', key: 'project', width: 28 },
+    { header: 'Aktivitet', key: 'activity', width: 24 },
+    { header: 'Timmar', key: 'hours', width: 12 },
+    { header: 'Fakturerbar', key: 'billable', width: 14 },
+    { header: 'Status', key: 'status', width: 14 },
+    { header: 'Notering', key: 'note', width: 36 },
+  ];
+
+  worksheet.getRow(1).font = { bold: true };
+  worksheet.getRow(1).fill = {
+    type: 'pattern',
+    pattern: 'solid',
+    fgColor: { argb: 'FFE2E8F0' },
+  };
+
+  for (const entry of entries) {
+    worksheet.addRow({
+      date: entry.date.toISOString().split('T')[0],
+      user: entry.user.name,
+      projectCode: entry.project?.code || 'INTERN',
+      project: entry.project?.name || 'Intern',
+      activity: entry.activity?.name || '',
+      hours: entry.hours,
+      billable: entry.billable ? 'Ja' : 'Nej',
+      status: entry.status,
+      note: entry.note || '',
+    });
+  }
+
+  worksheet.getColumn('hours').numFmt = '0.00';
+  worksheet.views = [{ state: 'frozen', ySplit: 1 }];
+  worksheet.autoFilter = {
+    from: { row: 1, column: 1 },
+    to: { row: Math.max(entries.length + 1, 1), column: 9 },
+  };
 }
 
 export default reportRoutes;

@@ -114,6 +114,7 @@ export default function WeekView() {
   const { trigger: haptic } = useHaptic();
 
   const dateParam = searchParams.get('date');
+  const userIdParam = searchParams.get('userId');
   const [selectedDate, setSelectedDate] = useState(() => {
     if (dateParam) return new Date(dateParam);
     return startOfWeek(new Date(), { weekStartsOn: 1 });
@@ -123,8 +124,8 @@ export default function WeekView() {
   const weekStartStr = format(weekStart, 'yyyy-MM-dd');
 
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['week', weekStartStr],
-    queryFn: () => timeEntriesApi.getWeek(weekStartStr),
+    queryKey: ['week', weekStartStr, userIdParam],
+    queryFn: () => timeEntriesApi.getWeek(weekStartStr, userIdParam || undefined),
   });
 
   const deleteMutation = useMutation({

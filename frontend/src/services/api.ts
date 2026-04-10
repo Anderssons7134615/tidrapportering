@@ -55,6 +55,31 @@ async function fetchApi<T>(
   return response.json();
 }
 
+async function fetchBlob(endpoint: string, options: RequestInit = {}): Promise<Blob> {
+  const token = useAuthStore.getState().token;
+
+  const response = await fetch(`${API_BASE}${endpoint}`, {
+    ...options,
+    headers: {
+      ...(token && { Authorization: `Bearer ${token}` }),
+      ...options.headers,
+    },
+  });
+
+  if (response.status === 401) {
+    useAuthStore.getState().logout();
+    window.location.href = '/login';
+    throw new Error('Unauthorized');
+  }
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: 'Ett fel uppstod' }));
+    throw new Error(error.error || 'Ett fel uppstod');
+  }
+
+  return response.blob();
+}
+
 // Auth
 export const authApi = {
   login: (email: string, password: string) =>
@@ -241,6 +266,10 @@ export const reportsApi = {
     if (to) params.set('to', to);
     const query = params.toString();
     return fetchApi<any>(`/reports/project/${id}${query ? `?${query}` : ''}`);
+  },
+  timeBackupExcel: (from: string, to: string) => {
+    const params = new URLSearchParams({ from, to });
+    return fetchBlob(`/reports/time-backup.xlsx?${params.toString()}`);
   },
 };
 
