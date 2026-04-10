@@ -9,6 +9,7 @@
     "build": "prisma generate && tsc",
     "start": "prisma migrate deploy && tsx prisma/seed-if-empty.ts && node dist/index.js",
     "db:generate": "prisma generate",
+    "db:push": "prisma migrate deploy",
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
     "db:seed:safe": "tsx prisma/seed-if-empty.ts",
