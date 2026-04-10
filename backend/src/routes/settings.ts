@@ -14,6 +14,10 @@ const settingsSchema = z.object({
 
 const requireAdmin = async (request: any, reply: any) => {
   await request.jwtVerify();
+  const user = await prisma.user.findUnique({ where: { id: request.user.id }, select: { active: true, companyId: true } });
+  if (!user || !user.active || user.companyId !== request.user.companyId) {
+    return reply.status(401).send({ error: 'Unauthorized' });
+  }
   if (request.user.role !== 'ADMIN') {
     return reply.status(403).send({ error: 'Endast admin har åtkomst' });
   }

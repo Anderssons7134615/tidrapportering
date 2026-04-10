@@ -11,9 +11,6 @@ import type {
   DashboardDrilldownData,
   DashboardMetric,
   WeekData,
-  WorkItem,
-  WorkLog,
-  WorkLogStats,
   ProjectManagerSummary,
   TeamWeekSummary,
   PushSubscriptionInfo,
@@ -268,62 +265,6 @@ export const pushSubscriptionsApi = {
       method: 'DELETE',
       body: JSON.stringify({ endpoint }),
     }),
-};
-
-// Work Items
-export const workItemsApi = {
-  list: (active?: boolean) =>
-    fetchApi<WorkItem[]>(`/work-items${active !== undefined ? `?active=${active}` : ''}`),
-  create: (data: Partial<WorkItem>) =>
-    fetchApi<WorkItem>('/work-items', { method: 'POST', body: JSON.stringify(data) }),
-  update: (id: string, data: Partial<WorkItem>) =>
-    fetchApi<WorkItem>(`/work-items/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-  delete: (id: string) =>
-    fetchApi<{ message: string }>(`/work-items/${id}`, { method: 'DELETE' }),
-  importExcel: async (file: File) => {
-    const token = useAuthStore.getState().token;
-    const formData = new FormData();
-    formData.append('file', file);
-
-    const response = await fetch(`${API_BASE}/work-items/import-excel`, {
-      method: 'POST',
-      headers: {
-        ...(token && { Authorization: `Bearer ${token}` }),
-      },
-      body: formData,
-    });
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Ett fel uppstod' }));
-      throw new Error(error.error || 'Ett fel uppstod vid import');
-    }
-
-    return response.json() as Promise<{ created: number; updated: number; deactivated: number; totalRows: number }>;
-  },
-};
-
-// Work Logs
-export const workLogsApi = {
-  list: (params?: { workItemId?: string; projectId?: string; from?: string; to?: string }) => {
-    const searchParams = new URLSearchParams();
-    if (params?.workItemId) searchParams.set('workItemId', params.workItemId);
-    if (params?.projectId) searchParams.set('projectId', params.projectId);
-    if (params?.from) searchParams.set('from', params.from);
-    if (params?.to) searchParams.set('to', params.to);
-    const query = searchParams.toString();
-    return fetchApi<WorkLog[]>(`/work-logs${query ? `?${query}` : ''}`);
-  },
-  create: (data: { workItemId: string; projectId?: string; date: string; quantity: number; minutes: number; note?: string }) =>
-    fetchApi<WorkLog>('/work-logs', { method: 'POST', body: JSON.stringify(data) }),
-  delete: (id: string) =>
-    fetchApi<{ message: string }>(`/work-logs/${id}`, { method: 'DELETE' }),
-  getStats: (params?: { from?: string; to?: string }) => {
-    const searchParams = new URLSearchParams();
-    if (params?.from) searchParams.set('from', params.from);
-    if (params?.to) searchParams.set('to', params.to);
-    const query = searchParams.toString();
-    return fetchApi<WorkLogStats[]>(`/work-logs/stats${query ? `?${query}` : ''}`);
-  },
 };
 
 // Dashboard

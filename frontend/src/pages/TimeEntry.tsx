@@ -86,6 +86,8 @@ export default function TimeEntry() {
       setTimeout(() => setSaved(false), 2000);
       queryClient.invalidateQueries({ queryKey: ['timeEntries'] });
       queryClient.invalidateQueries({ queryKey: ['week'] });
+      queryClient.invalidateQueries({ queryKey: ['weekLocks'] });
+      queryClient.invalidateQueries({ queryKey: ['team-week-summary'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       setHours('');
       setNote('');
@@ -108,6 +110,8 @@ export default function TimeEntry() {
       queryClient.invalidateQueries({ queryKey: ['timeEntries'] });
       queryClient.invalidateQueries({ queryKey: ['timeEntry', variables.id] });
       queryClient.invalidateQueries({ queryKey: ['week'] });
+      queryClient.invalidateQueries({ queryKey: ['weekLocks'] });
+      queryClient.invalidateQueries({ queryKey: ['team-week-summary'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       navigate(`/week?date=${variables.data.date}`);
     },

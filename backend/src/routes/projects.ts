@@ -16,6 +16,10 @@ const projectSchema = z.object({
 
 const requireAdminOrSupervisor = async (request: any, reply: any) => {
   await request.jwtVerify();
+  const user = await prisma.user.findUnique({ where: { id: request.user.id }, select: { active: true, companyId: true } });
+  if (!user || !user.active || user.companyId !== request.user.companyId) {
+    return reply.status(401).send({ error: 'Unauthorized' });
+  }
   if (!['ADMIN', 'SUPERVISOR'].includes(request.user.role)) {
     return reply.status(403).send({ error: 'Åtkomst nekad' });
   }
@@ -136,7 +140,7 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
 
     const where: any = { projectId: id };
     if (from) where.date = { ...where.date, gte: new Date(from) };
-    if (to) where.date = { ...where.date, lte: new Date(to) };
+    if (to) where.date = { ...where.date, lte: getDayEnd(to) };
 
     const entries = await prisma.timeEntry.findMany({
       where,
@@ -174,7 +178,7 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
     };
 
     if (from) where.date = { ...where.date, gte: new Date(from) };
-    if (to) where.date = { ...where.date, lte: new Date(to) };
+    if (to) where.date = { ...where.date, lte: getDayEnd(to) };
 
     const entries = await prisma.timeEntry.findMany({
       where,
@@ -443,7 +447,6 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
     await prisma.$transaction([
       prisma.attachment.deleteMany({ where: { timeEntry: { projectId: id } } }),
       prisma.timeEntry.deleteMany({ where: { projectId: id } }),
-      prisma.workLog.deleteMany({ where: { projectId: id } }),
       prisma.project.delete({ where: { id } }),
     ]);
 
@@ -460,5 +463,11 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
     return { message: 'Projekt raderat permanent' };
   });
 };
+
+function getDayEnd(date: string): Date {
+  const d = new Date(date);
+  d.setHours(23, 59, 59, 999);
+  return d;
+}
 
 export default projectRoutes;

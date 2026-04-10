@@ -15,7 +15,6 @@ import {
 import { dashboardApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
 import { useOfflineStore } from '../stores/offlineStore';
-import { useSync } from '../hooks/useSync';
 import { DashboardSkeleton } from '../components/ui/Skeleton';
 import type { DashboardMetric } from '../types';
 
@@ -30,7 +29,6 @@ type StatCard = {
 export default function Dashboard() {
   const { user } = useAuthStore();
   const { pendingEntries, isOnline } = useOfflineStore();
-  useSync();
 
   const { data, isLoading } = useQuery({
     queryKey: ['dashboard'],
@@ -256,6 +254,32 @@ export default function Dashboard() {
                     </div>
                     <span className="badge-yellow">Väntar</span>
                   </Link>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {isAdminOrSupervisor && data?.recentEntries && data.recentEntries.length > 0 && (
+            <div className="card">
+              <div className="mb-4 flex items-center justify-between">
+                <h2 className="section-title">Senast rapporterat</h2>
+                <Link to="/team-week" className="text-sm font-semibold text-primary-700 hover:text-primary-600">
+                  Teamvecka
+                </Link>
+              </div>
+              <div className="space-y-3">
+                {data.recentEntries.map((entry) => (
+                  <div key={entry.id} className="surface-muted flex items-center justify-between gap-3 px-4 py-3">
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold text-slate-900">
+                        {entry.user?.name || 'Okänd'} - {entry.project?.name || 'Intern'}
+                      </p>
+                      <p className="text-sm text-slate-500">
+                        {format(new Date(entry.date), 'EEE d MMM', { locale: sv })} - {entry.activity?.name || 'Tid'}
+                      </p>
+                    </div>
+                    <span className="shrink-0 font-semibold text-slate-900">{entry.hours.toFixed(1)} h</span>
+                  </div>
                 ))}
               </div>
             </div>

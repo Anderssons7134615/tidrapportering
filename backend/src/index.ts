@@ -20,8 +20,6 @@ import weekLockRoutes from './routes/weekLocks.js';
 import reportRoutes from './routes/reports.js';
 import settingsRoutes from './routes/settings.js';
 import dashboardRoutes from './routes/dashboard.js';
-import workItemRoutes from './routes/workItems.js';
-import workLogRoutes from './routes/workLogs.js';
 import pushSubscriptionRoutes from './routes/pushSubscriptions.js';
 import reminderRoutes from './routes/reminders.js';
 
@@ -138,8 +136,6 @@ fastify.register(weekLockRoutes, { prefix: '/api/week-locks' });
 fastify.register(reportRoutes, { prefix: '/api/reports' });
 fastify.register(settingsRoutes, { prefix: '/api/settings' });
 fastify.register(dashboardRoutes, { prefix: '/api/dashboard' });
-fastify.register(workItemRoutes, { prefix: '/api/work-items' });
-fastify.register(workLogRoutes, { prefix: '/api/work-logs' });
 fastify.register(pushSubscriptionRoutes, { prefix: '/api/push-subscriptions' });
 fastify.register(reminderRoutes, { prefix: '/api/reminders' });
 
@@ -147,71 +143,9 @@ fastify.register(reminderRoutes, { prefix: '/api/reminders' });
 fastify.get('/api/health', async () => {
   return { status: 'ok', timestamp: new Date().toISOString() };
 });
-
-// Enkel migrationssäkring för miljöer som inte hunnit köra Prisma migration/db push
-const ensureProjectResultsVisibilityColumn = async () => {
-  try {
-    await prisma.$executeRawUnsafe(`
-      ALTER TABLE "Project"
-      ADD COLUMN "employeeCanSeeResults" BOOLEAN NOT NULL DEFAULT false
-    `);
-    fastify.log.info('La till Project.employeeCanSeeResults');
-  } catch (error: any) {
-    const message = String(error?.message || '').toLowerCase();
-    const code = String(error?.code || '');
-
-    // Kolumnen finns redan -> OK
-    if (
-      code === 'P2010' ||
-      message.includes('duplicate column') ||
-      message.includes('already exists') ||
-      message.includes('duplicate column name')
-    ) {
-      fastify.log.debug('Project.employeeCanSeeResults finns redan');
-      return;
-    }
-
-    throw error;
-  }
-};
-
-const ensureWorkItemPriceColumns = async () => {
-  const addColumnIfMissing = async (columnSql: string, debugLabel: string) => {
-    try {
-      await prisma.$executeRawUnsafe(columnSql);
-      fastify.log.info(`La till ${debugLabel}`);
-    } catch (error: any) {
-      const message = String(error?.message || '').toLowerCase();
-      const code = String(error?.code || '');
-      if (
-        code === 'P2010' ||
-        message.includes('duplicate column') ||
-        message.includes('already exists') ||
-        message.includes('duplicate column name')
-      ) {
-        fastify.log.debug(`${debugLabel} finns redan`);
-        return;
-      }
-      throw error;
-    }
-  };
-
-  await addColumnIfMissing(
-    `ALTER TABLE "WorkItem" ADD COLUMN "unitPrice" DOUBLE PRECISION`,
-    'WorkItem.unitPrice'
-  );
-  await addColumnIfMissing(
-    `ALTER TABLE "WorkItem" ADD COLUMN "grossPrice" DOUBLE PRECISION`,
-    'WorkItem.grossPrice'
-  );
-};
-
 // Start server
 const start = async () => {
   try {
-    await ensureProjectResultsVisibilityColumn();
-    await ensureWorkItemPriceColumns();
-
     const port = parseInt(process.env.PORT || '3001');
     await fastify.listen({ port, host: '0.0.0.0' });
     console.log(`🚀 Server körs på http://localhost:${port}`);

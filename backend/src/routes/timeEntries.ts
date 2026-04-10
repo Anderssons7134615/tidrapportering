@@ -30,7 +30,7 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
   // List time entries (for current user or all if admin/supervisor)
   fastify.get('/', {
     preHandler: [fastify.authenticate],
-  }, async (request) => {
+  }, async (request, reply) => {
     const { from, to, userId, projectId, status } = request.query as {
       from?: string;
       to?: string;
@@ -49,7 +49,7 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     if (from) where.date = { ...where.date, gte: new Date(from) };
-    if (to) where.date = { ...where.date, lte: new Date(to) };
+    if (to) where.date = { ...where.date, lte: getDayEnd(to) };
     if (projectId) where.projectId = projectId;
     if (status) where.status = status;
 
@@ -78,8 +78,7 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
 
     const { weekStart } = request.params as { weekStart: string };
     const startDate = new Date(weekStart);
-    const endDate = new Date(startDate);
-    endDate.setDate(endDate.getDate() + 6);
+    const endDate = getWeekEnd(startDate);
 
     const users = await prisma.user.findMany({
       where: { companyId: request.user.companyId, active: true },
@@ -96,9 +95,12 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
         select: {
           id: true,
           userId: true,
+          date: true,
+          createdAt: true,
           hours: true,
           billable: true,
           projectId: true,
+          activity: { select: { id: true, name: true, code: true } },
           project: { select: { id: true, name: true, code: true } },
         },
       }),
@@ -165,6 +167,9 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
         entryCount: userEntries.length,
         status: weekLockByUser.get(u.id) || 'DRAFT',
         projects: Array.from(projectMap.values()).sort((a, b) => b.hours - a.hours),
+        entries: userEntries
+          .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+          .slice(0, 8),
       };
     });
 
@@ -182,17 +187,25 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
   // Get entries for a specific week
   fastify.get('/week/:weekStart', {
     preHandler: [fastify.authenticate],
-  }, async (request) => {
+  }, async (request, reply) => {
     const { weekStart } = request.params as { weekStart: string };
     const { userId } = request.query as { userId?: string };
 
     const startDate = new Date(weekStart);
-    const endDate = new Date(startDate);
-    endDate.setDate(endDate.getDate() + 6);
+    const endDate = getWeekEnd(startDate);
 
     const targetUserId = request.user.role === 'EMPLOYEE'
       ? request.user.id
       : (userId || request.user.id);
+
+    if (targetUserId !== request.user.id) {
+      const targetUser = await prisma.user.findFirst({
+        where: { id: targetUserId, companyId: request.user.companyId },
+        select: { id: true },
+      });
+
+      if (!targetUser) return reply.status(404).send({ error: 'Användare hittades inte' });
+    }
 
     const entries = await prisma.timeEntry.findMany({
       where: {
@@ -283,6 +296,17 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
         ? body.userId
         : request.user.id;
 
+      const validation = await validateEntryReferences({
+        companyId: request.user.companyId,
+        targetUserId,
+        activityId: body.activityId,
+        projectId: body.projectId,
+      });
+
+      if (validation.error) {
+        return reply.status(400).send({ error: validation.error });
+      }
+
       // Kontrollera om veckan är låst
       const weekStart = getWeekStart(body.date);
       const weekLock = await prisma.weekLock.findUnique({
@@ -298,57 +322,35 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(400).send({ error: 'Veckan är låst för redigering' });
       }
 
-      // Hämta aktivitet för att sätta billable default
-      const activity = await prisma.activity.findUnique({
-        where: { id: body.activityId },
-      });
-
-      const entry = await prisma.timeEntry.create({
-        data: {
-          ...body,
-          userId: targetUserId,
-          billable: body.billable ?? activity?.billableDefault ?? true,
-          status: 'SUBMITTED',
-          submittedAt: new Date(),
-          rejectNote: null,
-        },
-        include: {
-          project: { select: { id: true, name: true, code: true, site: true } },
-          activity: { select: { id: true, name: true, code: true } },
-        },
-      });
-
-      // Säkerställ att vecka syns för attest direkt (realtime)
-      await prisma.weekLock.upsert({
-        where: {
-          userId_weekStartDate: {
+      const entry = await prisma.$transaction(async (tx) => {
+        const created = await tx.timeEntry.create({
+          data: {
+            ...body,
             userId: targetUserId,
-            weekStartDate: weekStart,
+            billable: body.billable ?? validation.activity?.billableDefault ?? true,
+            status: 'SUBMITTED',
+            submittedAt: new Date(),
+            rejectNote: null,
           },
-        },
-        update: {
-          status: 'SUBMITTED',
-          submittedAt: new Date(),
-          comment: null,
-          reviewedAt: null,
-          reviewerId: null,
-        },
-        create: {
-          userId: targetUserId,
-          weekStartDate: weekStart,
-          status: 'SUBMITTED',
-        },
-      });
+          include: {
+            project: { select: { id: true, name: true, code: true, site: true } },
+            activity: { select: { id: true, name: true, code: true } },
+          },
+        });
 
-      // Audit log
-      await prisma.auditLog.create({
-        data: {
-          userId: request.user.id,
-          action: 'CREATE',
-          entityType: 'TimeEntry',
-          entityId: entry.id,
-          newValue: JSON.stringify({ date: entry.date, hours: entry.hours, projectId: entry.projectId }),
-        },
+        await upsertSubmittedWeekLock(tx, targetUserId, weekStart);
+
+        await tx.auditLog.create({
+          data: {
+            userId: request.user.id,
+            action: 'CREATE',
+            entityType: 'TimeEntry',
+            entityId: created.id,
+            newValue: JSON.stringify({ date: created.date, hours: created.hours, projectId: created.projectId }),
+          },
+        });
+
+        return created;
       });
 
       return reply.status(201).send(entry);
@@ -371,6 +373,18 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
       for (const entry of entries) {
         const { localId, id, ...data } = entry;
 
+        const validation = await validateEntryReferences({
+          companyId: request.user.companyId,
+          targetUserId: request.user.id,
+          activityId: data.activityId,
+          projectId: data.projectId,
+        });
+
+        if (validation.error) {
+          results.push({ localId, error: validation.error });
+          continue;
+        }
+
         // Kontrollera om veckan är låst
         const weekStart = getWeekStart(data.date);
         const weekLock = await prisma.weekLock.findUnique({
@@ -387,47 +401,26 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
           continue;
         }
 
-        // Hämta aktivitet för billable default
-        const activity = await prisma.activity.findUnique({
-          where: { id: data.activityId },
-        });
-
         if (id) {
           // Uppdatera befintlig
           const existing = await prisma.timeEntry.findUnique({ where: { id } });
           if (existing && existing.userId === request.user.id && existing.status !== 'APPROVED') {
-            const updated = await prisma.timeEntry.update({
-              where: { id },
-              data: {
-                ...data,
-                billable: data.billable ?? activity?.billableDefault ?? true,
-                status: 'SUBMITTED',
-                submittedAt: new Date(),
-                approvedAt: null,
-                approverId: null,
-                rejectNote: null,
-              },
-            });
-
-            await prisma.weekLock.upsert({
-              where: {
-                userId_weekStartDate: {
-                  userId: request.user.id,
-                  weekStartDate: weekStart,
+            const updated = await prisma.$transaction(async (tx) => {
+              const row = await tx.timeEntry.update({
+                where: { id },
+                data: {
+                  ...data,
+                  billable: data.billable ?? validation.activity?.billableDefault ?? true,
+                  status: 'SUBMITTED',
+                  submittedAt: new Date(),
+                  approvedAt: null,
+                  approverId: null,
+                  rejectNote: null,
                 },
-              },
-              update: {
-                status: 'SUBMITTED',
-                submittedAt: new Date(),
-                comment: null,
-                reviewedAt: null,
-                reviewerId: null,
-              },
-              create: {
-                userId: request.user.id,
-                weekStartDate: weekStart,
-                status: 'SUBMITTED',
-              },
+              });
+
+              await upsertSubmittedWeekLock(tx, request.user.id, weekStart);
+              return row;
             });
 
             results.push({ localId, id: updated.id, synced: true });
@@ -436,36 +429,20 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
           }
         } else {
           // Skapa ny
-          const created = await prisma.timeEntry.create({
-            data: {
-              ...data,
-              userId: request.user.id,
-              billable: data.billable ?? activity?.billableDefault ?? true,
-              status: 'SUBMITTED',
-              submittedAt: new Date(),
-              rejectNote: null,
-            },
-          });
-
-          await prisma.weekLock.upsert({
-            where: {
-              userId_weekStartDate: {
+          const created = await prisma.$transaction(async (tx) => {
+            const row = await tx.timeEntry.create({
+              data: {
+                ...data,
                 userId: request.user.id,
-                weekStartDate: weekStart,
+                billable: data.billable ?? validation.activity?.billableDefault ?? true,
+                status: 'SUBMITTED',
+                submittedAt: new Date(),
+                rejectNote: null,
               },
-            },
-            update: {
-              status: 'SUBMITTED',
-              submittedAt: new Date(),
-              comment: null,
-              reviewedAt: null,
-              reviewerId: null,
-            },
-            create: {
-              userId: request.user.id,
-              weekStartDate: weekStart,
-              status: 'SUBMITTED',
-            },
+            });
+
+            await upsertSubmittedWeekLock(tx, request.user.id, weekStart);
+            return row;
           });
 
           results.push({ localId, id: created.id, synced: true });
@@ -504,58 +481,59 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(400).send({ error: 'Kan inte redigera godkänd tidrad' });
       }
 
+      const targetUserId = body.userId && ['ADMIN', 'SUPERVISOR'].includes(request.user.role)
+        ? body.userId
+        : entry.userId;
+      const validation = await validateEntryReferences({
+        companyId: request.user.companyId,
+        targetUserId,
+        activityId: body.activityId,
+        projectId: body.projectId,
+      });
+
+      if (validation.error) {
+        return reply.status(400).send({ error: validation.error });
+      }
+
+      const updateBody = {
+        ...body,
+        userId: targetUserId,
+      };
       const oldValue = { date: entry.date, hours: entry.hours, note: entry.note };
 
-      const updatedEntry = await prisma.timeEntry.update({
-        where: { id },
-        data: entry.status === 'APPROVED'
-          ? body
-          : {
-              ...body,
-              status: 'SUBMITTED',
-              submittedAt: new Date(),
-              approvedAt: null,
-              approverId: null,
-              rejectNote: null,
-            },
-        include: {
-          project: { select: { id: true, name: true, code: true, site: true } },
-          activity: { select: { id: true, name: true, code: true } },
-        },
-      });
-
-      const entryWeekStart = getWeekStart(entry.date);
-      await prisma.weekLock.upsert({
-        where: {
-          userId_weekStartDate: {
-            userId: entry.userId,
-            weekStartDate: entryWeekStart,
+      const updatedEntry = await prisma.$transaction(async (tx) => {
+        const updated = await tx.timeEntry.update({
+          where: { id },
+          data: entry.status === 'APPROVED'
+            ? updateBody
+            : {
+                ...updateBody,
+                status: 'SUBMITTED',
+                submittedAt: new Date(),
+                approvedAt: null,
+                approverId: null,
+                rejectNote: null,
+              },
+          include: {
+            project: { select: { id: true, name: true, code: true, site: true } },
+            activity: { select: { id: true, name: true, code: true } },
           },
-        },
-        update: {
-          status: 'SUBMITTED',
-          submittedAt: new Date(),
-          comment: null,
-          reviewedAt: null,
-          reviewerId: null,
-        },
-        create: {
-          userId: entry.userId,
-          weekStartDate: entryWeekStart,
-          status: 'SUBMITTED',
-        },
-      });
+        });
 
-      // Audit log
-      await prisma.auditLog.create({
-        data: {
-          userId: request.user.id,
-          action: 'UPDATE',
-          entityType: 'TimeEntry',
-          entityId: id,
-          oldValue: JSON.stringify(oldValue),
-          newValue: JSON.stringify(body),
-        },
+        await upsertSubmittedWeekLock(tx, updated.userId, getWeekStart(updated.date));
+
+        await tx.auditLog.create({
+          data: {
+            userId: request.user.id,
+            action: 'UPDATE',
+            entityType: 'TimeEntry',
+            entityId: id,
+            oldValue: JSON.stringify(oldValue),
+            newValue: JSON.stringify(updateBody),
+          },
+        });
+
+        return updated;
       });
 
       return updatedEntry;
@@ -591,8 +569,7 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
     await prisma.timeEntry.delete({ where: { id } });
 
     const weekStart = getWeekStart(entry.date);
-    const weekEnd = new Date(weekStart);
-    weekEnd.setDate(weekEnd.getDate() + 6);
+    const weekEnd = getWeekEnd(weekStart);
 
     const remainingCount = await prisma.timeEntry.count({
       where: {
@@ -731,6 +708,87 @@ function getWeekStart(date: Date): Date {
   d.setDate(diff);
   d.setHours(0, 0, 0, 0);
   return d;
+}
+
+function getWeekEnd(date: Date): Date {
+  const d = new Date(date);
+  d.setDate(d.getDate() + 6);
+  d.setHours(23, 59, 59, 999);
+  return d;
+}
+
+function getDayEnd(date: string): Date {
+  const d = new Date(date);
+  d.setHours(23, 59, 59, 999);
+  return d;
+}
+
+async function upsertSubmittedWeekLock(tx: any, userId: string, weekStartDate: Date) {
+  return tx.weekLock.upsert({
+    where: {
+      userId_weekStartDate: {
+        userId,
+        weekStartDate,
+      },
+    },
+    update: {
+      status: 'SUBMITTED',
+      submittedAt: new Date(),
+      comment: null,
+      reviewedAt: null,
+      reviewerId: null,
+    },
+    create: {
+      userId,
+      weekStartDate,
+      status: 'SUBMITTED',
+    },
+  });
+}
+
+async function validateEntryReferences({
+  companyId,
+  targetUserId,
+  activityId,
+  projectId,
+}: {
+  companyId: string;
+  targetUserId: string;
+  activityId?: string;
+  projectId?: string | null;
+}) {
+  const [targetUser, activity, project] = await Promise.all([
+    prisma.user.findFirst({
+      where: { id: targetUserId, companyId, active: true },
+      select: { id: true },
+    }),
+    activityId
+      ? prisma.activity.findFirst({
+          where: { id: activityId, companyId },
+          select: { id: true, billableDefault: true },
+        })
+      : Promise.resolve(null),
+    projectId
+      ? prisma.project.findFirst({
+          where: { id: projectId, companyId },
+          select: { id: true },
+        })
+      : Promise.resolve(null),
+  ]);
+
+  if (!targetUser) {
+    return { error: 'Användaren tillhör inte företaget eller är inaktiv', activity: null };
+  }
+
+  if (activityId && !activity) {
+    return { error: 'Aktiviteten tillhör inte företaget', activity: null };
+  }
+
+  if (projectId && !project) {
+    return { error: 'Projektet tillhör inte företaget', activity: null };
+  }
+
+  return { error: null, activity };
 }
 
 export default timeEntryRoutes;

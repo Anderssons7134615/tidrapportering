@@ -26,19 +26,44 @@ const backfillDraftWeeksToSubmitted = async (companyId: string) => {
 
   const weekKeySet = new Set<string>();
   const weekPairs: Array<{ userId: string; weekStartDate: Date }> = [];
+  const weekKeyByEntryId = new Map<string, string>();
 
   for (const entry of draftEntries) {
     const weekStartDate = getWeekStart(entry.date);
     const key = `${entry.userId}_${weekStartDate.toISOString()}`;
+    weekKeyByEntryId.set(entry.id, key);
     if (!weekKeySet.has(key)) {
       weekKeySet.add(key);
       weekPairs.push({ userId: entry.userId, weekStartDate });
     }
   }
 
+  const existingLocks = await prisma.weekLock.findMany({
+    where: {
+      OR: weekPairs.map((pair) => ({
+        userId: pair.userId,
+        weekStartDate: pair.weekStartDate,
+      })),
+    },
+    select: { userId: true, weekStartDate: true },
+  });
+  const lockedWeeks = new Set(
+    existingLocks.map((lock) => `${lock.userId}_${lock.weekStartDate.toISOString()}`)
+  );
+  const eligibleEntryIds = draftEntries
+    .filter((entry) => !lockedWeeks.has(weekKeyByEntryId.get(entry.id) || ''))
+    .map((entry) => entry.id);
+  const eligibleWeekPairs = weekPairs.filter(
+    (pair) => !lockedWeeks.has(`${pair.userId}_${pair.weekStartDate.toISOString()}`)
+  );
+
+  if (!eligibleEntryIds.length) {
+    return { entriesUpdated: 0, weekLocksUpserted: 0 };
+  }
+
   await prisma.timeEntry.updateMany({
     where: {
-      id: { in: draftEntries.map((e) => e.id) },
+      id: { in: eligibleEntryIds },
       status: 'DRAFT',
     },
     data: {
@@ -47,7 +72,7 @@ const backfillDraftWeeksToSubmitted = async (companyId: string) => {
     },
   });
 
-  for (const pair of weekPairs) {
+  for (const pair of eligibleWeekPairs) {
     await prisma.weekLock.upsert({
       where: {
         userId_weekStartDate: {
@@ -71,8 +96,8 @@ const backfillDraftWeeksToSubmitted = async (companyId: string) => {
   }
 
   return {
-    entriesUpdated: draftEntries.length,
-    weekLocksUpserted: weekPairs.length,
+    entriesUpdated: eligibleEntryIds.length,
+    weekLocksUpserted: eligibleWeekPairs.length,
   };
 };
 
@@ -110,6 +135,7 @@ const weekLockRoutes: FastifyPluginAsync = async (fastify) => {
       locks.map(async (lock) => {
         const weekEnd = new Date(lock.weekStartDate);
         weekEnd.setDate(weekEnd.getDate() + 6);
+        weekEnd.setHours(23, 59, 59, 999);
 
         const stats = await prisma.timeEntry.aggregate({
           where: {
@@ -191,6 +217,7 @@ const weekLockRoutes: FastifyPluginAsync = async (fastify) => {
       // Kontrollera att det finns tidrader för veckan
       const weekEnd = new Date(body.weekStartDate);
       weekEnd.setDate(weekEnd.getDate() + 6);
+      weekEnd.setHours(23, 59, 59, 999);
 
       const entryCount = await prisma.timeEntry.count({
         where: {
@@ -313,6 +340,7 @@ const weekLockRoutes: FastifyPluginAsync = async (fastify) => {
     // Uppdatera tidrader
     const weekEnd = new Date(weekLock.weekStartDate);
     weekEnd.setDate(weekEnd.getDate() + 6);
+    weekEnd.setHours(23, 59, 59, 999);
 
     await prisma.timeEntry.updateMany({
       where: {
@@ -383,6 +411,7 @@ const weekLockRoutes: FastifyPluginAsync = async (fastify) => {
       // Uppdatera tidrader tillbaka till DRAFT
       const weekEnd = new Date(weekLock.weekStartDate);
       weekEnd.setDate(weekEnd.getDate() + 6);
+      weekEnd.setHours(23, 59, 59, 999);
 
       await prisma.timeEntry.updateMany({
         where: {
@@ -437,6 +466,7 @@ const weekLockRoutes: FastifyPluginAsync = async (fastify) => {
     // Uppdatera tidrader tillbaka till DRAFT
     const weekEnd = new Date(weekLock.weekStartDate);
     weekEnd.setDate(weekEnd.getDate() + 6);
+    weekEnd.setHours(23, 59, 59, 999);
 
     await prisma.timeEntry.updateMany({
       where: {
@@ -455,8 +485,15 @@ const weekLockRoutes: FastifyPluginAsync = async (fastify) => {
       },
     });
 
-    // Ta bort veckolås
-    await prisma.weekLock.delete({ where: { id } });
+    await prisma.weekLock.update({
+      where: { id },
+      data: {
+        status: 'DRAFT',
+        comment: null,
+        reviewedAt: null,
+        reviewerId: null,
+      },
+    });
 
     // Audit log
     await prisma.auditLog.create({

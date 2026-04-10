@@ -22,6 +22,10 @@ const updateUserSchema = z.object({
 // Middleware för att kontrollera admin/supervisor
 const requireAdminOrSupervisor = async (request: any, reply: any) => {
   await request.jwtVerify();
+  const user = await prisma.user.findUnique({ where: { id: request.user.id }, select: { active: true, companyId: true } });
+  if (!user || !user.active || user.companyId !== request.user.companyId) {
+    return reply.status(401).send({ error: 'Unauthorized' });
+  }
   if (!['ADMIN', 'SUPERVISOR'].includes(request.user.role)) {
     return reply.status(403).send({ error: 'Åtkomst nekad' });
   }
@@ -29,6 +33,10 @@ const requireAdminOrSupervisor = async (request: any, reply: any) => {
 
 const requireAdmin = async (request: any, reply: any) => {
   await request.jwtVerify();
+  const user = await prisma.user.findUnique({ where: { id: request.user.id }, select: { active: true, companyId: true } });
+  if (!user || !user.active || user.companyId !== request.user.companyId) {
+    return reply.status(401).send({ error: 'Unauthorized' });
+  }
   if (request.user.role !== 'ADMIN') {
     return reply.status(403).send({ error: 'Endast admin har åtkomst' });
   }

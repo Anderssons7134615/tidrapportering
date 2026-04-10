@@ -33,6 +33,8 @@ export function useSync() {
         );
         queryClient.invalidateQueries({ queryKey: ['timeEntries'] });
         queryClient.invalidateQueries({ queryKey: ['week'] });
+        queryClient.invalidateQueries({ queryKey: ['weekLocks'] });
+        queryClient.invalidateQueries({ queryKey: ['team-week-summary'] });
         queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       } catch (error) {
         console.error('Sync failed:', error);

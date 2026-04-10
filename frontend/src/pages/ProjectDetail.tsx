@@ -1,17 +1,14 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { projectsApi, workItemsApi, workLogsApi } from '../services/api';
+import { useQuery } from '@tanstack/react-query';
+import { projectsApi } from '../services/api';
 import type { ProjectManagerSummary } from '../types';
 import { useAuthStore } from '../stores/authStore';
-import { ArrowLeft, FolderKanban, Building2, MapPin, Clock, Receipt, Users, Package } from 'lucide-react';
-import toast from 'react-hot-toast';
-import { format } from 'date-fns';
-import { sv } from 'date-fns/locale';
+import { ArrowLeft, FolderKanban, Building2, MapPin, Clock, Receipt, Users } from 'lucide-react';
 
 const statusLabels: Record<string, string> = {
   PLANNED: 'Planerad',
-  ONGOING: 'Pågår',
+  ONGOING: 'Pagar',
   COMPLETED: 'Avslutad',
   INVOICED: 'Fakturerad',
 };
@@ -33,8 +30,8 @@ type ProjectDetails = {
   billingModel: 'HOURLY' | 'FIXED';
   defaultRate?: number;
   budgetHours?: number;
-  totalHours?: number;
-  billableHours?: number;
+  totalHours?: number | null;
+  billableHours?: number | null;
   employeeCanSeeResults?: boolean;
 };
 
@@ -42,15 +39,6 @@ export default function ProjectDetail() {
   const { id } = useParams();
   const { user } = useAuthStore();
   const isManager = user?.role === 'ADMIN' || user?.role === 'SUPERVISOR';
-  const queryClient = useQueryClient();
-  const [materialSearch, setMaterialSearch] = useState('');
-  const [selectedWorkItemId, setSelectedWorkItemId] = useState('');
-  const [materialQuantity, setMaterialQuantity] = useState('');
-  const [materialComment, setMaterialComment] = useState('');
-  const [newMaterialName, setNewMaterialName] = useState('');
-  const [newMaterialUnit, setNewMaterialUnit] = useState('st');
-  const [importFile, setImportFile] = useState<File | null>(null);
-  const [showMaterialSuggestions, setShowMaterialSuggestions] = useState(false);
 
   const { data: project, isLoading, error } = useQuery({
     queryKey: ['project', id],
@@ -73,59 +61,6 @@ export default function ProjectDetail() {
 
   const p = project as ProjectDetails | undefined;
   const summary = managerSummary as ProjectManagerSummary | null | undefined;
-
-  const { data: workItems } = useQuery({
-    queryKey: ['workItems'],
-    queryFn: () => workItemsApi.list(true),
-  });
-
-  const { data: materialLogs } = useQuery({
-    queryKey: ['materialLogs', id],
-    queryFn: () => workLogsApi.list({ projectId: id }),
-    enabled: !!id,
-  });
-
-  const createMaterialUsageMutation = useMutation({
-    mutationFn: (payload: { workItemId: string; quantity: number; note?: string }) =>
-      workLogsApi.create({
-        workItemId: payload.workItemId,
-        projectId: id,
-        date: new Date().toISOString(),
-        quantity: payload.quantity,
-        minutes: 1,
-        note: payload.note,
-      }),
-    onSuccess: () => {
-      toast.success('Material tillagt');
-      setMaterialQuantity('');
-      setMaterialComment('');
-      queryClient.invalidateQueries({ queryKey: ['materialLogs', id] });
-    },
-    onError: (error: Error) => toast.error(error.message),
-  });
-
-  const createMaterialItemMutation = useMutation({
-    mutationFn: (payload: { name: string; unit: string }) =>
-      workItemsApi.create({ name: payload.name, unit: payload.unit }),
-    onSuccess: (item) => {
-      toast.success('Material skapat');
-      setSelectedWorkItemId(item.id);
-      setNewMaterialName('');
-      queryClient.invalidateQueries({ queryKey: ['workItems'] });
-    },
-    onError: (error: Error) => toast.error(error.message),
-  });
-
-  const importExcelMutation = useMutation({
-    mutationFn: (file: File) => workItemsApi.importExcel(file),
-    onSuccess: (result) => {
-      toast.success(`Import klar: ${result.created} nya, ${result.updated} uppdaterade`);
-      setImportFile(null);
-      queryClient.invalidateQueries({ queryKey: ['workItems'] });
-    },
-    onError: (error: Error) => toast.error(error.message),
-  });
-
   const canViewResults = isManager || !!p?.employeeCanSeeResults;
 
   const budgetUsedPercent = useMemo(() => {
@@ -138,17 +73,6 @@ export default function ProjectDetail() {
     return Math.max(p.budgetHours - (p.totalHours || 0), 0);
   }, [p]);
 
-  const filteredWorkItems = useMemo(() => {
-    const list = workItems || [];
-    if (!materialSearch.trim()) return list;
-    return list.filter((w) => w.name.toLowerCase().includes(materialSearch.toLowerCase()));
-  }, [workItems, materialSearch]);
-
-  const selectedWorkItem = useMemo(
-    () => (workItems || []).find((w) => w.id === selectedWorkItemId),
-    [workItems, selectedWorkItemId]
-  );
-
   if (isLoading) {
     return <div className="card">Laddar projekt...</div>;
   }
@@ -160,7 +84,7 @@ export default function ProjectDetail() {
           <ArrowLeft className="h-4 w-4" />
           Tillbaka
         </Link>
-        <div className="card text-rose-700">Kunde inte hämta projektet.</div>
+        <div className="card text-rose-700">Kunde inte hamta projektet.</div>
       </div>
     );
   }
@@ -190,33 +114,41 @@ export default function ProjectDetail() {
 
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <div className="surface-muted p-3">
-            <p className="mb-1 flex items-center gap-1 text-xs text-slate-500"><Building2 className="h-4 w-4" /> Kund</p>
+            <p className="mb-1 flex items-center gap-1 text-xs text-slate-500">
+              <Building2 className="h-4 w-4" /> Kund
+            </p>
             <p className="font-medium text-slate-900">{p.customer?.name || 'Intern'}</p>
           </div>
           <div className="surface-muted p-3">
-            <p className="mb-1 flex items-center gap-1 text-xs text-slate-500"><MapPin className="h-4 w-4" /> Arbetsplats</p>
+            <p className="mb-1 flex items-center gap-1 text-xs text-slate-500">
+              <MapPin className="h-4 w-4" /> Arbetsplats
+            </p>
             <p className="font-medium text-slate-900">{p.site || 'Ej satt'}</p>
           </div>
 
           {canViewResults ? (
             <>
               <div className="surface-muted p-3">
-                <p className="mb-1 flex items-center gap-1 text-xs text-slate-500"><Clock className="h-4 w-4" /> Timmar</p>
+                <p className="mb-1 flex items-center gap-1 text-xs text-slate-500">
+                  <Clock className="h-4 w-4" /> Timmar
+                </p>
                 <p className="font-medium text-slate-900">
                   {(p.totalHours || 0).toFixed(1)} h
                   {p.budgetHours ? ` / ${p.budgetHours} h` : ''}
                 </p>
                 {p.budgetHours && (
                   <p className="mt-1 text-xs text-slate-500">
-                    Kvar: {remainingHours?.toFixed(1)} h ({budgetUsedPercent.toFixed(0)}% använt)
+                    Kvar: {remainingHours?.toFixed(1)} h ({budgetUsedPercent.toFixed(0)}% anvant)
                   </p>
                 )}
               </div>
               <div className="surface-muted p-3">
-                <p className="mb-1 flex items-center gap-1 text-xs text-slate-500"><Receipt className="h-4 w-4" /> Debitering</p>
+                <p className="mb-1 flex items-center gap-1 text-xs text-slate-500">
+                  <Receipt className="h-4 w-4" /> Debitering
+                </p>
                 <p className="font-medium text-slate-900">
-                  {p.billingModel === 'FIXED' ? 'Fastpris' : 'Löpande'}
-                  {p.defaultRate ? ` • ${p.defaultRate} kr/h` : ''}
+                  {p.billingModel === 'FIXED' ? 'Fastpris' : 'Lopande'}
+                  {p.defaultRate ? ` - ${p.defaultRate} kr/h` : ''}
                 </p>
                 <p className="mt-1 text-xs text-slate-500">
                   Fakturerbara timmar: {(p.billableHours || 0).toFixed(1)} h
@@ -224,9 +156,9 @@ export default function ProjectDetail() {
               </div>
             </>
           ) : (
-            <div className="surface-muted md:col-span-2 p-3">
-              <p className="text-sm text-slate-700">Projektresultat är dolt för anställda i detta projekt.</p>
-              <p className="mt-1 text-xs text-slate-500">Kontakta arbetsledare om du behöver uppföljning.</p>
+            <div className="surface-muted p-3 md:col-span-2">
+              <p className="text-sm text-slate-700">Projektresultat ar dolt for anstallda i detta projekt.</p>
+              <p className="mt-1 text-xs text-slate-500">Kontakta arbetsledare om du behover uppfoljning.</p>
             </div>
           )}
         </div>
@@ -236,7 +168,7 @@ export default function ProjectDetail() {
         <div className="card space-y-4">
           <div className="flex items-center gap-2">
             <Users className="h-5 w-5 text-primary-700" />
-            <h2 className="text-base font-semibold text-slate-900">Cheföversikt</h2>
+            <h2 className="text-base font-semibold text-slate-900">Chefoversikt</h2>
           </div>
 
           {summary ? (
@@ -251,8 +183,10 @@ export default function ProjectDetail() {
                   <p className="text-lg font-semibold text-slate-900">{(summary.billableHours || 0).toFixed(1)} h</p>
                 </div>
                 <div className="surface-muted p-3">
-                  <p className="text-xs text-slate-500">Fakturerbart värde</p>
-                  <p className="text-lg font-semibold text-slate-900">{(summary.totalAmount || 0).toLocaleString('sv-SE')} kr</p>
+                  <p className="text-xs text-slate-500">Fakturerbart varde</p>
+                  <p className="text-lg font-semibold text-slate-900">
+                    {(summary.totalAmount || 0).toLocaleString('sv-SE')} kr
+                  </p>
                 </div>
               </div>
 
@@ -260,7 +194,7 @@ export default function ProjectDetail() {
                 <table className="min-w-full text-sm">
                   <thead>
                     <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
-                      <th className="px-3 py-2">Anställd</th>
+                      <th className="px-3 py-2">Anstalld</th>
                       <th className="px-3 py-2">Vecka</th>
                       <th className="px-3 py-2">Dagar</th>
                       <th className="px-3 py-2">Timmar</th>
@@ -271,11 +205,11 @@ export default function ProjectDetail() {
                   <tbody>
                     {summary.employeeBreakdown?.length ? (
                       summary.employeeBreakdown.map((employee) => (
-                        <tr key={employee.userId} className="border-b border-slate-100 text-slate-700 last:border-b-0">
+                        <tr key={`${employee.userId}-${employee.weekStartDate || 'total'}`} className="border-b border-slate-100 text-slate-700 last:border-b-0">
                           <td className="px-3 py-2 font-medium text-slate-900">{employee.userName}</td>
                           <td className="px-3 py-2">v{employee.weekNumber || '-'}</td>
                           <td className="px-3 py-2 text-xs text-slate-600">
-                            Mån {(employee.dayHours?.Mån || 0).toFixed(1)}h · Tis {(employee.dayHours?.Tis || 0).toFixed(1)}h · Ons {(employee.dayHours?.Ons || 0).toFixed(1)}h · Tor {(employee.dayHours?.Tor || 0).toFixed(1)}h · Fre {(employee.dayHours?.Fre || 0).toFixed(1)}h · Lör {(employee.dayHours?.Lör || 0).toFixed(1)}h · Sön {(employee.dayHours?.Sön || 0).toFixed(1)}h
+                            Man {(employee.dayHours?.Man || employee.dayHours?.Mån || 0).toFixed(1)}h | Tis {(employee.dayHours?.Tis || 0).toFixed(1)}h | Ons {(employee.dayHours?.Ons || 0).toFixed(1)}h | Tor {(employee.dayHours?.Tor || 0).toFixed(1)}h | Fre {(employee.dayHours?.Fre || 0).toFixed(1)}h
                           </td>
                           <td className="px-3 py-2">{(employee.totalHours || 0).toFixed(1)} h</td>
                           <td className="px-3 py-2">{(employee.billableHours || 0).toFixed(1)} h</td>
@@ -284,7 +218,9 @@ export default function ProjectDetail() {
                       ))
                     ) : (
                       <tr>
-                        <td colSpan={6} className="px-3 py-5 text-center text-slate-500">Ingen medarbetardata för perioden.</td>
+                        <td colSpan={6} className="px-3 py-5 text-center text-slate-500">
+                          Ingen medarbetardata for perioden.
+                        </td>
                       </tr>
                     )}
                   </tbody>
@@ -292,171 +228,10 @@ export default function ProjectDetail() {
               </div>
             </>
           ) : (
-            <div className="surface-muted p-3 text-sm text-slate-600">Cheföversikt är inte tillgänglig ännu.</div>
+            <div className="surface-muted p-3 text-sm text-slate-600">Chefoversikt ar inte tillganglig annu.</div>
           )}
         </div>
       )}
-
-      <div className="card space-y-4">
-        <div className="flex items-center gap-2">
-          <Package className="h-5 w-5 text-primary-700" />
-          <h2 className="text-base font-semibold text-slate-900">Material</h2>
-        </div>
-
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-          <div className="md:col-span-3 space-y-2">
-            <input
-              value={materialSearch}
-              onChange={(e) => {
-                setMaterialSearch(e.target.value);
-                setShowMaterialSuggestions(true);
-              }}
-              onFocus={() => setShowMaterialSuggestions(true)}
-              placeholder="Sök material"
-              className="input"
-            />
-            {showMaterialSuggestions && (
-              <div className="max-h-56 overflow-y-auto rounded-xl border border-slate-200 bg-white">
-                {filteredWorkItems.slice(0, 30).map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => {
-                      setSelectedWorkItemId(item.id);
-                      setMaterialSearch(item.name);
-                      setShowMaterialSuggestions(false);
-                    }}
-                    className={`w-full px-3 py-2 text-left text-sm hover:bg-slate-50 ${selectedWorkItemId === item.id ? 'bg-slate-100' : ''}`}
-                  >
-                    <span className="font-medium text-slate-900">{item.name}</span>
-                    <span className="ml-2 text-slate-500">({item.unit})</span>
-                    {isManager && item.unitPrice ? (
-                      <span className="ml-2 text-slate-600">· {item.unitPrice.toLocaleString('sv-SE')} kr</span>
-                    ) : null}
-                  </button>
-                ))}
-                {filteredWorkItems.length === 0 && (
-                  <div className="px-3 py-2 text-sm text-slate-500">Ingen träff i materiallistan.</div>
-                )}
-              </div>
-            )}
-            {selectedWorkItem && (
-              <p className="text-xs text-slate-600">
-                Valt material: <span className="font-medium text-slate-800">{selectedWorkItem.name}</span> ({selectedWorkItem.unit})
-              </p>
-            )}
-          </div>
-          <input
-            value={materialQuantity}
-            onChange={(e) => setMaterialQuantity(e.target.value)}
-            type="number"
-            step="0.1"
-            min="0"
-            placeholder="Antal"
-            className="input"
-          />
-        </div>
-
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-          <input
-            value={materialComment}
-            onChange={(e) => setMaterialComment(e.target.value)}
-            placeholder="Kommentar (valfritt)"
-            className="input md:col-span-3"
-          />
-          <button
-            className="btn-primary"
-            onClick={() => createMaterialUsageMutation.mutate({
-              workItemId: selectedWorkItemId,
-              quantity: Number(materialQuantity),
-              note: materialComment || undefined,
-            })}
-            disabled={!selectedWorkItemId || !materialQuantity || createMaterialUsageMutation.isPending}
-          >
-            Lägg till material
-          </button>
-        </div>
-
-        {user?.role === 'ADMIN' && (
-          <div className="surface-muted p-3 space-y-3">
-            <p className="text-sm font-medium text-slate-800">Saknas material i listan? Lägg till direkt:</p>
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-              <input
-                type="file"
-                accept=".xlsx,.xls"
-                onChange={(e) => setImportFile(e.target.files?.[0] || null)}
-                className="input md:col-span-3"
-              />
-              <button
-                className="btn-primary"
-                onClick={() => importFile && importExcelMutation.mutate(importFile)}
-                disabled={!importFile || importExcelMutation.isPending}
-              >
-                Importera Excel
-              </button>
-            </div>
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-              <input
-                value={newMaterialName}
-                onChange={(e) => setNewMaterialName(e.target.value)}
-                placeholder="Materialnamn"
-                className="input"
-              />
-              <input
-                value={newMaterialUnit}
-                onChange={(e) => setNewMaterialUnit(e.target.value)}
-                placeholder="Enhet (st/m/kg)"
-                className="input"
-              />
-              <button
-                className="btn-secondary"
-                onClick={() => createMaterialItemMutation.mutate({
-                  name: newMaterialName,
-                  unit: newMaterialUnit,
-                })}
-                disabled={!newMaterialName || !newMaterialUnit || createMaterialItemMutation.isPending}
-              >
-                Skapa material
-              </button>
-            </div>
-          </div>
-        )}
-
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
-                <th className="px-3 py-2">Datum</th>
-                <th className="px-3 py-2">Anställd</th>
-                <th className="px-3 py-2">Material</th>
-                <th className="px-3 py-2">Antal</th>
-                {isManager && <th className="px-3 py-2">Pris</th>}
-                <th className="px-3 py-2">Kommentar</th>
-              </tr>
-            </thead>
-            <tbody>
-              {materialLogs?.length ? materialLogs.map((log) => (
-                <tr key={log.id} className="border-b border-slate-100 text-slate-700 last:border-b-0">
-                  <td className="px-3 py-2">{format(new Date(log.date), 'EEE d/M', { locale: sv })}</td>
-                  <td className="px-3 py-2">{log.user?.name || '-'}</td>
-                  <td className="px-3 py-2 font-medium text-slate-900">{log.workItem?.name || '-'}</td>
-                  <td className="px-3 py-2">{log.quantity} {log.workItem?.unit || ''}</td>
-                  {isManager && (
-                    <td className="px-3 py-2">
-                      {log.workItem?.unitPrice ? `${log.workItem.unitPrice.toLocaleString('sv-SE')} kr` : '-'}
-                    </td>
-                  )}
-                  <td className="px-3 py-2">{log.note || '-'}</td>
-                </tr>
-              )) : (
-                <tr>
-                  <td colSpan={isManager ? 6 : 5} className="px-3 py-5 text-center text-slate-500">Ingen materialregistrering ännu.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
     </div>
   );
 }

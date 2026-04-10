@@ -1,207 +1,124 @@
-# TidApp - Tidrapportering för Hantverks- och Byggföretag
+# TidApp
 
-En modern PWA-baserad tidrapporteringsapp designad för svenska hantverks- och byggföretag med 4-10 anställda.
+Tidrapportering för mindre hantverks- och byggföretag.
 
-## Funktioner
+## Innehåll
 
-### Roller & Behörighet
-- **Admin** - Full access till allt
-- **Arbetsledare** - Kan skapa projekt, attestera tidrader
-- **Medarbetare** - Kan rapportera egen tid, se egna rapporter
+- Inloggning med roller: admin, arbetsledare och medarbetare
+- Kunder, projekt och aktiviteter
+- Direkt tidrapportering: sparad tid syns direkt för admin/arbetsledare
+- Offlinekö för tidrader som synkas automatiskt när användaren är online igen
+- Teamvecka, attest och rapporter
+- Railway-backend med PostgreSQL
+- Cloudflare Pages-frontend
 
-### Grundregister
-- **Kunder** - Med kontaktuppgifter och standard timpris
-- **Projekt** - Kopplade till kunder, med budget och status
-- **Aktiviteter** - Kategoriserade (Arbete, Resa, Möte, Intern, ÄTA, Frånvaro)
+Produktivitet, arbetsmoment, materiallogg och Excel-import är borttagna för att hålla appen fokuserad på tidrapportering.
 
-### Tidrapportering (Mobilflöde i 3 klick)
-- Välj datum → projekt → aktivitet → timmar
-- Markera fakturerbar/ej fakturerbar
-- Lägg till notering
-- Valfri GPS-position
-- **Offline-stöd** - Spara lokalt och synka automatiskt
+## Lokal utveckling
 
-### Attestflöde
-- Veckovy med summering (må-sön)
-- Skicka för attest
-- Godkänn/neka med kommentar
-- Lås upp om behövs
+Krav:
 
-### Rapporter & Export
-- **Löneunderlag** - Per person och aktivitetskod
-- **Fakturaunderlag** - Per kund/projekt med belopp
-- CSV-export (svensk Excel-kompatibel med UTF-8 BOM och semikolon)
-
-### Dashboard
-- Översikt timmar (vecka/månad)
-- Pågående projekt med budget
-- Att attestera
-- Mina ej inskickade veckor
-
-## Teknikstack
-
-- **Frontend**: React + Vite + TypeScript + Tailwind CSS
-- **Backend**: Node.js + Fastify + TypeScript
-- **Databas**: SQLite (Prisma ORM)
-- **Auth**: JWT
-- **PWA**: Vite PWA Plugin med Service Worker
-
-## Kom igång
-
-### Förutsättningar
-- Node.js 18+
+- Node.js 20+
 - npm
+- PostgreSQL
 
-### Installation (Utvecklingsmiljö)
+Backend:
 
-1. **Klona/ladda ner projektet**
-
-2. **Installera och starta backend**
 ```bash
 cd backend
-npm install
-npx prisma generate
-npx prisma db push
-npm run db:seed
+npm ci
+copy .env.example .env
+npx prisma migrate deploy
+npm run db:seed:safe
 npm run dev
 ```
 
-3. **Installera och starta frontend** (i nytt terminalfönster)
+Frontend:
+
 ```bash
 cd frontend
-npm install
+npm ci
+copy .env.example .env
 npm run dev
 ```
 
-4. **Öppna appen**
-- Frontend: http://localhost:5173
-- Backend API: http://localhost:3001
+Lokala URL:er:
 
-### Miljövariabler för push-notiser (backend)
-Lägg i `backend/.env`:
+- Frontend: `http://localhost:5173`
+- Backend: `http://localhost:3001`
+
+För lokal frontend kan `VITE_API_URL` antingen vara tomt om Vite-proxyn ska användas, eller satt till `http://localhost:3001/api`.
+
+## Railway Backend
+
+Railway kan deploya från repo-roten via `railway.json`.
+
+Viktiga variabler i Railway:
 
 ```env
-WEB_PUSH_PUBLIC_KEY=...
-WEB_PUSH_PRIVATE_KEY=...
-WEB_PUSH_CONTACT=mailto:it@dittbolag.se
-REMINDER_JOB_TOKEN=valfri-hemlig-token-for-schemalagd-trigger
+DATABASE_URL=postgresql://...
+JWT_SECRET=långt-slumpat-hemligt-värde
+FRONTEND_URL=https://din-cloudflare-pages-domän.pages.dev
+EXTRA_CORS_ORIGINS=https://extra-preview-eller-custom-domain.se
+UPLOAD_DIR=/app/uploads
 ```
 
-Skapa VAPID-nycklar (engångs):
-```bash
-npx web-push generate-vapid-keys
-```
-
-### Installation (Docker)
+Startkommandot kör:
 
 ```bash
-docker-compose up --build
+cd backend && npm run start
 ```
 
-Appen blir tillgänglig på http://localhost:5173
+Det kör `prisma migrate deploy`, seedar bara om databasen är tom och startar API:t.
 
-## Testanvändare
+Om din Railway-databas redan har tabeller från tidigare `prisma db push` men ingen Prisma-migrationshistorik, baseline:a första migrationen en gång innan vanlig deploy:
 
-| Roll | E-post | Lösenord |
-|------|--------|----------|
-| Admin | admin@byggab.se | password123 |
-| Arbetsledare | lars@byggab.se | password123 |
-| Medarbetare | erik@byggab.se | password123 |
-| Medarbetare | maria@byggab.se | password123 |
-| Medarbetare | peter@byggab.se | password123 |
-
-## API-endpoints
-
-### Auth
-- `POST /api/auth/login` - Logga in
-- `GET /api/auth/me` - Hämta inloggad användare
-- `POST /api/auth/change-password` - Byt lösenord
-
-### Resurser (CRUD)
-- `/api/users` - Användare
-- `/api/customers` - Kunder
-- `/api/projects` - Projekt
-- `/api/activities` - Aktiviteter
-- `/api/time-entries` - Tidrader
-- `/api/week-locks` - Veckolås (attestflöde)
-- `/api/settings` - Inställningar
-- `/api/push-subscriptions` - Egna push-subscriptions (lista/registrera/ta bort)
-
-### Push påminnelser (veckolås)
-- `GET /api/push-subscriptions/vapid-public-key` - Hämta publik VAPID-nyckel till webbläsaren
-- `POST /api/reminders/weekly-attestation` - Trigga påminnelsejobb för medarbetare som inte skickat in aktuell vecka
-  - Auth antingen via vanlig JWT (ADMIN/SUPERVISOR) eller `Authorization: Bearer <REMINDER_JOB_TOKEN>`
-
-### Rapporter
-- `GET /api/reports/salary?from=X&to=Y&format=csv` - Löneunderlag
-- `GET /api/reports/invoice?from=X&to=Y&format=csv` - Fakturaunderlag
-
-### Dashboard
-- `GET /api/dashboard` - Översiktsdata
-
-## Datamodell
-
-```
-User (id, name, email, role, hourlyCost, active)
-Customer (id, name, orgNumber, address, contactPerson, email, phone, defaultRate)
-Project (id, customerId, name, code, site, status, budgetHours, billingModel, defaultRate)
-Activity (id, name, code, category, billableDefault, rateOverride, sortOrder)
-TimeEntry (id, userId, projectId, activityId, date, hours, billable, note, status, gps...)
-WeekLock (id, userId, weekStartDate, status, comment)
-Attachment (id, timeEntryId, filename, mimeType, path)
-AuditLog (id, userId, action, entityType, entityId, oldValue, newValue)
-Settings (id, companyName, vatRate, csvDelimiter, reminderTime, reminderEnabled)
-PushSubscription (id, userId, endpoint, p256dh, auth, lastSuccessAt, lastFailureAt)
+```bash
+cd backend
+npx prisma migrate resolve --applied 20260410110000_initial_postgresql
+npm run start
 ```
 
-## Säkerhet
+Migrationen efter det droppar gamla `WorkLog`/`WorkItem`-tabeller om de finns.
 
-- Lösenord hashas med bcrypt (10 rounds)
-- JWT-tokens med 7 dagars giltighet
-- Rate limiting (100 req/min)
-- RBAC på alla endpoints
-- Audit logging för ändringar
+## Cloudflare Frontend
 
-## GDPR
+Cloudflare Pages:
 
-- Minimerad persondata
-- "Radera användare"-funktion tar bort ALL relaterad data
-- Audit log för spårbarhet
+- Root directory: `frontend`
+- Build command: `npm ci && npm run build`
+- Output directory: `dist`
 
-## CSV-export format
+Variabel:
 
-### Löneunderlag
-```
-Person;Datum;Kod;Aktivitet;Timmar;Projekt;Kommentar
-"Erik Elektriker";"2024-01-15";"MONT";"Montage";"8,0";"P2024-001";"Elinstallation"
+```env
+VITE_API_URL=https://din-railway-backend.up.railway.app/api
 ```
 
-### Fakturaunderlag
+`frontend/public/_redirects` gör att SPA-routes fungerar vid refresh.
+
+## Testkonton efter seed
+
+```text
+rick@anderssonsisolering.se / Rick1234
+admin@testforetaget.se / Test1234
 ```
-Kund;Projekt;Projektkod;Datum;Aktivitet;Person;Timmar;á-pris;Belopp;Kommentar
-"Fastighets AB";"Fasadrenovering";"P2024-001";"2024-01-15";"Montage";"Erik";"8,0";"850,00";"6800,00";""
+
+Byt lösenord och seed-data innan riktig produktion.
+
+## Kommandon
+
+Backend:
+
+```bash
+npm run build
+npm run db:generate
+npm run db:migrate
+npm run db:seed:safe
 ```
 
-## Offline-stöd
+Frontend:
 
-Appen fungerar offline genom:
-1. Service Worker cachar alla statiska resurser
-2. IndexedDB (via Zustand persist) sparar pending tidrader
-3. Automatisk synkronisering när nätverket återkommer
-4. Visuell indikator för offline-läge
-
-## Vidareutveckling
-
-### Planerade förbättringar
-- Magic link för inbjudan av nya användare
-- Filuppladdning till S3
-- Integration med bokföringssystem
-- Mobil-app (React Native)
-
-## Licens
-
-Proprietär - Alla rättigheter förbehållna
-
----
-
-Utvecklad med ❤️ för svenska hantverksföretag
+```bash
+npm run build
+```

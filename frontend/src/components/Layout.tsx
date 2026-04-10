@@ -17,11 +17,10 @@ import {
   X,
   WifiOff,
   Wifi,
-  Wrench,
-  BarChart2,
 } from 'lucide-react';
 import { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
+import { useSync } from '../hooks/useSync';
 
 const navItems = [
   { to: '/', icon: Home, label: 'Översikt', roles: ['ADMIN', 'SUPERVISOR', 'EMPLOYEE'] },
@@ -31,9 +30,7 @@ const navItems = [
   { to: '/approval', icon: CheckSquare, label: 'Attestera', roles: ['ADMIN', 'SUPERVISOR'] },
   { to: '/customers', icon: Building2, label: 'Kunder', roles: ['ADMIN', 'SUPERVISOR'] },
   { to: '/projects', icon: FolderKanban, label: 'Projekt', roles: ['ADMIN', 'SUPERVISOR'] },
-  { to: '/productivity', icon: BarChart2, label: 'Produktivitet', roles: ['ADMIN', 'SUPERVISOR', 'EMPLOYEE'] },
   { to: '/activities', icon: Tags, label: 'Aktiviteter', roles: ['ADMIN'] },
-  { to: '/work-items', icon: Wrench, label: 'Arbetsmoment', roles: ['ADMIN'] },
   { to: '/users', icon: Users, label: 'Användare', roles: ['ADMIN'] },
   { to: '/reports', icon: FileBarChart, label: 'Rapporter', roles: ['ADMIN', 'SUPERVISOR'] },
   { to: '/settings', icon: Settings, label: 'Inställningar', roles: ['ADMIN', 'SUPERVISOR', 'EMPLOYEE'] },
@@ -47,6 +44,8 @@ const bottomTabs = [
 ];
 
 export default function Layout() {
+  useSync();
+
   const { user, logout } = useAuthStore();
   const { isOnline, pendingEntries } = useOfflineStore();
   const navigate = useNavigate();

@@ -149,7 +149,7 @@ export default function TeamWeekOverview() {
                       </button>
 
                       {isExpanded && (
-                        <div className="border-t border-slate-100 bg-slate-50/60 px-4 pb-4 pt-3">
+                        <div className="space-y-4 border-t border-slate-100 bg-slate-50/60 px-4 pb-4 pt-3">
                           <div className="table-wrap">
                             <table className="min-w-full text-sm">
                               <thead>
@@ -174,6 +174,41 @@ export default function TeamWeekOverview() {
                                       <td className="px-3 py-2 text-slate-600">{p.projectCode}</td>
                                       <td className="px-3 py-2 text-slate-800">{p.hours.toFixed(1)} h</td>
                                       <td className="px-3 py-2 text-slate-800">{p.billableHours.toFixed(1)} h</td>
+                                    </tr>
+                                  ))
+                                )}
+                              </tbody>
+                            </table>
+                          </div>
+
+                          <div className="table-wrap">
+                            <table className="min-w-full text-sm">
+                              <thead>
+                                <tr className="table-head">
+                                  <th className="px-3 py-2">Datum</th>
+                                  <th className="px-3 py-2">Projekt</th>
+                                  <th className="px-3 py-2">Aktivitet</th>
+                                  <th className="px-3 py-2">Timmar</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {(u.entries || []).length === 0 ? (
+                                  <tr>
+                                    <td colSpan={4} className="px-3 py-3 text-slate-500">
+                                      Inga tidrader för veckan.
+                                    </td>
+                                  </tr>
+                                ) : (
+                                  (u.entries || []).map((entry) => (
+                                    <tr key={entry.id} className="border-t border-slate-100">
+                                      <td className="px-3 py-2 text-slate-700">
+                                        {format(new Date(entry.date), 'EEE d/M', { locale: sv })}
+                                      </td>
+                                      <td className="px-3 py-2 font-medium text-slate-900">
+                                        {entry.project?.name || 'Intern'}
+                                      </td>
+                                      <td className="px-3 py-2 text-slate-600">{entry.activity?.name || '-'}</td>
+                                      <td className="px-3 py-2 text-slate-800">{entry.hours.toFixed(1)} h</td>
                                     </tr>
                                   ))
                                 )}
