@@ -333,7 +333,7 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
         },
       });
 
-      if (weekLock && ['APPROVED'].includes(weekLock.status)) {
+      if (weekLock && weekLock.status === 'APPROVED' && request.user.role === 'EMPLOYEE') {
         return reply.status(400).send({ error: 'Veckan är låst för redigering' });
       }
 
@@ -519,16 +519,14 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
       const updatedEntry = await prisma.$transaction(async (tx) => {
         const updated = await tx.timeEntry.update({
           where: { id },
-          data: entry.status === 'APPROVED'
-            ? updateBody
-            : {
-                ...updateBody,
-                status: 'SUBMITTED',
-                submittedAt: new Date(),
-                approvedAt: null,
-                approverId: null,
-                rejectNote: null,
-              },
+          data: {
+            ...updateBody,
+            status: 'SUBMITTED',
+            submittedAt: new Date(),
+            approvedAt: null,
+            approverId: null,
+            rejectNote: null,
+          },
           include: {
             project: { select: { id: true, name: true, code: true, site: true } },
             activity: { select: { id: true, name: true, code: true } },

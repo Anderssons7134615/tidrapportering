@@ -19,12 +19,15 @@ export default function TimeEntry() {
   const { user } = useAuthStore();
   const canReportForOthers = ['ADMIN', 'SUPERVISOR'].includes(user?.role || '');
   const entryId = searchParams.get('id');
+  const returnTo = searchParams.get('return');
+  const dateParam = searchParams.get('date');
+  const userIdParam = searchParams.get('userId');
   const isEditMode = Boolean(entryId);
 
-  const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [date, setDate] = useState(dateParam || format(new Date(), 'yyyy-MM-dd'));
   const [projectId, setProjectId] = useState('');
   const [activityId, setActivityId] = useState('');
-  const [selectedUserId, setSelectedUserId] = useState('');
+  const [selectedUserId, setSelectedUserId] = useState(userIdParam || '');
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
   const [hours, setHours] = useState('');
@@ -89,6 +92,10 @@ export default function TimeEntry() {
       queryClient.invalidateQueries({ queryKey: ['weekLocks'] });
       queryClient.invalidateQueries({ queryKey: ['team-week-summary'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      if (returnTo) {
+        navigate(returnTo);
+        return;
+      }
       setHours('');
       setNote('');
       setStartTime('');
@@ -113,7 +120,7 @@ export default function TimeEntry() {
       queryClient.invalidateQueries({ queryKey: ['weekLocks'] });
       queryClient.invalidateQueries({ queryKey: ['team-week-summary'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      navigate(`/week?date=${variables.data.date}`);
+      navigate(returnTo || `/week?date=${variables.data.date}`);
     },
     onError: (error: Error) => {
       haptic('error');
@@ -129,7 +136,7 @@ export default function TimeEntry() {
       date,
       projectId: projectId || undefined,
       activityId,
-      userId: !isEditMode && canReportForOthers ? (selectedUserId || undefined) : undefined,
+      userId: canReportForOthers ? (selectedUserId || undefined) : undefined,
       startTime: startTime || undefined,
       endTime: endTime || undefined,
       hours: parseFloat(hours),
@@ -180,7 +187,7 @@ export default function TimeEntry() {
   };
 
   const isSaving = createMutation.isPending || updateMutation.isPending;
-  const canEditEntry = existingEntry?.status !== 'APPROVED';
+  const canEditEntry = existingEntry?.status !== 'APPROVED' || canReportForOthers;
 
   if (isEditMode && isLoadingEntry) {
     return (
@@ -214,7 +221,7 @@ export default function TimeEntry() {
 
       <form onSubmit={handleSubmit} className="card space-y-5">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          {canReportForOthers && !isEditMode && (
+          {canReportForOthers && (
             <div>
               <label className="label">Anställd</label>
               <select value={selectedUserId} onChange={(e) => setSelectedUserId(e.target.value)} className="input">
