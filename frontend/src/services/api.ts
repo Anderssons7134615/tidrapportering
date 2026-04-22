@@ -3,6 +3,9 @@ import type {
   User,
   Customer,
   Project,
+  MaterialArticle,
+  ProjectMaterial,
+  ProjectMaterialsResponse,
   Activity,
   TimeEntry,
   WeekLock,
@@ -136,6 +139,29 @@ export const projectsApi = {
     return fetchApi<Project[]>(`/projects${query ? `?${query}` : ''}`);
   },
   get: (id: string) => fetchApi<Project>(`/projects/${id}`),
+  listMaterialArticles: (active?: boolean) =>
+    fetchApi<MaterialArticle[]>(`/projects/materials/articles${active !== undefined ? `?active=${active}` : ''}`),
+  createMaterialArticle: (data: {
+    name: string;
+    articleNumber?: string;
+    unit?: string;
+    defaultUnitPrice?: number;
+  }) => fetchApi<MaterialArticle>('/projects/materials/articles', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  }),
+  listMaterials: (id: string) => fetchApi<ProjectMaterialsResponse>(`/projects/${id}/materials`),
+  createMaterial: (id: string, data: {
+    articleId: string;
+    quantity: number;
+    date?: string;
+    note?: string;
+  }) => fetchApi<ProjectMaterial>(`/projects/${id}/materials`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  }),
+  deleteMaterial: (id: string, materialId: string) =>
+    fetchApi<{ message: string }>(`/projects/${id}/materials/${materialId}`, { method: 'DELETE' }),
   getManagerSummary: async (id: string) => {
     const raw = await fetchApi<any>(`/projects/${id}/manager-summary`);
 

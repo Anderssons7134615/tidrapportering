@@ -41,6 +41,44 @@ export interface Project {
   billableHours?: number;
 }
 
+export interface MaterialArticle {
+  id: string;
+  name: string;
+  articleNumber?: string | null;
+  unit: string;
+  defaultUnitPrice?: number | null;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProjectMaterial {
+  id: string;
+  projectId: string;
+  articleId: string;
+  createdByUserId: string;
+  createdByUser?: { id: string; name: string };
+  articleName: string;
+  articleNumber?: string | null;
+  unit: string;
+  unitPrice?: number | null;
+  quantity: number;
+  date: string;
+  note?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  lineTotal?: number | null;
+}
+
+export interface ProjectMaterialsResponse {
+  costVisibleToCurrentUser: boolean;
+  items: ProjectMaterial[];
+  totals: {
+    quantity: number;
+    amount?: number | null;
+  };
+}
+
 export interface ProjectEmployeeSummary {
   userId: string;
   userName: string;

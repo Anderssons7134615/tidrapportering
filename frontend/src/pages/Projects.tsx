@@ -6,10 +6,11 @@ import type { Project } from '../types';
 import { Plus, Edit2, Trash2, FolderKanban, Loader2, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ListSkeleton } from '../components/ui/Skeleton';
+import { useAuthStore } from '../stores/authStore';
 
 const statusLabels: Record<string, string> = {
   PLANNED: 'Planerad',
-  ONGOING: 'Pågår',
+  ONGOING: 'Pagar',
   COMPLETED: 'Avslutad',
   INVOICED: 'Fakturerad',
 };
@@ -23,6 +24,8 @@ const statusColors: Record<string, string> = {
 
 export default function Projects() {
   const queryClient = useQueryClient();
+  const { user } = useAuthStore();
+  const isManager = user?.role === 'ADMIN' || user?.role === 'SUPERVISOR';
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [activityFilter, setActivityFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ACTIVE');
@@ -44,6 +47,7 @@ export default function Projects() {
   const { data: customers } = useQuery({
     queryKey: ['customers', 'active'],
     queryFn: () => customersApi.list(true),
+    enabled: isManager,
   });
 
   const createMutation = useMutation({
@@ -120,12 +124,18 @@ export default function Projects() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="page-title">Projekt</h1>
-          <p className="text-sm text-slate-500">Översikt över aktiva och avslutade uppdrag.</p>
+          <p className="text-sm text-slate-500">
+            {isManager
+              ? 'Oversikt over aktiva och avslutade uppdrag.'
+              : 'Oppna ett projekt for att registrera material eller se projektets status.'}
+          </p>
         </div>
-        <button onClick={() => setIsModalOpen(true)} className="btn-primary">
-          <Plus className="h-4 w-4" />
-          Nytt projekt
-        </button>
+        {isManager && (
+          <button onClick={() => setIsModalOpen(true)} className="btn-primary">
+            <Plus className="h-4 w-4" />
+            Nytt projekt
+          </button>
+        )}
       </div>
 
       <div className="card space-y-3">
@@ -151,8 +161,8 @@ export default function Projects() {
             >
               <option value="ALL">Alla statusar</option>
               <option value="PLANNED">Planerad</option>
-              <option value="ONGOING">Pågår</option>
-              <option value="COMPLETED">Färdig</option>
+              <option value="ONGOING">Pagar</option>
+              <option value="COMPLETED">Fardig</option>
               <option value="INVOICED">Fakturerad</option>
             </select>
           </div>
@@ -161,7 +171,7 @@ export default function Projects() {
 
       <div className="space-y-3">
         {projects?.length === 0 ? (
-          <div className="card py-10 text-center text-slate-500">Inga projekt ännu</div>
+          <div className="card py-10 text-center text-slate-500">Inga projekt annu</div>
         ) : (
           projects?.map((project) => {
             const budgetRatio = project.budgetHours ? (project.totalHours || 0) / project.budgetHours : 0;
@@ -182,7 +192,7 @@ export default function Projects() {
                       </div>
                       <p className="text-sm text-slate-500">
                         {project.code}
-                        {project.customer && ` • ${project.customer.name}`}
+                        {project.customer && ` - ${project.customer.name}`}
                       </p>
                       {project.site && <p className="text-sm text-slate-500">{project.site}</p>}
                     </div>
@@ -210,47 +220,51 @@ export default function Projects() {
                       <Link
                         to={`/projects/${project.id}`}
                         className="rounded-lg px-2.5 py-1.5 text-xs font-medium text-primary-700 transition hover:bg-primary-50"
-                        title="Öppna projekt"
+                        title="Oppna projekt"
                       >
-                        Öppna
+                        Oppna
                       </Link>
-                      <button
-                        onClick={() => {
-                          setEditingProject(project);
-                          setIsModalOpen(true);
-                        }}
-                        className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
-                        title="Redigera"
-                      >
-                        <Edit2 className="h-4 w-4" />
-                      </button>
-                      {project.active ? (
-                        <button
-                          onClick={() => {
-                            if (confirm('Inaktivera projekt?')) {
-                              deleteMutation.mutate(project.id);
-                            }
-                          }}
-                          className="rounded-lg p-2 text-slate-500 transition hover:bg-rose-50 hover:text-rose-600"
-                          title="Inaktivera"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => {
-                            const confirmation = prompt(`Skriv RADERA ${project.code} för att radera permanent`);
-                            if (confirmation === `RADERA ${project.code}`) {
-                              permanentDeleteMutation.mutate(project.id);
-                            } else if (confirmation !== null) {
-                              toast.error('Fel bekräftelsetext, projektet raderades inte.');
-                            }
-                          }}
-                          className="rounded-lg p-2 text-rose-600 transition hover:bg-rose-50"
-                          title="Radera permanent"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                      {isManager && (
+                        <>
+                          <button
+                            onClick={() => {
+                              setEditingProject(project);
+                              setIsModalOpen(true);
+                            }}
+                            className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+                            title="Redigera"
+                          >
+                            <Edit2 className="h-4 w-4" />
+                          </button>
+                          {project.active ? (
+                            <button
+                              onClick={() => {
+                                if (confirm('Inaktivera projekt?')) {
+                                  deleteMutation.mutate(project.id);
+                                }
+                              }}
+                              className="rounded-lg p-2 text-slate-500 transition hover:bg-rose-50 hover:text-rose-600"
+                              title="Inaktivera"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                const confirmation = prompt(`Skriv RADERA ${project.code} for att radera permanent`);
+                                if (confirmation === `RADERA ${project.code}`) {
+                                  permanentDeleteMutation.mutate(project.id);
+                                } else if (confirmation !== null) {
+                                  toast.error('Fel bekraftelsetext, projektet raderades inte.');
+                                }
+                              }}
+                              className="rounded-lg p-2 text-rose-600 transition hover:bg-rose-50"
+                              title="Radera permanent"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
@@ -261,7 +275,7 @@ export default function Projects() {
         )}
       </div>
 
-      {isModalOpen && (
+      {isManager && isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
           <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
@@ -304,7 +318,7 @@ export default function Projects() {
                   <label className="label">Status</label>
                   <select name="status" defaultValue={editingProject?.status || 'PLANNED'} className="input">
                     <option value="PLANNED">Planerad</option>
-                    <option value="ONGOING">Pågår</option>
+                    <option value="ONGOING">Pagar</option>
                     <option value="COMPLETED">Avslutad</option>
                     <option value="INVOICED">Fakturerad</option>
                   </select>
@@ -312,7 +326,7 @@ export default function Projects() {
                 <div>
                   <label className="label">Debiteringsmodell</label>
                   <select name="billingModel" defaultValue={editingProject?.billingModel || 'HOURLY'} className="input">
-                    <option value="HOURLY">Löpande</option>
+                    <option value="HOURLY">Lopande</option>
                     <option value="FIXED">Fastpris</option>
                   </select>
                 </div>
@@ -337,8 +351,8 @@ export default function Projects() {
                   className="mt-1 h-4 w-4 rounded border-slate-300 text-primary-600 focus:ring-primary-500"
                 />
                 <span>
-                  <span className="block text-sm font-medium text-slate-900">Visa projektresultat för anställda</span>
-                  <span className="block text-xs text-slate-500">Om aktiverat kan anställda se timmar och fakturerbart utfall i projektvyn.</span>
+                  <span className="block text-sm font-medium text-slate-900">Visa projektresultat for anstallda</span>
+                  <span className="block text-xs text-slate-500">Om aktiverat kan anstallda se timmar och fakturerbart utfall i projektvyn.</span>
                 </span>
               </label>
 

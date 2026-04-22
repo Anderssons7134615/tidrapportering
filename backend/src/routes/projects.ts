@@ -14,6 +14,20 @@ const projectSchema = z.object({
   employeeCanSeeResults: z.boolean().optional(),
 });
 
+const materialArticleSchema = z.object({
+  name: z.string().min(2),
+  articleNumber: z.string().trim().optional().nullable(),
+  unit: z.string().min(1).max(20).optional(),
+  defaultUnitPrice: z.number().nonnegative().optional().nullable(),
+});
+
+const projectMaterialSchema = z.object({
+  articleId: z.string().uuid(),
+  quantity: z.number().positive(),
+  date: z.string().datetime().optional(),
+  note: z.string().trim().max(500).optional().nullable(),
+});
+
 const requireAdminOrSupervisor = async (request: any, reply: any) => {
   await request.jwtVerify();
   const user = await prisma.user.findUnique({ where: { id: request.user.id }, select: { active: true, companyId: true } });
@@ -28,6 +42,14 @@ const requireAdminOrSupervisor = async (request: any, reply: any) => {
 const shouldHideResultsForEmployee = (role: string, project: { employeeCanSeeResults: boolean }) => {
   return role === 'EMPLOYEE' && !project.employeeCanSeeResults;
 };
+
+const canManageMaterials = (role: string) => ['ADMIN', 'SUPERVISOR'].includes(role);
+
+function getDayEnd(date: string): Date {
+  const d = new Date(date);
+  d.setHours(23, 59, 59, 999);
+  return d;
+}
 
 const projectRoutes: FastifyPluginAsync = async (fastify) => {
   // List projects (same company)
@@ -119,6 +141,218 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
       totalHours: hideResults ? null : (stats?._sum.hours || 0),
       billableHours: hideResults ? null : (billableStats?._sum.hours || 0),
     };
+  });
+
+  fastify.get('/materials/articles', {
+    preHandler: [fastify.authenticate],
+  }, async (request) => {
+    const { active } = request.query as { active?: string };
+
+    const where: any = { companyId: request.user.companyId };
+    if (active !== undefined) {
+      where.active = active === 'true';
+    }
+
+    return prisma.materialArticle.findMany({
+      where,
+      orderBy: [{ active: 'desc' }, { name: 'asc' }],
+    });
+  });
+
+  fastify.post('/materials/articles', {
+    preHandler: [requireAdminOrSupervisor],
+  }, async (request, reply) => {
+    try {
+      const body = materialArticleSchema.parse(request.body);
+
+      const article = await prisma.materialArticle.create({
+        data: {
+          companyId: request.user.companyId,
+          name: body.name.trim(),
+          articleNumber: body.articleNumber?.trim() || null,
+          unit: body.unit?.trim() || 'st',
+          defaultUnitPrice: body.defaultUnitPrice ?? null,
+        },
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          userId: request.user.id,
+          action: 'CREATE',
+          entityType: 'MaterialArticle',
+          entityId: article.id,
+          newValue: JSON.stringify({
+            name: article.name,
+            articleNumber: article.articleNumber,
+            unit: article.unit,
+            defaultUnitPrice: article.defaultUnitPrice,
+          }),
+        },
+      });
+
+      return reply.status(201).send(article);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return reply.status(400).send({ error: 'Ogiltig data', details: error.errors });
+      }
+      throw error;
+    }
+  });
+
+  fastify.get('/:id/materials', {
+    preHandler: [fastify.authenticate],
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+
+    const project = await prisma.project.findUnique({ where: { id } });
+    if (!project || project.companyId !== request.user.companyId) {
+      return reply.status(404).send({ error: 'Projekt hittades inte' });
+    }
+
+    const hideResults = shouldHideResultsForEmployee(request.user.role, project);
+
+    const items = await prisma.projectMaterial.findMany({
+      where: { projectId: id },
+      include: {
+        createdByUser: {
+          select: { id: true, name: true },
+        },
+      },
+      orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
+    });
+
+    const mappedItems = items.map((item) => {
+      const lineTotal = item.unitPrice != null ? item.quantity * item.unitPrice : null;
+
+      return {
+        ...item,
+        unitPrice: hideResults ? null : item.unitPrice,
+        lineTotal: hideResults ? null : lineTotal,
+      };
+    });
+
+    return {
+      costVisibleToCurrentUser: !hideResults,
+      items: mappedItems,
+      totals: {
+        quantity: items.reduce((sum, item) => sum + item.quantity, 0),
+        amount: hideResults
+          ? null
+          : items.reduce((sum, item) => sum + (item.unitPrice != null ? item.quantity * item.unitPrice : 0), 0),
+      },
+    };
+  });
+
+  fastify.post('/:id/materials', {
+    preHandler: [fastify.authenticate],
+  }, async (request, reply) => {
+    try {
+      const { id } = request.params as { id: string };
+      const body = projectMaterialSchema.parse(request.body);
+
+      const project = await prisma.project.findUnique({ where: { id } });
+      if (!project || project.companyId !== request.user.companyId) {
+        return reply.status(404).send({ error: 'Projekt hittades inte' });
+      }
+
+      const article = await prisma.materialArticle.findUnique({
+        where: { id: body.articleId },
+      });
+
+      if (!article || article.companyId !== request.user.companyId || !article.active) {
+        return reply.status(400).send({ error: 'Materialartikeln finns inte eller ar inte aktiv' });
+      }
+
+      const material = await prisma.projectMaterial.create({
+        data: {
+          projectId: id,
+          articleId: article.id,
+          createdByUserId: request.user.id,
+          articleName: article.name,
+          articleNumber: article.articleNumber,
+          unit: article.unit,
+          unitPrice: article.defaultUnitPrice,
+          quantity: body.quantity,
+          date: body.date ? new Date(body.date) : new Date(),
+          note: body.note?.trim() || null,
+        },
+        include: {
+          createdByUser: {
+            select: { id: true, name: true },
+          },
+        },
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          userId: request.user.id,
+          action: 'CREATE',
+          entityType: 'ProjectMaterial',
+          entityId: material.id,
+          newValue: JSON.stringify({
+            projectId: id,
+            articleName: material.articleName,
+            quantity: material.quantity,
+            unit: material.unit,
+          }),
+        },
+      });
+
+      return reply.status(201).send({
+        ...material,
+        lineTotal: material.unitPrice != null ? material.quantity * material.unitPrice : null,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return reply.status(400).send({ error: 'Ogiltig data', details: error.errors });
+      }
+      throw error;
+    }
+  });
+
+  fastify.delete('/:id/materials/:materialId', {
+    preHandler: [fastify.authenticate],
+  }, async (request, reply) => {
+    const { id, materialId } = request.params as { id: string; materialId: string };
+
+    const project = await prisma.project.findUnique({ where: { id } });
+    if (!project || project.companyId !== request.user.companyId) {
+      return reply.status(404).send({ error: 'Projekt hittades inte' });
+    }
+
+    const material = await prisma.projectMaterial.findUnique({
+      where: { id: materialId },
+    });
+
+    if (!material || material.projectId !== id) {
+      return reply.status(404).send({ error: 'Materialraden hittades inte' });
+    }
+
+    const isOwner = material.createdByUserId === request.user.id;
+    if (!isOwner && !canManageMaterials(request.user.role)) {
+      return reply.status(403).send({ error: 'Atkomst nekad' });
+    }
+
+    await prisma.projectMaterial.delete({
+      where: { id: materialId },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: request.user.id,
+        action: 'DELETE',
+        entityType: 'ProjectMaterial',
+        entityId: material.id,
+        oldValue: JSON.stringify({
+          projectId: id,
+          articleName: material.articleName,
+          quantity: material.quantity,
+          unit: material.unit,
+        }),
+      },
+    });
+
+    return { message: 'Materialraden borttagen' };
   });
 
   // Get project time entries
@@ -463,11 +697,5 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
     return { message: 'Projekt raderat permanent' };
   });
 };
-
-function getDayEnd(date: string): Date {
-  const d = new Date(date);
-  d.setHours(23, 59, 59, 999);
-  return d;
-}
 
 export default projectRoutes;
