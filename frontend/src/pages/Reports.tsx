@@ -1,13 +1,17 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { reportsApi, customersApi, projectsApi, usersApi } from '../services/api';
-import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
-import { FileBarChart, Download, Loader2 } from 'lucide-react';
-import { ReportsSkeleton } from '../components/ui/Skeleton';
+import { endOfMonth, format, startOfMonth, subMonths } from 'date-fns';
+import { Download, FileSpreadsheet, ReceiptText, Users } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { customersApi, projectsApi, reportsApi, usersApi } from '../services/api';
+import { ReportsSkeleton } from '../components/ui/Skeleton';
+import { AppShell, Button, Card, DataTable, EmptyState, FilterBar, KpiCard, PageHeader, Tabs } from '../components/ui/design';
+import { formatCurrency, formatHours } from '../utils/format';
+
+type ReportType = 'salary' | 'invoice';
 
 export default function Reports() {
-  const [reportType, setReportType] = useState<'salary' | 'invoice'>('salary');
+  const [reportType, setReportType] = useState<ReportType>('salary');
   const [fromDate, setFromDate] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
   const [toDate, setToDate] = useState(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
   const [selectedUserId, setSelectedUserId] = useState('');
@@ -18,65 +22,59 @@ export default function Reports() {
   const [backupFromDate, setBackupFromDate] = useState(format(new Date(new Date().getFullYear(), 0, 1), 'yyyy-MM-dd'));
   const [backupToDate, setBackupToDate] = useState(format(new Date(new Date().getFullYear(), 11, 31), 'yyyy-MM-dd'));
 
-  const { data: users } = useQuery({
-    queryKey: ['users'],
-    queryFn: usersApi.list,
-  });
-
-  const { data: customers } = useQuery({
-    queryKey: ['customers'],
-    queryFn: () => customersApi.list(),
-  });
-
-  const { data: projects } = useQuery({
-    queryKey: ['projects'],
-    queryFn: () => projectsApi.list(),
-  });
-
-  const { data: reportData, isLoading } = useQuery({
+  const { data: users } = useQuery({ queryKey: ['users'], queryFn: usersApi.list });
+  const { data: customers } = useQuery({ queryKey: ['customers'], queryFn: () => customersApi.list() });
+  const { data: projects } = useQuery({ queryKey: ['projects'], queryFn: () => projectsApi.list() });
+  const { data: reportData, isLoading } = useQuery<any>({
     queryKey: ['report', reportType, fromDate, toDate, selectedUserId, selectedCustomerId, selectedProjectId],
-    queryFn: () => {
-      if (reportType === 'salary') {
-        return reportsApi.salary(fromDate, toDate, selectedUserId || undefined);
-      } else {
-        return reportsApi.invoice(
-          fromDate,
-          toDate,
-          selectedCustomerId || undefined,
-          selectedProjectId || undefined
-        );
-      }
-    },
+    queryFn: () =>
+      reportType === 'salary'
+        ? reportsApi.salary(fromDate, toDate, selectedUserId || undefined)
+        : reportsApi.invoice(fromDate, toDate, selectedCustomerId || undefined, selectedProjectId || undefined),
   });
+
+  const visibleProjects = useMemo(
+    () => projects?.filter((project) => !selectedCustomerId || project.customerId === selectedCustomerId) || [],
+    [projects, selectedCustomerId]
+  );
+
+  const setQuickPeriod = (period: 'thisMonth' | 'lastMonth' | 'thisYear') => {
+    const now = new Date();
+    if (period === 'thisMonth') {
+      setFromDate(format(startOfMonth(now), 'yyyy-MM-dd'));
+      setToDate(format(endOfMonth(now), 'yyyy-MM-dd'));
+    }
+    if (period === 'lastMonth') {
+      const lastMonth = subMonths(now, 1);
+      setFromDate(format(startOfMonth(lastMonth), 'yyyy-MM-dd'));
+      setToDate(format(endOfMonth(lastMonth), 'yyyy-MM-dd'));
+    }
+    if (period === 'thisYear') {
+      setFromDate(format(new Date(now.getFullYear(), 0, 1), 'yyyy-MM-dd'));
+      setToDate(format(new Date(now.getFullYear(), 11, 31), 'yyyy-MM-dd'));
+    }
+  };
+
+  const downloadBlob = (blob: Blob, filename: string) => {
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+  };
 
   const handleExport = async () => {
     setIsExporting(true);
     try {
-      let csv: string;
-      if (reportType === 'salary') {
-        csv = await reportsApi.salary(fromDate, toDate, selectedUserId || undefined, 'csv');
-      } else {
-        csv = await reportsApi.invoice(
-          fromDate,
-          toDate,
-          selectedCustomerId || undefined,
-          selectedProjectId || undefined,
-          'csv'
-        );
-      }
-
-      // Skapa och ladda ner fil
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${reportType === 'salary' ? 'loneunderlag' : 'fakturaunderlag'}_${fromDate}_${toDate}.csv`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
-
-      toast.success('Export klar!');
+      const csv =
+        reportType === 'salary'
+          ? await reportsApi.salary(fromDate, toDate, selectedUserId || undefined, 'csv')
+          : await reportsApi.invoice(fromDate, toDate, selectedCustomerId || undefined, selectedProjectId || undefined, 'csv');
+      downloadBlob(new Blob([csv], { type: 'text/csv;charset=utf-8' }), `${reportType === 'salary' ? 'loneunderlag' : 'fakturaunderlag'}_${fromDate}_${toDate}.csv`);
+      toast.success('Export klar');
     } catch (error: any) {
       toast.error(error.message || 'Export misslyckades');
     } finally {
@@ -88,14 +86,7 @@ export default function Reports() {
     setIsExportingBackup(true);
     try {
       const blob = await reportsApi.timeBackupExcel(backupFromDate, backupToDate);
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `tidbackup_${backupFromDate}_${backupToDate}.xlsx`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
+      downloadBlob(blob, `tidbackup_${backupFromDate}_${backupToDate}.xlsx`);
       toast.success('Excel-backup klar');
     } catch (error: any) {
       toast.error(error.message || 'Excel-backup misslyckades');
@@ -104,301 +95,161 @@ export default function Reports() {
     }
   };
 
-  // Snabbval för period
-  const setQuickPeriod = (period: 'thisMonth' | 'lastMonth' | 'thisYear') => {
-    const now = new Date();
-    switch (period) {
-      case 'thisMonth':
-        setFromDate(format(startOfMonth(now), 'yyyy-MM-dd'));
-        setToDate(format(endOfMonth(now), 'yyyy-MM-dd'));
-        break;
-      case 'lastMonth':
-        const lastMonth = subMonths(now, 1);
-        setFromDate(format(startOfMonth(lastMonth), 'yyyy-MM-dd'));
-        setToDate(format(endOfMonth(lastMonth), 'yyyy-MM-dd'));
-        break;
-      case 'thisYear':
-        setFromDate(format(new Date(now.getFullYear(), 0, 1), 'yyyy-MM-dd'));
-        setToDate(format(new Date(now.getFullYear(), 11, 31), 'yyyy-MM-dd'));
-        break;
-    }
-  };
+  const projectRows = reportData?.byProject ? Object.values(reportData.byProject) as any[] : [];
+  const salaryRows = reportData?.summary ? Object.entries(reportData.summary) as Array<[string, any]> : [];
 
   return (
-    <div className="space-y-6">
-      <h1 className="page-title">Rapporter</h1>
+    <AppShell>
+      <PageHeader
+        title="Rapporter"
+        description="Ta fram löneunderlag, fakturaunderlag och Excel-backup utan att leta."
+        action={
+          <Button type="button" onClick={handleExport} isLoading={isExporting}>
+            <Download className="h-4 w-4" />
+            Exportera CSV
+          </Button>
+        }
+      />
 
-      {/* Rapporttyp */}
-      <div className="flex gap-2">
-        <button
-          onClick={() => setReportType('salary')}
-          className={`flex-1 py-3 px-4 rounded-lg font-medium transition-colors ${
-            reportType === 'salary'
-              ? 'bg-primary-600 text-white'
-              : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-          }`}
-        >
-          Löneunderlag
-        </button>
-        <button
-          onClick={() => setReportType('invoice')}
-          className={`flex-1 py-3 px-4 rounded-lg font-medium transition-colors ${
-            reportType === 'invoice'
-              ? 'bg-primary-600 text-white'
-              : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-          }`}
-        >
-          Fakturaunderlag
-        </button>
-      </div>
+      <Tabs
+        tabs={[
+          { id: 'salary', label: 'Löneunderlag' },
+          { id: 'invoice', label: 'Fakturering' },
+        ]}
+        active={reportType}
+        onChange={(id) => setReportType(id as ReportType)}
+      />
 
-      {/* Filter */}
-      <div className="card space-y-4">
-        <div className="flex gap-2 flex-wrap">
-          <button
-            onClick={() => setQuickPeriod('thisMonth')}
-            className="btn-secondary text-sm"
-          >
-            Denna månad
-          </button>
-          <button
-            onClick={() => setQuickPeriod('lastMonth')}
-            className="btn-secondary text-sm"
-          >
-            Förra månaden
-          </button>
-          <button
-            onClick={() => setQuickPeriod('thisYear')}
-            className="btn-secondary text-sm"
-          >
-            Detta år
-          </button>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="label">Från</label>
-            <input
-              type="date"
-              value={fromDate}
-              onChange={(e) => setFromDate(e.target.value)}
-              className="input"
-            />
+      <FilterBar>
+        <div className="grid grid-cols-1 gap-3 xl:grid-cols-[auto_0.7fr_0.7fr_1fr_1fr]">
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => setQuickPeriod('thisMonth')} className="btn-secondary">Denna månad</button>
+            <button onClick={() => setQuickPeriod('lastMonth')} className="btn-secondary">Förra månaden</button>
+            <button onClick={() => setQuickPeriod('thisYear')} className="btn-secondary">Detta år</button>
           </div>
-          <div>
-            <label className="label">Till</label>
-            <input
-              type="date"
-              value={toDate}
-              onChange={(e) => setToDate(e.target.value)}
-              className="input"
-            />
-          </div>
-        </div>
-
-        {reportType === 'salary' && (
-          <div>
-            <label className="label">Användare</label>
-            <select
-              value={selectedUserId}
-              onChange={(e) => setSelectedUserId(e.target.value)}
-              className="input"
-            >
-              <option value="">Alla användare</option>
-              {users?.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-
-        {reportType === 'invoice' && (
-          <>
-            <div>
-              <label className="label">Kund</label>
-              <select
-                value={selectedCustomerId}
-                onChange={(e) => {
-                  setSelectedCustomerId(e.target.value);
-                  setSelectedProjectId('');
-                }}
-                className="input"
-              >
-                <option value="">Alla kunder</option>
-                {customers?.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
+          <label>
+            <span className="label">Från</span>
+            <input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} className="input" />
+          </label>
+          <label>
+            <span className="label">Till</span>
+            <input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} className="input" />
+          </label>
+          {reportType === 'salary' ? (
+            <label className="xl:col-span-2">
+              <span className="label">Anställd</span>
+              <select value={selectedUserId} onChange={(event) => setSelectedUserId(event.target.value)} className="input">
+                <option value="">Alla anställda</option>
+                {users?.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}
               </select>
-            </div>
-            <div>
-              <label className="label">Projekt</label>
-              <select
-                value={selectedProjectId}
-                onChange={(e) => setSelectedProjectId(e.target.value)}
-                className="input"
-              >
-                <option value="">Alla projekt</option>
-                {projects
-                  ?.filter((p) => !selectedCustomerId || p.customerId === selectedCustomerId)
-                  .map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.code} - {p.name}
-                    </option>
-                  ))}
-              </select>
-            </div>
-          </>
-        )}
-
-        <button
-          onClick={handleExport}
-          disabled={isExporting}
-          className="btn-primary w-full"
-        >
-          {isExporting ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
+            </label>
           ) : (
             <>
-              <Download className="w-4 h-4 mr-2" />
-              Exportera CSV
+              <label>
+                <span className="label">Kund</span>
+                <select value={selectedCustomerId} onChange={(event) => { setSelectedCustomerId(event.target.value); setSelectedProjectId(''); }} className="input">
+                  <option value="">Alla kunder</option>
+                  {customers?.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}
+                </select>
+              </label>
+              <label>
+                <span className="label">Projekt</span>
+                <select value={selectedProjectId} onChange={(event) => setSelectedProjectId(event.target.value)} className="input">
+                  <option value="">Alla projekt</option>
+                  {visibleProjects.map((project) => <option key={project.id} value={project.id}>{project.code} - {project.name}</option>)}
+                </select>
+              </label>
             </>
           )}
-        </button>
-
-        <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-          <div className="mb-3">
-            <h2 className="font-semibold text-slate-900">Excel-backup</h2>
-            <p className="text-sm text-slate-500">Laddar ner attesterade tider med en flik per vecka.</p>
-          </div>
-          <div className="mb-3 grid grid-cols-2 gap-4">
-            <div>
-              <label className="label">Från</label>
-              <input
-                type="date"
-                value={backupFromDate}
-                onChange={(e) => setBackupFromDate(e.target.value)}
-                className="input"
-              />
-            </div>
-            <div>
-              <label className="label">Till</label>
-              <input
-                type="date"
-                value={backupToDate}
-                onChange={(e) => setBackupToDate(e.target.value)}
-                className="input"
-              />
-            </div>
-          </div>
-          <button
-            onClick={handleExcelBackupExport}
-            disabled={isExportingBackup}
-            className="btn-secondary w-full"
-          >
-            {isExportingBackup ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <>
-                <Download className="w-4 h-4 mr-2" />
-                Ladda ner Excel-backup
-              </>
-            )}
-          </button>
         </div>
-      </div>
+      </FilterBar>
 
-      {/* Resultat */}
       {isLoading ? (
         <ReportsSkeleton />
-      ) : reportData ? (
-        <div className="card">
-          <div className="flex items-center gap-2 mb-4">
-            <FileBarChart className="w-5 h-5 text-gray-500" />
-            <h2 className="font-semibold">Sammanfattning</h2>
-          </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-5 xl:grid-cols-[1fr_0.8fr]">
+          <div className="space-y-5">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <KpiCard label={reportType === 'salary' ? 'Timmar totalt' : 'Fakturerbara timmar'} value={formatHours(reportData?.totals?.totalHours)} tone="blue" />
+              <KpiCard label={reportType === 'salary' ? 'Anställda' : 'Belopp'} value={reportType === 'salary' ? (reportData?.totals?.uniqueUsers || 0) : formatCurrency(reportData?.totals?.totalAmount)} tone={reportType === 'salary' ? 'slate' : 'green'} />
+              <KpiCard label="Period" value={`${fromDate} - ${toDate}`} />
+            </div>
 
-          {reportType === 'salary' ? (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-4 bg-gray-800 rounded-lg">
-                  <p className="text-2xl font-bold">{reportData.totals?.totalHours.toFixed(1)}h</p>
-                  <p className="text-sm text-gray-400">Totalt</p>
-                </div>
-                <div className="p-4 bg-gray-800 rounded-lg">
-                  <p className="text-2xl font-bold">{reportData.totals?.uniqueUsers}</p>
-                  <p className="text-sm text-gray-400">Användare</p>
-                </div>
+            <Card>
+              <div className="mb-4 flex items-center gap-2">
+                {reportType === 'salary' ? <Users className="h-5 w-5 text-slate-500" /> : <ReceiptText className="h-5 w-5 text-slate-500" />}
+                <h2 className="section-title">{reportType === 'salary' ? 'Per person och kod' : 'Per projekt'}</h2>
               </div>
 
-              {reportData.summary && Object.keys(reportData.summary).length > 0 && (
-                <div>
-                  <h3 className="font-medium mb-2">Per person och kod</h3>
-                  <div className="space-y-2">
-                    {Object.entries(reportData.summary).map(([userName, codes]: [string, any]) => (
-                      <div key={userName} className="p-3 bg-gray-800 rounded-lg">
-                        <p className="font-medium mb-2">{userName}</p>
-                        <div className="grid grid-cols-3 gap-2 text-sm">
+              {reportType === 'salary' ? (
+                !salaryRows.length ? (
+                  <EmptyState title="Ingen rapportdata" description="Det finns inga attesterade tidrader för perioden." />
+                ) : (
+                  <div className="space-y-3">
+                    {salaryRows.map(([userName, codes]) => (
+                      <div key={userName} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                        <p className="font-semibold text-slate-900">{userName}</p>
+                        <div className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-4">
                           {Object.entries(codes).map(([code, data]: [string, any]) => (
-                            <div key={code} className="flex justify-between">
-                              <span className="text-gray-400">{code}</span>
-                              <span className="font-medium">{data.hours.toFixed(1)}h</span>
+                            <div key={code} className="rounded-lg bg-white px-3 py-2">
+                              <p className="text-xs text-slate-500">{code}</p>
+                              <p className="font-semibold text-slate-900">{formatHours(data.hours)}</p>
                             </div>
                           ))}
                         </div>
                       </div>
                     ))}
                   </div>
-                </div>
+                )
+              ) : (
+                !projectRows.length ? (
+                  <EmptyState title="Inget fakturaunderlag" description="Det finns inga attesterade fakturerbara timmar i urvalet." />
+                ) : (
+                  <DataTable>
+                    <table className="min-w-full text-sm">
+                      <thead className="table-head">
+                        <tr><th className="px-3 py-2">Projekt</th><th className="px-3 py-2">Kund</th><th className="px-3 py-2">Timmar</th><th className="px-3 py-2">Belopp</th></tr>
+                      </thead>
+                      <tbody>
+                        {projectRows.map((row) => (
+                          <tr key={row.project?.id || row.project?.code || row.project?.name} className="border-b border-slate-100">
+                            <td className="px-3 py-2 font-semibold text-slate-900">{row.project?.name || 'Okänt projekt'}</td>
+                            <td className="px-3 py-2">{row.project?.customer?.name || '-'}</td>
+                            <td className="px-3 py-2">{formatHours(row.totalHours)}</td>
+                            <td className="px-3 py-2 font-semibold text-emerald-700">{formatCurrency(row.totalAmount)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </DataTable>
+                )
               )}
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-4 bg-gray-800 rounded-lg">
-                  <p className="text-2xl font-bold">{reportData.totals?.totalHours.toFixed(1)}h</p>
-                  <p className="text-sm text-gray-400">Fakturerbara timmar</p>
-                </div>
-                <div className="p-4 bg-green-900/20 rounded-lg">
-                  <p className="text-2xl font-bold text-green-400">
-                    {reportData.totals?.totalAmount.toLocaleString('sv-SE')} kr
-                  </p>
-                  <p className="text-sm text-gray-400">Totalt belopp</p>
-                </div>
-              </div>
+            </Card>
+          </div>
 
-              {reportData.byProject && Object.keys(reportData.byProject).length > 0 && (
-                <div>
-                  <h3 className="font-medium mb-2">Per projekt</h3>
-                  <div className="space-y-2">
-                    {Object.entries(reportData.byProject).map(([projectId, data]: [string, any]) => (
-                      <div key={projectId} className="flex justify-between p-3 bg-gray-800 rounded-lg">
-                        <div>
-                          <p className="font-medium">
-                            {data.project?.name || 'Okänt projekt'}
-                          </p>
-                          <p className="text-sm text-gray-400">
-                            {data.project?.customer?.name}
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-medium">{data.totalHours.toFixed(1)}h</p>
-                          <p className="text-sm text-green-400">
-                            {data.totalAmount.toLocaleString('sv-SE')} kr
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+          <Card>
+            <div className="mb-4 flex items-center gap-2">
+              <FileSpreadsheet className="h-5 w-5 text-emerald-600" />
+              <h2 className="section-title">Excel-backup</h2>
             </div>
-          )}
+            <p className="mb-4 text-sm text-slate-500">Ladda ner attesterade tider med en flik per vecka. Bra som arkiv och kontrollunderlag.</p>
+            <div className="space-y-3">
+              <label>
+                <span className="label">Från</span>
+                <input type="date" value={backupFromDate} onChange={(event) => setBackupFromDate(event.target.value)} className="input" />
+              </label>
+              <label>
+                <span className="label">Till</span>
+                <input type="date" value={backupToDate} onChange={(event) => setBackupToDate(event.target.value)} className="input" />
+              </label>
+              <Button type="button" variant="secondary" onClick={handleExcelBackupExport} isLoading={isExportingBackup}>
+                <Download className="h-4 w-4" />
+                Ladda ner Excel
+              </Button>
+            </div>
+          </Card>
         </div>
-      ) : null}
-    </div>
+      )}
+    </AppShell>
   );
 }
