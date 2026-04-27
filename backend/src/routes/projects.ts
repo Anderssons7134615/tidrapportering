@@ -1,6 +1,7 @@
 import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../index.js';
+import { getProjectMetrics } from '../lib/projectMetrics.js';
 
 const projectSchema = z.object({
   customerId: z.string().uuid().optional().nullable(),
@@ -9,16 +10,21 @@ const projectSchema = z.object({
   site: z.string().optional().nullable(),
   status: z.enum(['PLANNED', 'ONGOING', 'COMPLETED', 'INVOICED']).optional(),
   budgetHours: z.number().optional().nullable(),
+  fixedPrice: z.number().optional().nullable(),
   billingModel: z.enum(['HOURLY', 'FIXED']).optional(),
   defaultRate: z.number().optional().nullable(),
   employeeCanSeeResults: z.boolean().optional(),
+  notes: z.string().optional().nullable(),
 });
 
 const materialArticleSchema = z.object({
   name: z.string().min(2),
   articleNumber: z.string().trim().optional().nullable(),
+  category: z.enum(['Rörskål', 'Lamellmatta', 'Plåt', 'Tejp', 'Brandtätning', 'Skruv/nit', 'Övrigt']).optional(),
   unit: z.string().min(1).max(20).optional(),
+  purchasePrice: z.number().nonnegative().optional().nullable(),
   defaultUnitPrice: z.number().nonnegative().optional().nullable(),
+  markupPercent: z.number().nonnegative().optional().nullable(),
 });
 
 const projectMaterialSchema = z.object({
@@ -26,6 +32,12 @@ const projectMaterialSchema = z.object({
   quantity: z.number().positive(),
   date: z.string().datetime().optional(),
   note: z.string().trim().max(500).optional().nullable(),
+});
+
+const invoiceMarkSchema = z.object({
+  ids: z.array(z.string().uuid()).optional(),
+  invoiceReference: z.string().trim().max(100).optional().nullable(),
+  invoicedAt: z.string().optional(),
 });
 
 const requireAdminOrSupervisor = async (request: any, reply: any) => {
@@ -83,17 +95,15 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
     // Beräkna totala timmar per projekt
     const projectsWithHours = await Promise.all(
       projects.map(async (project) => {
-        const totalHours = await prisma.timeEntry.aggregate({
-          where: { projectId: project.id },
-          _sum: { hours: true },
-        });
-
+        const metrics = await getProjectMetrics(prisma, project);
         const hideResults = shouldHideResultsForEmployee(request.user.role, project);
 
         return {
           ...project,
           resultsVisibleToCurrentUser: !hideResults,
-          totalHours: hideResults ? null : (totalHours._sum.hours || 0),
+          totalHours: hideResults ? null : metrics.totalHours,
+          billableHours: hideResults ? null : metrics.billableHours,
+          metrics: hideResults ? null : metrics,
         };
       })
     );
@@ -119,6 +129,7 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     const hideResults = shouldHideResultsForEmployee(request.user.role, project);
+    const metrics = await getProjectMetrics(prisma, project);
 
     // Beräkna statistik
     const stats = hideResults
@@ -140,6 +151,7 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
       resultsVisibleToCurrentUser: !hideResults,
       totalHours: hideResults ? null : (stats?._sum.hours || 0),
       billableHours: hideResults ? null : (billableStats?._sum.hours || 0),
+      metrics: hideResults ? null : metrics,
     };
   });
 
@@ -170,8 +182,11 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
           companyId: request.user.companyId,
           name: body.name.trim(),
           articleNumber: body.articleNumber?.trim() || null,
+          category: body.category || 'Övrigt',
           unit: body.unit?.trim() || 'st',
+          purchasePrice: body.purchasePrice ?? null,
           defaultUnitPrice: body.defaultUnitPrice ?? null,
+          markupPercent: body.markupPercent ?? null,
         },
       });
 
@@ -184,8 +199,11 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
           newValue: JSON.stringify({
             name: article.name,
             articleNumber: article.articleNumber,
+            category: article.category,
             unit: article.unit,
+            purchasePrice: article.purchasePrice,
             defaultUnitPrice: article.defaultUnitPrice,
+            markupPercent: article.markupPercent,
           }),
         },
       });
@@ -271,6 +289,7 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
           articleName: article.name,
           articleNumber: article.articleNumber,
           unit: article.unit,
+          purchasePrice: article.purchasePrice,
           unitPrice: article.defaultUnitPrice,
           quantity: body.quantity,
           date: body.date ? new Date(body.date) : new Date(),
@@ -355,6 +374,40 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
     return { message: 'Materialraden borttagen' };
   });
 
+  fastify.post('/:id/materials/mark-invoiced', {
+    preHandler: [requireAdminOrSupervisor],
+  }, async (request, reply) => {
+    try {
+      const { id } = request.params as { id: string };
+      const body = invoiceMarkSchema.parse(request.body);
+
+      const project = await prisma.project.findUnique({ where: { id } });
+      if (!project || project.companyId !== request.user.companyId) {
+        return reply.status(404).send({ error: 'Projekt hittades inte' });
+      }
+
+      const result = await prisma.projectMaterial.updateMany({
+        where: {
+          projectId: id,
+          invoiceStatus: { not: 'INVOICED' },
+          ...(body.ids?.length ? { id: { in: body.ids } } : {}),
+        },
+        data: {
+          invoiceStatus: 'INVOICED',
+          invoicedAt: body.invoicedAt ? new Date(body.invoicedAt) : new Date(),
+          invoiceReference: body.invoiceReference || null,
+        },
+      });
+
+      return { updated: result.count };
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return reply.status(400).send({ error: 'Ogiltig data', details: error.errors });
+      }
+      throw error;
+    }
+  });
+
   // Get project time entries
   fastify.get('/:id/time-entries', {
     preHandler: [fastify.authenticate],
@@ -386,6 +439,42 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     return entries;
+  });
+
+  fastify.post('/:id/time-entries/mark-invoiced', {
+    preHandler: [requireAdminOrSupervisor],
+  }, async (request, reply) => {
+    try {
+      const { id } = request.params as { id: string };
+      const body = invoiceMarkSchema.parse(request.body);
+
+      const project = await prisma.project.findUnique({ where: { id } });
+      if (!project || project.companyId !== request.user.companyId) {
+        return reply.status(404).send({ error: 'Projekt hittades inte' });
+      }
+
+      const result = await prisma.timeEntry.updateMany({
+        where: {
+          projectId: id,
+          user: { companyId: request.user.companyId },
+          invoiceStatus: { not: 'INVOICED' },
+          billable: true,
+          ...(body.ids?.length ? { id: { in: body.ids } } : {}),
+        },
+        data: {
+          invoiceStatus: 'INVOICED',
+          invoicedAt: body.invoicedAt ? new Date(body.invoicedAt) : new Date(),
+          invoiceReference: body.invoiceReference || null,
+        },
+      });
+
+      return { updated: result.count };
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return reply.status(400).send({ error: 'Ogiltig data', details: error.errors });
+      }
+      throw error;
+    }
   });
 
   // Manager summary by employee for project
@@ -421,6 +510,8 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
         date: true,
         hours: true,
         billable: true,
+        project: { select: { defaultRate: true, customer: { select: { defaultRate: true } } } },
+        activity: { select: { rateOverride: true } },
         user: { select: { id: true, name: true, email: true } },
       },
     });
@@ -453,6 +544,7 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
       hours: number;
       billableHours: number;
       nonBillableHours: number;
+      amount: number;
       entryCount: number;
       dayHours: Record<string, number>;
     }> = {};
@@ -471,6 +563,7 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
           hours: 0,
           billableHours: 0,
           nonBillableHours: 0,
+          amount: 0,
           entryCount: 0,
           dayHours: { Mån: 0, Tis: 0, Ons: 0, Tor: 0, Fre: 0, Lör: 0, Sön: 0 },
         };
@@ -483,6 +576,8 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
 
       if (entry.billable) {
         byEmployeeWeek[key].billableHours += entry.hours;
+        const rate = entry.activity.rateOverride ?? entry.project?.defaultRate ?? entry.project?.customer?.defaultRate ?? 0;
+        byEmployeeWeek[key].amount += entry.hours * rate;
       } else {
         byEmployeeWeek[key].nonBillableHours += entry.hours;
       }
@@ -505,7 +600,7 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
         nonBillableHours: row.nonBillableHours,
         entryCount: row.entryCount,
         dayHours: row.dayHours,
-        amount: 0,
+        amount: row.amount,
       }));
 
     return {
@@ -515,6 +610,7 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
       totals: {
         totalHours: employeeWeekBreakdown.reduce((sum, e) => sum + e.totalHours, 0),
         totalBillableHours: employeeWeekBreakdown.reduce((sum, e) => sum + e.billableHours, 0),
+        totalAmount: employeeWeekBreakdown.reduce((sum, e) => sum + e.amount, 0),
         employeeCount: new Set(employeeWeekBreakdown.map((e) => e.userId)).size,
       },
     };

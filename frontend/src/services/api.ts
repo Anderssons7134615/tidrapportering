@@ -144,13 +144,17 @@ export const projectsApi = {
   createMaterialArticle: (data: {
     name: string;
     articleNumber?: string;
+    category?: string;
     unit?: string;
+    purchasePrice?: number;
     defaultUnitPrice?: number;
+    markupPercent?: number;
   }) => fetchApi<MaterialArticle>('/projects/materials/articles', {
     method: 'POST',
     body: JSON.stringify(data),
   }),
   listMaterials: (id: string) => fetchApi<ProjectMaterialsResponse>(`/projects/${id}/materials`),
+  listTimeEntries: (id: string) => fetchApi<TimeEntry[]>(`/projects/${id}/time-entries`),
   createMaterial: (id: string, data: {
     articleId: string;
     quantity: number;
@@ -162,6 +166,16 @@ export const projectsApi = {
   }),
   deleteMaterial: (id: string, materialId: string) =>
     fetchApi<{ message: string }>(`/projects/${id}/materials/${materialId}`, { method: 'DELETE' }),
+  markMaterialsInvoiced: (id: string, data: { ids?: string[]; invoiceReference?: string; invoicedAt?: string }) =>
+    fetchApi<{ updated: number }>(`/projects/${id}/materials/mark-invoiced`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  markTimeEntriesInvoiced: (id: string, data: { ids?: string[]; invoiceReference?: string; invoicedAt?: string }) =>
+    fetchApi<{ updated: number }>(`/projects/${id}/time-entries/mark-invoiced`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
   getManagerSummary: async (id: string) => {
     const raw = await fetchApi<any>(`/projects/${id}/manager-summary`);
 

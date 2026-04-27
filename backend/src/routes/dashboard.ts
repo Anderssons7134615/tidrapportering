@@ -1,6 +1,7 @@
 import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../index.js';
+import { getCompanyProjectMetrics, getRate } from '../lib/projectMetrics.js';
 
 const drilldownQuerySchema = z.object({
   metric: z.enum(['weekly-hours', 'monthly-hours', 'billable-hours', 'pending-approval']),
@@ -22,7 +23,7 @@ const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
         await backfillDraftWeeksToSubmitted(request.user.companyId);
       }
 
-      const [monthStats, billableMonthStats, weekStats, pendingApprovals, myPendingWeeks, recentEntries, weeklyEntries] =
+      const [monthStats, billableMonthStats, weekStats, billableWeekEntries, pendingApprovals, myPendingWeeks, recentEntries, weeklyEntries, projectMetrics] =
         await Promise.all([
           prisma.timeEntry.aggregate({
             where: {
@@ -45,6 +46,17 @@ const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
               date: { gte: period.weekStart, lte: period.weekEnd },
             },
             _sum: { hours: true },
+          }),
+          prisma.timeEntry.findMany({
+            where: {
+              ...userFilter,
+              date: { gte: period.weekStart, lte: period.weekEnd },
+              billable: true,
+            },
+            include: {
+              project: { select: { defaultRate: true, customer: { select: { defaultRate: true } } } },
+              activity: { select: { rateOverride: true } },
+            },
           }),
           isAdminOrSupervisor
             ? getPendingApprovals(request.user.companyId, 10)
@@ -69,18 +81,58 @@ const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
             },
             select: { date: true, hours: true },
           }),
+          isAdminOrSupervisor ? getCompanyProjectMetrics(prisma, request.user.companyId) : Promise.resolve([]),
         ]);
 
       const dailyHours = createDailyHoursMap(period.weekStart, weeklyEntries);
+      const billableWeekValue = billableWeekEntries.reduce((sum, entry) => sum + entry.hours * getRate(entry), 0);
+      const riskProjects = projectMetrics.filter((project: any) => project.metrics.status.code === 'RISK');
+      const projectsWithoutBudget = projectMetrics.filter((project: any) => project.metrics.warnings.includes('Saknar budget'));
+      const actionItems = [
+        ...(projectsWithoutBudget.length
+          ? [{
+              id: 'projects-missing-budget',
+              title: `${projectsWithoutBudget.length} projekt saknar budget`,
+              description: 'Sätt budget för att kunna följa risk och marginal.',
+              tone: 'yellow',
+              to: '/projects?missingBudget=true',
+            }]
+          : []),
+        ...(pendingApprovals.length
+          ? [{
+              id: 'pending-approvals',
+              title: `${pendingApprovals.length} veckor väntar attest`,
+              description: 'Granska och godkänn rapporterad tid.',
+              tone: 'yellow',
+              to: '/approval',
+            }]
+          : []),
+        ...(riskProjects.length
+          ? [{
+              id: 'risk-projects',
+              title: `${riskProjects.length} projekt är i risk`,
+              description: 'Kontrollera budget, timmar och fakturering.',
+              tone: 'red',
+              to: '/projects?risk=true',
+            }]
+          : []),
+      ];
 
       return {
         summary: {
           monthlyHours: monthStats._sum.hours || 0,
           monthlyBillableHours: billableMonthStats._sum.hours || 0,
           weeklyHours: weekStats._sum.hours || 0,
+          weeklyBillableHours: billableWeekEntries.reduce((sum, entry) => sum + entry.hours, 0),
+          weeklyBillableValue: billableWeekValue,
           pendingApprovalCount: pendingApprovals.length,
+          riskProjectCount: riskProjects.length,
+          projectsWithoutBudgetCount: projectsWithoutBudget.length,
         },
         pendingApprovals,
+        actionItems,
+        riskProjects: riskProjects.slice(0, 6),
+        projectsWithoutBudget: projectsWithoutBudget.slice(0, 6),
         myPendingWeeks,
         recentEntries,
         dailyHours,

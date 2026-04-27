@@ -54,7 +54,7 @@ await fastify.register(cors, {
     // Tillåt även Cloudflare Pages-domäner under uppsättning
     const isPagesDomain = /^https:\/\/[a-z0-9-]+\.pages\.dev$/i.test(normalized);
 
-    if (isAllowed || isPagesDomain) {
+    if (isAllowed) {
       cb(null, true);
     } else {
       cb(new Error('Origin not allowed by CORS'), false);

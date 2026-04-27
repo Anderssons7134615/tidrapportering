@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../index.js';
 import fs from 'fs';
 import path from 'path';
+import { randomUUID } from 'crypto';
 import { pipeline } from 'stream/promises';
 
 const timeEntrySchema = z.object({
@@ -277,8 +278,8 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
 
-    const entry = await prisma.timeEntry.findUnique({
-      where: { id },
+    const entry = await prisma.timeEntry.findFirst({
+      where: { id, user: { companyId: request.user.companyId } },
       include: {
         user: { select: { id: true, name: true } },
         project: { select: { id: true, name: true, code: true, customer: { select: { id: true, name: true } } } },
@@ -481,7 +482,9 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
       const { id } = request.params as { id: string };
       const body = timeEntrySchema.partial().parse(request.body);
 
-      const entry = await prisma.timeEntry.findUnique({ where: { id } });
+      const entry = await prisma.timeEntry.findFirst({
+        where: { id, user: { companyId: request.user.companyId } },
+      });
       if (!entry) {
         return reply.status(404).send({ error: 'Tidrad hittades inte' });
       }
@@ -564,7 +567,9 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
 
-    const entry = await prisma.timeEntry.findUnique({ where: { id } });
+    const entry = await prisma.timeEntry.findFirst({
+      where: { id, user: { companyId: request.user.companyId } },
+    });
     if (!entry) {
       return reply.status(404).send({ error: 'Tidrad hittades inte' });
     }
@@ -641,7 +646,9 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
 
-    const entry = await prisma.timeEntry.findUnique({ where: { id } });
+    const entry = await prisma.timeEntry.findFirst({
+      where: { id, user: { companyId: request.user.companyId } },
+    });
     if (!entry) {
       return reply.status(404).send({ error: 'Tidrad hittades inte' });
     }
@@ -657,7 +664,9 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     const uploadDir = process.env.UPLOAD_DIR || '../uploads';
-    const filename = `${Date.now()}-${data.filename}`;
+    const originalName = path.basename(data.filename || 'bilaga');
+    const safeExt = getSafeExtension(originalName, data.mimetype);
+    const filename = `${randomUUID()}${safeExt}`;
     const filepath = path.join(uploadDir, filename);
 
     // Skapa mapp om den inte finns
@@ -672,7 +681,7 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
       data: {
         timeEntryId: id,
         filename,
-        originalName: data.filename,
+        originalName,
         mimeType: data.mimetype,
         size: 0, // TODO: beräkna storlek
         path: filepath,
@@ -688,8 +697,11 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
   }, async (request, reply) => {
     const { id, attachmentId } = request.params as { id: string; attachmentId: string };
 
-    const attachment = await prisma.attachment.findUnique({
-      where: { id: attachmentId },
+    const attachment = await prisma.attachment.findFirst({
+      where: {
+        id: attachmentId,
+        timeEntry: { user: { companyId: request.user.companyId } },
+      },
       include: { timeEntry: true },
     });
 
@@ -802,6 +814,18 @@ async function validateEntryReferences({
   }
 
   return { error: null, activity };
+}
+
+function getSafeExtension(originalName: string, mimeType: string) {
+  const ext = path.extname(originalName).toLowerCase();
+  const allowed = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.pdf', '.txt', '.csv', '.xlsx']);
+  if (allowed.has(ext)) return ext;
+
+  if (mimeType === 'application/pdf') return '.pdf';
+  if (mimeType === 'image/jpeg') return '.jpg';
+  if (mimeType === 'image/png') return '.png';
+  if (mimeType === 'image/webp') return '.webp';
+  return '.bin';
 }
 
 export default timeEntryRoutes;

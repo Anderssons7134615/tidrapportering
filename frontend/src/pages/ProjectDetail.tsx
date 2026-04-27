@@ -1,82 +1,53 @@
 import { useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { projectsApi } from '../services/api';
-import type { MaterialArticle, Project, ProjectManagerSummary, ProjectMaterial, ProjectMaterialsResponse } from '../types';
-import { useAuthStore } from '../stores/authStore';
-import {
-  ArrowLeft,
-  Building2,
-  Clock,
-  FolderKanban,
-  MapPin,
-  Package,
-  Plus,
-  Receipt,
-  Trash2,
-  Users,
-} from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Plus, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { projectsApi } from '../services/api';
+import { useAuthStore } from '../stores/authStore';
+import type { MaterialArticle, Project, ProjectMaterial, TimeEntry } from '../types';
+import { AppShell, Button, Card, DataTable, EmptyState, FormField, KpiCard, PageHeader, StatusBadge, Tabs } from '../components/ui/design';
+import { formatCurrency, formatDate, formatHours, formatPercent, parseSwedishNumber } from '../utils/format';
 
-const statusLabels: Record<string, string> = {
-  PLANNED: 'Planerad',
-  ONGOING: 'Pagar',
-  COMPLETED: 'Avslutad',
-  INVOICED: 'Fakturerad',
-};
-
-const statusColors: Record<string, string> = {
-  PLANNED: 'badge-blue',
-  ONGOING: 'badge-green',
-  COMPLETED: 'badge-gray',
-  INVOICED: 'badge-gray',
-};
-
-function formatShortDate(value: string) {
-  return new Date(value).toLocaleDateString('sv-SE');
-}
-
-function formatCurrency(value: number | null | undefined) {
-  if (value == null) return '-';
-  return `${value.toLocaleString('sv-SE', { maximumFractionDigits: 2 })} kr`;
-}
+const tabs = [
+  { id: 'overview', label: 'Översikt' },
+  { id: 'hours', label: 'Timmar' },
+  { id: 'materials', label: 'Material' },
+  { id: 'finance', label: 'Ekonomi' },
+  { id: 'invoice', label: 'Fakturering' },
+  { id: 'notes', label: 'Anteckningar' },
+];
 
 export default function ProjectDetail() {
-  const { id } = useParams();
+  const { id = '' } = useParams();
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
   const isManager = user?.role === 'ADMIN' || user?.role === 'SUPERVISOR';
-
-  const [articleForm, setArticleForm] = useState({
-    name: '',
-    articleNumber: '',
-    unit: 'st',
-    defaultUnitPrice: '',
-  });
+  const [activeTab, setActiveTab] = useState('overview');
   const [materialForm, setMaterialForm] = useState({
     articleId: '',
     quantity: '',
     date: new Date().toISOString().slice(0, 10),
     note: '',
   });
+  const [invoiceReference, setInvoiceReference] = useState('');
 
-  const { data: project, isLoading, error } = useQuery({
+  const { data: project, isLoading } = useQuery({
     queryKey: ['project', id],
-    queryFn: () => projectsApi.get(id || ''),
+    queryFn: () => projectsApi.get(id),
     enabled: !!id,
   });
 
-  const { data: managerSummary } = useQuery({
+  const { data: timeEntries } = useQuery({
+    queryKey: ['project', id, 'time-entries'],
+    queryFn: () => projectsApi.listTimeEntries(id),
+    enabled: !!id && (isManager || Boolean(project?.employeeCanSeeResults)),
+  });
+
+  useQuery({
     queryKey: ['project', id, 'manager-summary'],
-    queryFn: async () => {
-      try {
-        return await projectsApi.getManagerSummary(id || '');
-      } catch {
-        return null;
-      }
-    },
+    queryFn: () => projectsApi.getManagerSummary(id),
     enabled: !!id && isManager,
-    retry: false,
   });
 
   const { data: materialArticles } = useQuery({
@@ -87,523 +58,253 @@ export default function ProjectDetail() {
 
   const { data: materialsResponse } = useQuery({
     queryKey: ['project', id, 'materials'],
-    queryFn: () => projectsApi.listMaterials(id || ''),
+    queryFn: () => projectsApi.listMaterials(id),
     enabled: !!id,
   });
 
   const p = project as Project | undefined;
-  const summary = managerSummary as ProjectManagerSummary | null | undefined;
-  const materials = materialsResponse as ProjectMaterialsResponse | undefined;
-  const articles = (materialArticles as MaterialArticle[] | undefined) || [];
-  const canViewResults = isManager || !!p?.employeeCanSeeResults;
-  const canViewMaterialCosts = isManager || !!materials?.costVisibleToCurrentUser;
-
-  const budgetUsedPercent = useMemo(() => {
-    if (!p?.budgetHours || !p.totalHours) return 0;
-    return Math.min((p.totalHours / p.budgetHours) * 100, 100);
-  }, [p]);
-
-  const remainingHours = useMemo(() => {
-    if (!p?.budgetHours) return null;
-    return Math.max(p.budgetHours - (p.totalHours || 0), 0);
-  }, [p]);
-
-  const createArticleMutation = useMutation({
-    mutationFn: () =>
-      projectsApi.createMaterialArticle({
-        name: articleForm.name.trim(),
-        articleNumber: articleForm.articleNumber.trim() || undefined,
-        unit: articleForm.unit.trim() || 'st',
-        defaultUnitPrice: articleForm.defaultUnitPrice ? parseFloat(articleForm.defaultUnitPrice) : undefined,
-      }),
-    onSuccess: (created) => {
-      toast.success('Materialartikel skapad');
-      queryClient.invalidateQueries({ queryKey: ['material-articles'] });
-      setArticleForm({
-        name: '',
-        articleNumber: '',
-        unit: created.unit || 'st',
-        defaultUnitPrice: '',
-      });
-      setMaterialForm((current) => ({
-        ...current,
-        articleId: current.articleId || created.id,
-      }));
-    },
-    onError: (error: Error) => toast.error(error.message),
-  });
+  const metrics = p?.metrics;
+  const entries = (timeEntries || []) as TimeEntry[];
+  const materials = materialsResponse?.items || [];
+  const canViewMoney = isManager || Boolean(p?.employeeCanSeeResults);
 
   const createMaterialMutation = useMutation({
-    mutationFn: () =>
-      projectsApi.createMaterial(id || '', {
-        articleId: materialForm.articleId,
-        quantity: parseFloat(materialForm.quantity),
-        date: materialForm.date ? new Date(`${materialForm.date}T12:00:00`).toISOString() : undefined,
-        note: materialForm.note.trim() || undefined,
-      }),
+    mutationFn: () => projectsApi.createMaterial(id, {
+      articleId: materialForm.articleId,
+      quantity: parseSwedishNumber(materialForm.quantity),
+      date: new Date(`${materialForm.date}T12:00:00`).toISOString(),
+      note: materialForm.note || undefined,
+    }),
     onSuccess: () => {
-      toast.success('Material sparat pa projektet');
+      toast.success('Material sparat');
+      setMaterialForm((current) => ({ ...current, quantity: '', note: '' }));
+      queryClient.invalidateQueries({ queryKey: ['project', id] });
       queryClient.invalidateQueries({ queryKey: ['project', id, 'materials'] });
-      setMaterialForm((current) => ({
-        ...current,
-        quantity: '',
-        note: '',
-      }));
     },
     onError: (error: Error) => toast.error(error.message),
   });
 
   const deleteMaterialMutation = useMutation({
-    mutationFn: (materialId: string) => projectsApi.deleteMaterial(id || '', materialId),
+    mutationFn: (materialId: string) => projectsApi.deleteMaterial(id, materialId),
     onSuccess: () => {
       toast.success('Materialrad borttagen');
+      queryClient.invalidateQueries({ queryKey: ['project', id] });
       queryClient.invalidateQueries({ queryKey: ['project', id, 'materials'] });
     },
     onError: (error: Error) => toast.error(error.message),
   });
 
-  const handleArticleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    createArticleMutation.mutate();
-  };
+  const markTimeInvoicedMutation = useMutation({
+    mutationFn: () => projectsApi.markTimeEntriesInvoiced(id, { invoiceReference: invoiceReference || undefined }),
+    onSuccess: (result) => {
+      toast.success(`${result.updated} tidrader markerade som fakturerade`);
+      queryClient.invalidateQueries({ queryKey: ['project', id] });
+      queryClient.invalidateQueries({ queryKey: ['project', id, 'time-entries'] });
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
 
-  const handleMaterialSubmit = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    createMaterialMutation.mutate();
-  };
+  const markMaterialsInvoicedMutation = useMutation({
+    mutationFn: () => projectsApi.markMaterialsInvoiced(id, { invoiceReference: invoiceReference || undefined }),
+    onSuccess: (result) => {
+      toast.success(`${result.updated} materialrader markerade som fakturerade`);
+      queryClient.invalidateQueries({ queryKey: ['project', id] });
+      queryClient.invalidateQueries({ queryKey: ['project', id, 'materials'] });
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
 
-  const selectedArticle = useMemo(
-    () => articles.find((article) => article.id === materialForm.articleId),
-    [articles, materialForm.articleId]
-  );
+  const groupedByPerson = useMemo(() => {
+    const rows = new Map<string, { name: string; hours: number; billable: number }>();
+    entries.forEach((entry) => {
+      const key = entry.userId;
+      const row = rows.get(key) || { name: entry.user?.name || 'Okänd', hours: 0, billable: 0 };
+      row.hours += entry.hours;
+      if (entry.billable) row.billable += entry.hours;
+      rows.set(key, row);
+    });
+    return Array.from(rows.values()).sort((a, b) => b.hours - a.hours);
+  }, [entries]);
 
-  if (isLoading) {
-    return <div className="card">Laddar projekt...</div>;
-  }
+  const uninvoicedTime = entries.filter((entry) => entry.billable && entry.invoiceStatus !== 'INVOICED');
+  const uninvoicedMaterials = materials.filter((item) => item.invoiceStatus !== 'INVOICED' && (item.lineTotal || 0) > 0);
 
-  if (error || !p) {
+  if (isLoading) return <Card>Laddar projekt...</Card>;
+
+  if (!p) {
     return (
-      <div className="space-y-4">
-        <Link to="/projects" className="btn-secondary inline-flex">
-          <ArrowLeft className="h-4 w-4" />
-          Tillbaka
-        </Link>
-        <div className="card text-rose-700">Kunde inte hamta projektet.</div>
-      </div>
+      <AppShell>
+        <Link to="/projects" className="btn-secondary inline-flex"><ArrowLeft className="h-4 w-4" /> Tillbaka</Link>
+        <EmptyState title="Projektet kunde inte hämtas" />
+      </AppShell>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <Link to="/projects" className="btn-secondary inline-flex">
-          <ArrowLeft className="h-4 w-4" />
-          Tillbaka
-        </Link>
+    <AppShell>
+      <Link to="/projects" className="btn-secondary inline-flex w-fit"><ArrowLeft className="h-4 w-4" /> Tillbaka</Link>
+      <PageHeader
+        title={p.name}
+        description={`${p.code} · ${p.customer?.name || 'Intern'} · ${p.billingModel === 'FIXED' ? 'Fastpris' : 'Löpande'}${metrics?.lastActivityAt ? ` · Senaste aktivitet ${formatDate(metrics.lastActivityAt)}` : ''}`}
+        action={metrics?.status && <StatusBadge label={metrics.status.label} tone={metrics.status.tone} />}
+      />
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <KpiCard label="Totala timmar" value={formatHours(metrics?.totalHours)} tone="blue" />
+        <KpiCard label="Denna vecka" value={formatHours(metrics?.weekHours)} tone="blue" />
+        <KpiCard label="Fakturerbara timmar" value={formatHours(metrics?.billableHours)} tone="green" />
+        <KpiCard label="Fakturerbart värde" value={formatCurrency(metrics?.billableValue)} tone="green" />
+        <KpiCard label="Arbetskostnad" value={canViewMoney ? formatCurrency(metrics?.laborCost) : 'Doljt'} />
+        <KpiCard label="Materialkostnad" value={canViewMoney ? formatCurrency(metrics?.materialCost) : 'Doljt'} />
+        <KpiCard label="Budgetförbrukning" value={formatPercent(metrics?.budgetUsagePercent)} tone={(metrics?.budgetUsagePercent || 0) >= 80 ? 'red' : p.budgetHours ? 'green' : 'yellow'} />
+        <KpiCard label="Resultat / marginal" value={canViewMoney && metrics?.projectResult != null ? formatCurrency(metrics.projectResult) : '-'} hint={canViewMoney ? formatPercent(metrics?.marginPercent) : undefined} />
       </div>
 
-      <div className="card space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="rounded-xl bg-primary-100 p-2.5">
-              <FolderKanban className="h-5 w-5 text-primary-700" />
-            </div>
-            <div>
-              <h1 className="page-title">{p.name}</h1>
-              <p className="text-sm text-slate-500">{p.code}</p>
-            </div>
-          </div>
-          <span className={statusColors[p.status]}>{statusLabels[p.status]}</span>
-        </div>
+      <Tabs tabs={tabs} active={activeTab} onChange={setActiveTab} />
 
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          <div className="surface-muted p-3">
-            <p className="mb-1 flex items-center gap-1 text-xs text-slate-500">
-              <Building2 className="h-4 w-4" /> Kund
-            </p>
-            <p className="font-medium text-slate-900">{p.customer?.name || 'Intern'}</p>
-          </div>
-          <div className="surface-muted p-3">
-            <p className="mb-1 flex items-center gap-1 text-xs text-slate-500">
-              <MapPin className="h-4 w-4" /> Arbetsplats
-            </p>
-            <p className="font-medium text-slate-900">{p.site || 'Ej satt'}</p>
-          </div>
-
-          {canViewResults ? (
-            <>
-              <div className="surface-muted p-3">
-                <p className="mb-1 flex items-center gap-1 text-xs text-slate-500">
-                  <Clock className="h-4 w-4" /> Timmar
-                </p>
-                <p className="font-medium text-slate-900">
-                  {(p.totalHours || 0).toFixed(1)} h
-                  {p.budgetHours ? ` / ${p.budgetHours} h` : ''}
-                </p>
-                {p.budgetHours && (
-                  <p className="mt-1 text-xs text-slate-500">
-                    Kvar: {remainingHours?.toFixed(1)} h ({budgetUsedPercent.toFixed(0)}% anvant)
-                  </p>
-                )}
+      {activeTab === 'overview' && (
+        <div className="grid grid-cols-1 gap-5 xl:grid-cols-[1fr_1fr]">
+          <Card>
+            <h2 className="section-title mb-3">Varningar</h2>
+            {metrics?.warnings?.length ? (
+              <div className="space-y-2">
+                {metrics.warnings.map((warning) => <StatusBadge key={warning} label={warning} tone={warning.includes('budget') ? 'yellow' : 'red'} />)}
               </div>
-              <div className="surface-muted p-3">
-                <p className="mb-1 flex items-center gap-1 text-xs text-slate-500">
-                  <Receipt className="h-4 w-4" /> Debitering
-                </p>
-                <p className="font-medium text-slate-900">
-                  {p.billingModel === 'FIXED' ? 'Fastpris' : 'Lopande'}
-                  {p.defaultRate ? ` - ${p.defaultRate} kr/h` : ''}
-                </p>
-                <p className="mt-1 text-xs text-slate-500">
-                  Fakturerbara timmar: {(p.billableHours || 0).toFixed(1)} h
-                </p>
-              </div>
-            </>
-          ) : (
-            <div className="surface-muted p-3 md:col-span-2">
-              <p className="text-sm text-slate-700">Projektresultat ar dolt for anstallda i detta projekt.</p>
-              <p className="mt-1 text-xs text-slate-500">Du kan fortfarande registrera material pa projektet.</p>
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-        <div className="space-y-6">
-          <div className="card space-y-4">
-            <div className="flex items-center gap-2">
-              <Package className="h-5 w-5 text-primary-700" />
-              <div>
-                <h2 className="text-base font-semibold text-slate-900">Material pa projektet</h2>
-                <p className="text-sm text-slate-500">Registrera forbrukat material direkt mot projektet.</p>
-              </div>
-            </div>
-
-            <form onSubmit={handleMaterialSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div>
-                  <label className="label">Artikel</label>
-                  <select
-                    value={materialForm.articleId}
-                    onChange={(e) => setMaterialForm((current) => ({ ...current, articleId: e.target.value }))}
-                    className="input"
-                    required
-                  >
-                    <option value="">Valj artikel...</option>
-                    {articles.map((article) => (
-                      <option key={article.id} value={article.id}>
-                        {article.articleNumber ? `${article.articleNumber} - ` : ''}
-                        {article.name} ({article.unit})
-                      </option>
-                    ))}
-                  </select>
-                  {articles.length === 0 && (
-                    <p className="mt-1 text-xs text-amber-700">Lagg upp minst en materialartikel for att kunna registrera material.</p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="label">Datum</label>
-                  <input
-                    type="date"
-                    value={materialForm.date}
-                    onChange={(e) => setMaterialForm((current) => ({ ...current, date: e.target.value }))}
-                    className="input"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div>
-                  <label className="label">Antal</label>
-                  <input
-                    type="number"
-                    min="0.01"
-                    step="0.01"
-                    value={materialForm.quantity}
-                    onChange={(e) => setMaterialForm((current) => ({ ...current, quantity: e.target.value }))}
-                    className="input"
-                    placeholder={selectedArticle ? `Antal i ${selectedArticle.unit}` : 'Antal'}
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="label">Kommentar</label>
-                  <input
-                    value={materialForm.note}
-                    onChange={(e) => setMaterialForm((current) => ({ ...current, note: e.target.value }))}
-                    className="input"
-                    placeholder="Ex. monterat i lagenhet 2"
-                  />
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-                <div className="text-sm text-slate-600">
-                  {selectedArticle ? (
-                    <>
-                      <span className="font-medium text-slate-900">{selectedArticle.name}</span>
-                      <span> registreras i </span>
-                      <span className="font-medium text-slate-900">{selectedArticle.unit}</span>
-                      {canViewMaterialCosts && selectedArticle.defaultUnitPrice != null && (
-                        <span>{` med standardpris ${formatCurrency(selectedArticle.defaultUnitPrice)}/${selectedArticle.unit}`}</span>
-                      )}
-                    </>
-                  ) : (
-                    'Valj en artikel sa sparas raden pa projektet med ratt enhet.'
-                  )}
-                </div>
-                <button
-                  type="submit"
-                  disabled={createMaterialMutation.isPending || !articles.length}
-                  className="btn-primary"
-                >
-                  <Plus className="h-4 w-4" />
-                  {createMaterialMutation.isPending ? 'Sparar...' : 'Lagg till material'}
-                </button>
-              </div>
-            </form>
-
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <div className="surface-muted p-3">
-                <p className="text-xs text-slate-500">Rader</p>
-                <p className="text-lg font-semibold text-slate-900">{materials?.items.length || 0}</p>
-              </div>
-              <div className="surface-muted p-3">
-                <p className="text-xs text-slate-500">Totalt antal</p>
-                <p className="text-lg font-semibold text-slate-900">{(materials?.totals.quantity || 0).toFixed(2)}</p>
-              </div>
-              <div className="surface-muted p-3">
-                <p className="text-xs text-slate-500">Materialvarde</p>
-                <p className="text-lg font-semibold text-slate-900">
-                  {canViewMaterialCosts ? formatCurrency(materials?.totals.amount) : 'Doljt'}
-                </p>
-              </div>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-sm">
-                <thead>
-                  <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
-                    <th className="px-3 py-2">Datum</th>
-                    <th className="px-3 py-2">Artikel</th>
-                    <th className="px-3 py-2">Antal</th>
-                    {canViewMaterialCosts && <th className="px-3 py-2">Belopp</th>}
-                    <th className="px-3 py-2">Inlagt av</th>
-                    <th className="px-3 py-2">Kommentar</th>
-                    <th className="px-3 py-2"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {materials?.items.length ? (
-                    materials.items.map((item: ProjectMaterial) => {
-                      const canDelete = isManager || item.createdByUserId === user?.id;
-
-                      return (
-                        <tr key={item.id} className="border-b border-slate-100 text-slate-700 last:border-b-0">
-                          <td className="px-3 py-2">{formatShortDate(item.date)}</td>
-                          <td className="px-3 py-2">
-                            <div className="font-medium text-slate-900">{item.articleName}</div>
-                            {item.articleNumber && <div className="text-xs text-slate-500">{item.articleNumber}</div>}
-                          </td>
-                          <td className="px-3 py-2">
-                            {item.quantity.toFixed(2)} {item.unit}
-                          </td>
-                          {canViewMaterialCosts && <td className="px-3 py-2">{formatCurrency(item.lineTotal)}</td>}
-                          <td className="px-3 py-2">{item.createdByUser?.name || '-'}</td>
-                          <td className="px-3 py-2 text-slate-600">{item.note || '-'}</td>
-                          <td className="px-3 py-2 text-right">
-                            {canDelete && (
-                              <button
-                                onClick={() => {
-                                  if (confirm('Ta bort materialraden?')) {
-                                    deleteMaterialMutation.mutate(item.id);
-                                  }
-                                }}
-                                className="rounded-lg p-2 text-slate-500 transition hover:bg-rose-50 hover:text-rose-600"
-                                title="Ta bort"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })
-                  ) : (
-                    <tr>
-                      <td colSpan={canViewMaterialCosts ? 7 : 6} className="px-3 py-5 text-center text-slate-500">
-                        Inget material registrerat an.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {isManager && (
-            <div className="card space-y-4">
-              <div className="flex items-center gap-2">
-                <Plus className="h-5 w-5 text-primary-700" />
-                <div>
-                  <h2 className="text-base font-semibold text-slate-900">Lagg upp materialartiklar</h2>
-                  <p className="text-sm text-slate-500">Skapa artiklar som anstallda sedan kan valja pa projekt.</p>
-                </div>
-              </div>
-
-              <form onSubmit={handleArticleSubmit} className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div>
-                  <label className="label">Artikelnamn</label>
-                  <input
-                    value={articleForm.name}
-                    onChange={(e) => setArticleForm((current) => ({ ...current, name: e.target.value }))}
-                    className="input"
-                    placeholder="Ex. Gips 13 mm"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="label">Artikelnummer</label>
-                  <input
-                    value={articleForm.articleNumber}
-                    onChange={(e) => setArticleForm((current) => ({ ...current, articleNumber: e.target.value }))}
-                    className="input"
-                    placeholder="ART-1001"
-                  />
-                </div>
-                <div>
-                  <label className="label">Enhet</label>
-                  <input
-                    value={articleForm.unit}
-                    onChange={(e) => setArticleForm((current) => ({ ...current, unit: e.target.value }))}
-                    className="input"
-                    placeholder="st, m, pkt"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="label">Standardpris</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={articleForm.defaultUnitPrice}
-                    onChange={(e) => setArticleForm((current) => ({ ...current, defaultUnitPrice: e.target.value }))}
-                    className="input"
-                    placeholder="0.00"
-                  />
-                </div>
-                <div className="md:col-span-2">
-                  <button type="submit" disabled={createArticleMutation.isPending} className="btn-primary">
-                    <Plus className="h-4 w-4" />
-                    {createArticleMutation.isPending ? 'Skapar...' : 'Skapa artikel'}
-                  </button>
-                </div>
-              </form>
-
-              <div className="overflow-x-auto">
-                <table className="min-w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
-                      <th className="px-3 py-2">Artikel</th>
-                      <th className="px-3 py-2">Nummer</th>
-                      <th className="px-3 py-2">Enhet</th>
-                      <th className="px-3 py-2">Standardpris</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {articles.length ? (
-                      articles.map((article) => (
-                        <tr key={article.id} className="border-b border-slate-100 text-slate-700 last:border-b-0">
-                          <td className="px-3 py-2 font-medium text-slate-900">{article.name}</td>
-                          <td className="px-3 py-2">{article.articleNumber || '-'}</td>
-                          <td className="px-3 py-2">{article.unit}</td>
-                          <td className="px-3 py-2">{formatCurrency(article.defaultUnitPrice)}</td>
-                        </tr>
-                      ))
-                    ) : (
-                      <tr>
-                        <td colSpan={4} className="px-3 py-5 text-center text-slate-500">
-                          Inga materialartiklar upplagda an.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {isManager && (
-          <div className="card space-y-4">
-            <div className="flex items-center gap-2">
-              <Users className="h-5 w-5 text-primary-700" />
-              <h2 className="text-base font-semibold text-slate-900">Chefoversikt</h2>
-            </div>
-
-            {summary ? (
-              <>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  <div className="surface-muted p-3">
-                    <p className="text-xs text-slate-500">Totala timmar</p>
-                    <p className="text-lg font-semibold text-slate-900">{(summary.totalHours || 0).toFixed(1)} h</p>
-                  </div>
-                  <div className="surface-muted p-3">
-                    <p className="text-xs text-slate-500">Fakturerbara timmar</p>
-                    <p className="text-lg font-semibold text-slate-900">{(summary.billableHours || 0).toFixed(1)} h</p>
-                  </div>
-                  <div className="surface-muted p-3">
-                    <p className="text-xs text-slate-500">Fakturerbart varde</p>
-                    <p className="text-lg font-semibold text-slate-900">{formatCurrency(summary.totalAmount)}</p>
-                  </div>
-                </div>
-
-                <div className="overflow-x-auto">
-                  <table className="min-w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
-                        <th className="px-3 py-2">Anstalld</th>
-                        <th className="px-3 py-2">Vecka</th>
-                        <th className="px-3 py-2">Dagar</th>
-                        <th className="px-3 py-2">Timmar</th>
-                        <th className="px-3 py-2">Fakturerbart</th>
-                        <th className="px-3 py-2">Belopp</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {summary.employeeBreakdown?.length ? (
-                        summary.employeeBreakdown.map((employee) => (
-                          <tr key={`${employee.userId}-${employee.weekStartDate || 'total'}`} className="border-b border-slate-100 text-slate-700 last:border-b-0">
-                            <td className="px-3 py-2 font-medium text-slate-900">{employee.userName}</td>
-                            <td className="px-3 py-2">v{employee.weekNumber || '-'}</td>
-                            <td className="px-3 py-2 text-xs text-slate-600">
-                              Man {(employee.dayHours?.Man || employee.dayHours?.Maan || employee.dayHours?.Mån || 0).toFixed(1)}h | Tis {(employee.dayHours?.Tis || 0).toFixed(1)}h | Ons {(employee.dayHours?.Ons || 0).toFixed(1)}h | Tor {(employee.dayHours?.Tor || 0).toFixed(1)}h | Fre {(employee.dayHours?.Fre || 0).toFixed(1)}h
-                            </td>
-                            <td className="px-3 py-2">{(employee.totalHours || 0).toFixed(1)} h</td>
-                            <td className="px-3 py-2">{(employee.billableHours || 0).toFixed(1)} h</td>
-                            <td className="px-3 py-2">{formatCurrency(employee.amount)}</td>
-                          </tr>
-                        ))
-                      ) : (
-                        <tr>
-                          <td colSpan={6} className="px-3 py-5 text-center text-slate-500">
-                            Ingen medarbetardata for perioden.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </>
             ) : (
-              <div className="surface-muted p-3 text-sm text-slate-600">Chefoversikt ar inte tillganglig annu.</div>
+              <EmptyState title="Inga varningar" description="Projektets budget och priser ser kompletta ut." />
             )}
+          </Card>
+          <Card>
+            <h2 className="section-title mb-3">Ekonomiskt läge</h2>
+            <div className="space-y-2 text-sm">
+              <Line label="Fakturerbart värde" value={formatCurrency(metrics?.billableValue)} />
+              <Line label="Materialförsäljning" value={formatCurrency(metrics?.materialSalesValue)} />
+              <Line label="Kostnad hittills" value={formatCurrency((metrics?.laborCost || 0) + (metrics?.materialCost || 0))} />
+              <Line label="Ofakturerat värde" value={formatCurrency(metrics?.uninvoicedValue)} />
+            </div>
+          </Card>
+          <Card>
+            <h2 className="section-title mb-3">Senaste tidrader</h2>
+            <SimpleEntries entries={entries.slice(0, 6)} />
+          </Card>
+          <Card>
+            <h2 className="section-title mb-3">Senaste material</h2>
+            <SimpleMaterials materials={materials.slice(0, 6)} />
+          </Card>
+        </div>
+      )}
+
+      {activeTab === 'hours' && (
+        <Card>
+          <h2 className="section-title mb-3">Timmar</h2>
+          <DataTable>
+            <table className="min-w-full text-sm">
+              <thead className="table-head">
+                <tr><th className="px-3 py-2">Datum</th><th className="px-3 py-2">Anställd</th><th className="px-3 py-2">Aktivitet</th><th className="px-3 py-2">Timmar</th><th className="px-3 py-2">Fakt.</th><th className="px-3 py-2">Status</th><th className="px-3 py-2">Kommentar</th></tr>
+              </thead>
+              <tbody>
+                {entries.map((entry) => (
+                  <tr key={entry.id} className="border-b border-slate-100">
+                    <td className="px-3 py-2">{formatDate(entry.date)}</td>
+                    <td className="px-3 py-2">{entry.user?.name}</td>
+                    <td className="px-3 py-2">{entry.activity?.name || 'Saknar aktivitet'}</td>
+                    <td className="px-3 py-2 font-semibold">{formatHours(entry.hours)}</td>
+                    <td className="px-3 py-2">{entry.billable ? 'Ja' : 'Nej'}</td>
+                    <td className="px-3 py-2">{entry.status}</td>
+                    <td className="px-3 py-2">{entry.note || '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </DataTable>
+          <div className="mt-4 grid grid-cols-1 gap-2 md:grid-cols-3">
+            {groupedByPerson.map((row) => <KpiCard key={row.name} label={row.name} value={formatHours(row.hours)} hint={`${formatHours(row.billable)} fakturerbart`} />)}
           </div>
-        )}
-      </div>
-    </div>
+        </Card>
+      )}
+
+      {activeTab === 'materials' && (
+        <Card>
+          <h2 className="section-title mb-3">Material</h2>
+          <form onSubmit={(event) => { event.preventDefault(); createMaterialMutation.mutate(); }} className="mb-5 grid grid-cols-1 gap-3 md:grid-cols-[1.2fr_0.5fr_0.6fr_1fr_auto]">
+            <FormField label="Artikel">
+              <select className="input" value={materialForm.articleId} onChange={(event) => setMaterialForm((current) => ({ ...current, articleId: event.target.value }))} required>
+                <option value="">Välj artikel</option>
+                {(materialArticles as MaterialArticle[] | undefined)?.map((article) => <option key={article.id} value={article.id}>{article.articleNumber ? `${article.articleNumber} · ` : ''}{article.name} ({article.unit})</option>)}
+              </select>
+            </FormField>
+            <FormField label="Antal"><input className="input" value={materialForm.quantity} onChange={(event) => setMaterialForm((current) => ({ ...current, quantity: event.target.value }))} required /></FormField>
+            <FormField label="Datum"><input type="date" className="input" value={materialForm.date} onChange={(event) => setMaterialForm((current) => ({ ...current, date: event.target.value }))} /></FormField>
+            <FormField label="Kommentar"><input className="input" value={materialForm.note} onChange={(event) => setMaterialForm((current) => ({ ...current, note: event.target.value }))} /></FormField>
+            <Button type="submit" isLoading={createMaterialMutation.isPending} disabledReason={!materialForm.articleId ? 'Välj artikel' : !materialForm.quantity ? 'Ange antal' : null}><Plus className="h-4 w-4" /> Lägg till</Button>
+          </form>
+          <SimpleMaterials materials={materials} onDelete={(item) => deleteMaterialMutation.mutate(item.id)} />
+        </Card>
+      )}
+
+      {activeTab === 'finance' && (
+        <Card>
+          <h2 className="section-title mb-3">Ekonomi</h2>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <Line label="Budget timmar" value={p.budgetHours ? formatHours(p.budgetHours) : 'Saknas'} />
+            <Line label="Fastpris/anbud" value={formatCurrency(p.fixedPrice)} />
+            <Line label="Timpris" value={p.defaultRate ? `${formatCurrency(p.defaultRate)}/h` : 'Saknas'} />
+            <Line label="Budgetförbrukning" value={formatPercent(metrics?.budgetUsagePercent)} />
+            <Line label="Fakturerbart värde" value={formatCurrency(metrics?.billableValue)} />
+            <Line label="Resultat" value={metrics?.projectResult == null ? '-' : formatCurrency(metrics.projectResult)} />
+          </div>
+        </Card>
+      )}
+
+      {activeTab === 'invoice' && (
+        <Card>
+          <h2 className="section-title mb-3">Fakturering</h2>
+          <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-[1fr_auto_auto]">
+            <input className="input" placeholder="Fakturareferens, valfritt" value={invoiceReference} onChange={(event) => setInvoiceReference(event.target.value)} />
+            <Button type="button" variant="success" isLoading={markTimeInvoicedMutation.isPending} disabled={!uninvoicedTime.length} onClick={() => markTimeInvoicedMutation.mutate()}><CheckCircle2 className="h-4 w-4" /> Markera tid</Button>
+            <Button type="button" variant="success" isLoading={markMaterialsInvoicedMutation.isPending} disabled={!uninvoicedMaterials.length} onClick={() => markMaterialsInvoicedMutation.mutate()}><CheckCircle2 className="h-4 w-4" /> Markera material</Button>
+          </div>
+          <KpiCard label="Ofakturerat värde" value={formatCurrency(metrics?.uninvoicedValue)} tone="yellow" />
+        </Card>
+      )}
+
+      {activeTab === 'notes' && (
+        <Card>
+          <h2 className="section-title mb-3">Anteckningar</h2>
+          <p className="whitespace-pre-wrap text-sm text-slate-700">{p.notes || 'Inga anteckningar finns på projektet ännu.'}</p>
+        </Card>
+      )}
+    </AppShell>
+  );
+}
+
+function Line({ label, value }: { label: string; value: string }) {
+  return <div className="flex justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"><span className="text-slate-500">{label}</span><span className="font-semibold text-slate-900">{value}</span></div>;
+}
+
+function SimpleEntries({ entries }: { entries: TimeEntry[] }) {
+  if (!entries.length) return <EmptyState title="Inga tidrader" />;
+  return <div className="space-y-2">{entries.map((entry) => <div key={entry.id} className="flex justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2 text-sm"><span>{formatDate(entry.date)} · {entry.user?.name} · {entry.activity?.name || 'Aktivitet saknas'}</span><strong>{formatHours(entry.hours)}</strong></div>)}</div>;
+}
+
+function SimpleMaterials({ materials, onDelete }: { materials: ProjectMaterial[]; onDelete?: (item: ProjectMaterial) => void }) {
+  if (!materials.length) return <EmptyState title="Inget material" description="Registrera material från projektets materialflik." />;
+  return (
+    <DataTable>
+      <table className="min-w-full text-sm">
+        <thead className="table-head"><tr><th className="px-3 py-2">Datum</th><th className="px-3 py-2">Artikel</th><th className="px-3 py-2">Antal</th><th className="px-3 py-2">Belopp</th>{onDelete && <th className="px-3 py-2" />}</tr></thead>
+        <tbody>
+          {materials.map((item) => (
+            <tr key={item.id} className="border-b border-slate-100">
+              <td className="px-3 py-2">{formatDate(item.date)}</td>
+              <td className="px-3 py-2">{item.articleName}</td>
+              <td className="px-3 py-2">{item.quantity.toLocaleString('sv-SE')} {item.unit}</td>
+              <td className="px-3 py-2">{formatCurrency(item.lineTotal)}</td>
+              {onDelete && <td className="px-3 py-2 text-right"><button className="rounded-lg p-2 text-rose-600 hover:bg-rose-50" onClick={() => onDelete(item)}><Trash2 className="h-4 w-4" /></button></td>}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </DataTable>
   );
 }

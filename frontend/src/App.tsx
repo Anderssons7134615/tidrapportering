@@ -16,6 +16,7 @@ const Customers = lazy(() => import('./pages/Customers'));
 const Projects = lazy(() => import('./pages/Projects'));
 const ProjectDetail = lazy(() => import('./pages/ProjectDetail'));
 const Activities = lazy(() => import('./pages/Activities'));
+const Materials = lazy(() => import('./pages/Materials'));
 const Users = lazy(() => import('./pages/Users'));
 const Reports = lazy(() => import('./pages/Reports'));
 const Settings = lazy(() => import('./pages/Settings'));
@@ -92,6 +93,14 @@ export default function App() {
             <ProtectedRoute>
               <ProjectDetail />
             </ProtectedRoute>
+          }
+        />
+        <Route
+          path="materials"
+          element={
+            <AdminRoute>
+              <Materials />
+            </AdminRoute>
           }
         />
         <Route

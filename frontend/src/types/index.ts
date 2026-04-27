@@ -33,20 +33,65 @@ export interface Project {
   site?: string;
   status: 'PLANNED' | 'ONGOING' | 'COMPLETED' | 'INVOICED';
   budgetHours?: number;
+  fixedPrice?: number | null;
   billingModel: 'HOURLY' | 'FIXED';
   defaultRate?: number;
+  notes?: string | null;
   employeeCanSeeResults?: boolean;
   active: boolean;
   totalHours?: number;
   billableHours?: number;
+  metrics?: ProjectMetrics | null;
 }
+
+export type ProjectComputedStatus =
+  | 'PLANNED'
+  | 'ONGOING'
+  | 'MISSING_BUDGET'
+  | 'RISK'
+  | 'READY_TO_INVOICE'
+  | 'COMPLETED'
+  | 'INACTIVE';
+
+export type InvoiceStatus = 'UNINVOICED' | 'INVOICED';
+export type MaterialCategory = 'Rörskål' | 'Lamellmatta' | 'Plåt' | 'Tejp' | 'Brandtätning' | 'Skruv/nit' | 'Övrigt';
+
+export interface ProjectStatusInfo {
+  code: ProjectComputedStatus;
+  label: string;
+  tone: 'blue' | 'green' | 'yellow' | 'red' | 'gray';
+  priority: number;
+}
+
+export interface ProjectMetrics {
+  totalHours: number;
+  weekHours: number;
+  billableHours: number;
+  billableValue: number;
+  laborCost: number;
+  materialCost: number;
+  materialSalesValue: number;
+  projectResult: number | null;
+  marginPercent: number | null;
+  budgetUsagePercent: number | null;
+  uninvoicedValue: number;
+  lastActivityAt: string | null;
+  status: ProjectStatusInfo;
+  warnings: string[];
+}
+
+export type ProjectListItem = Project & { metrics: ProjectMetrics | null };
+export type ProjectDetailSummary = Project & { metrics: ProjectMetrics | null };
 
 export interface MaterialArticle {
   id: string;
   name: string;
   articleNumber?: string | null;
+  category: MaterialCategory;
   unit: string;
+  purchasePrice?: number | null;
   defaultUnitPrice?: number | null;
+  markupPercent?: number | null;
   active: boolean;
   createdAt: string;
   updatedAt: string;
@@ -61,10 +106,14 @@ export interface ProjectMaterial {
   articleName: string;
   articleNumber?: string | null;
   unit: string;
+  purchasePrice?: number | null;
   unitPrice?: number | null;
   quantity: number;
   date: string;
   note?: string | null;
+  invoiceStatus: InvoiceStatus;
+  invoicedAt?: string | null;
+  invoiceReference?: string | null;
   createdAt: string;
   updatedAt: string;
   lineTotal?: number | null;
@@ -129,6 +178,9 @@ export interface TimeEntry {
   approverId?: string;
   approver?: { id: string; name: string };
   rejectNote?: string;
+  invoiceStatus?: InvoiceStatus;
+  invoicedAt?: string | null;
+  invoiceReference?: string | null;
   gpsLat?: number;
   gpsLng?: number;
   attachments?: Attachment[];
@@ -186,8 +238,15 @@ export interface DashboardData {
     monthlyHours: number;
     monthlyBillableHours: number;
     weeklyHours: number;
+    weeklyBillableHours: number;
+    weeklyBillableValue: number;
     pendingApprovalCount: number;
+    riskProjectCount: number;
+    projectsWithoutBudgetCount: number;
   };
+  actionItems: DashboardActionItem[];
+  riskProjects: ProjectListItem[];
+  projectsWithoutBudget: ProjectListItem[];
   pendingApprovals: WeekLock[];
   myPendingWeeks: string[];
   recentEntries: TimeEntry[];
@@ -198,6 +257,14 @@ export interface DashboardData {
     weekStart: string;
     weekEnd: string;
   };
+}
+
+export interface DashboardActionItem {
+  id: string;
+  title: string;
+  description: string;
+  tone: 'yellow' | 'red' | 'blue' | 'green' | 'gray';
+  to: string;
 }
 
 export type DashboardMetric =

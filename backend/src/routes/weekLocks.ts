@@ -320,7 +320,9 @@ const weekLockRoutes: FastifyPluginAsync = async (fastify) => {
 
     const { id } = request.params as { id: string };
 
-    const weekLock = await prisma.weekLock.findUnique({ where: { id } });
+    const weekLock = await prisma.weekLock.findFirst({
+      where: { id, user: { companyId: request.user.companyId } },
+    });
     if (!weekLock) {
       return reply.status(404).send({ error: 'Veckolås hittades inte' });
     }
@@ -390,7 +392,9 @@ const weekLockRoutes: FastifyPluginAsync = async (fastify) => {
     try {
       const body = schema.parse(request.body);
 
-      const weekLock = await prisma.weekLock.findUnique({ where: { id } });
+      const weekLock = await prisma.weekLock.findFirst({
+        where: { id, user: { companyId: request.user.companyId } },
+      });
       if (!weekLock) {
         return reply.status(404).send({ error: 'Veckolås hittades inte' });
       }
@@ -460,7 +464,9 @@ const weekLockRoutes: FastifyPluginAsync = async (fastify) => {
 
     const { id } = request.params as { id: string };
 
-    const weekLock = await prisma.weekLock.findUnique({ where: { id } });
+    const weekLock = await prisma.weekLock.findFirst({
+      where: { id, user: { companyId: request.user.companyId } },
+    });
     if (!weekLock) {
       return reply.status(404).send({ error: 'Veckolås hittades inte' });
     }
