@@ -153,6 +153,13 @@ export const projectsApi = {
     method: 'POST',
     body: JSON.stringify(data),
   }),
+  updateMaterialArticle: (id: string, data: Partial<MaterialArticle>) =>
+    fetchApi<MaterialArticle>(`/projects/materials/articles/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  deleteMaterialArticle: (id: string) =>
+    fetchApi<{ message: string }>(`/projects/materials/articles/${id}`, { method: 'DELETE' }),
   listMaterials: (id: string) => fetchApi<ProjectMaterialsResponse>(`/projects/${id}/materials`),
   listTimeEntries: (id: string) => fetchApi<TimeEntry[]>(`/projects/${id}/time-entries`),
   createMaterial: (id: string, data: {
@@ -293,12 +300,23 @@ export const reportsApi = {
     if (format) params.set('format', format);
     return fetchApi<any>(`/reports/salary?${params}`);
   },
+  salaryExcel: (from: string, to: string, userId?: string) => {
+    const params = new URLSearchParams({ from, to, format: 'xlsx' });
+    if (userId) params.set('userId', userId);
+    return fetchBlob(`/reports/salary?${params.toString()}`);
+  },
   invoice: (from: string, to: string, customerId?: string, projectId?: string, format?: 'json' | 'csv') => {
     const params = new URLSearchParams({ from, to });
     if (customerId) params.set('customerId', customerId);
     if (projectId) params.set('projectId', projectId);
     if (format) params.set('format', format);
     return fetchApi<any>(`/reports/invoice?${params}`);
+  },
+  invoiceExcel: (from: string, to: string, customerId?: string, projectId?: string) => {
+    const params = new URLSearchParams({ from, to, format: 'xlsx' });
+    if (customerId) params.set('customerId', customerId);
+    if (projectId) params.set('projectId', projectId);
+    return fetchBlob(`/reports/invoice?${params.toString()}`);
   },
   project: (id: string, from?: string, to?: string) => {
     const params = new URLSearchParams();

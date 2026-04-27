@@ -69,12 +69,12 @@ export default function Reports() {
   const handleExport = async () => {
     setIsExporting(true);
     try {
-      const csv =
+      const blob =
         reportType === 'salary'
-          ? await reportsApi.salary(fromDate, toDate, selectedUserId || undefined, 'csv')
-          : await reportsApi.invoice(fromDate, toDate, selectedCustomerId || undefined, selectedProjectId || undefined, 'csv');
-      downloadBlob(new Blob([csv], { type: 'text/csv;charset=utf-8' }), `${reportType === 'salary' ? 'loneunderlag' : 'fakturaunderlag'}_${fromDate}_${toDate}.csv`);
-      toast.success('Export klar');
+          ? await reportsApi.salaryExcel(fromDate, toDate, selectedUserId || undefined)
+          : await reportsApi.invoiceExcel(fromDate, toDate, selectedCustomerId || undefined, selectedProjectId || undefined);
+      downloadBlob(blob, `${reportType === 'salary' ? 'loneunderlag' : 'fakturaunderlag'}_${fromDate}_${toDate}.xlsx`);
+      toast.success('Excel-export klar');
     } catch (error: any) {
       toast.error(error.message || 'Export misslyckades');
     } finally {
@@ -106,7 +106,7 @@ export default function Reports() {
         action={
           <Button type="button" onClick={handleExport} isLoading={isExporting}>
             <Download className="h-4 w-4" />
-            Exportera CSV
+            Exportera Excel
           </Button>
         }
       />

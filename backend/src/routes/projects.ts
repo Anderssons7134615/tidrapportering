@@ -217,6 +217,80 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
+  fastify.put('/materials/articles/:articleId', {
+    preHandler: [requireAdminOrSupervisor],
+  }, async (request, reply) => {
+    try {
+      const { articleId } = request.params as { articleId: string };
+      const body = materialArticleSchema.partial().extend({ active: z.boolean().optional() }).parse(request.body);
+
+      const existing = await prisma.materialArticle.findFirst({
+        where: { id: articleId, companyId: request.user.companyId },
+      });
+      if (!existing) {
+        return reply.status(404).send({ error: 'Materialartikeln hittades inte' });
+      }
+
+      const article = await prisma.materialArticle.update({
+        where: { id: articleId },
+        data: {
+          ...body,
+          name: body.name?.trim(),
+          articleNumber: body.articleNumber?.trim() || null,
+          unit: body.unit?.trim(),
+        },
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          userId: request.user.id,
+          action: 'UPDATE',
+          entityType: 'MaterialArticle',
+          entityId: article.id,
+          oldValue: JSON.stringify({ name: existing.name, active: existing.active }),
+          newValue: JSON.stringify(body),
+        },
+      });
+
+      return article;
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return reply.status(400).send({ error: 'Ogiltig data', details: error.errors });
+      }
+      throw error;
+    }
+  });
+
+  fastify.delete('/materials/articles/:articleId', {
+    preHandler: [requireAdminOrSupervisor],
+  }, async (request, reply) => {
+    const { articleId } = request.params as { articleId: string };
+
+    const existing = await prisma.materialArticle.findFirst({
+      where: { id: articleId, companyId: request.user.companyId },
+    });
+    if (!existing) {
+      return reply.status(404).send({ error: 'Materialartikeln hittades inte' });
+    }
+
+    await prisma.materialArticle.update({
+      where: { id: articleId },
+      data: { active: false },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: request.user.id,
+        action: 'DELETE',
+        entityType: 'MaterialArticle',
+        entityId: articleId,
+        oldValue: JSON.stringify({ name: existing.name, active: existing.active }),
+      },
+    });
+
+    return { message: 'Materialartikeln inaktiverad' };
+  });
+
   fastify.get('/:id/materials', {
     preHandler: [fastify.authenticate],
   }, async (request, reply) => {

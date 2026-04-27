@@ -130,6 +130,51 @@ const reportRoutes: FastifyPluginAsync = async (fastify) => {
       grouped[userName][activityCode].entries.push(entry);
     });
 
+    if (format === 'xlsx') {
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = 'TidApp';
+      workbook.created = new Date();
+      const worksheet = workbook.addWorksheet('Löneunderlag');
+      worksheet.columns = [
+        { header: 'Person', key: 'person', width: 24 },
+        { header: 'Datum', key: 'date', width: 14 },
+        { header: 'Kod', key: 'code', width: 12 },
+        { header: 'Aktivitet', key: 'activity', width: 24 },
+        { header: 'Timmar', key: 'hours', width: 12 },
+        { header: 'Projekt', key: 'project', width: 18 },
+        { header: 'Kommentar', key: 'note', width: 36 },
+      ];
+      styleHeader(worksheet);
+      for (const entry of entries) {
+        worksheet.addRow({
+          person: entry.user.name,
+          date: entry.date.toISOString().split('T')[0],
+          code: entry.activity.code,
+          activity: entry.activity.name,
+          hours: entry.hours,
+          project: entry.project?.code || 'Intern',
+          note: entry.note || '',
+        });
+      }
+      worksheet.getColumn('hours').numFmt = '0.00';
+      worksheet.views = [{ state: 'frozen', ySplit: 1 }];
+      worksheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: Math.max(entries.length + 1, 1), column: 7 } };
+
+      await prisma.auditLog.create({
+        data: {
+          userId: request.user.id,
+          action: 'EXPORT',
+          entityType: 'SalaryReportExcel',
+          newValue: JSON.stringify({ from, to, userId, rowCount: entries.length }),
+        },
+      });
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      reply.header('Content-Disposition', `attachment; filename="loneunderlag_${from}_${to}.xlsx"`);
+      return reply.send(Buffer.from(buffer));
+    }
+
     // Om CSV-format
     if (format === 'csv') {
       const settings = await prisma.settings.findUnique({ where: { companyId: request.user.companyId } });
@@ -244,6 +289,66 @@ const reportRoutes: FastifyPluginAsync = async (fastify) => {
         amount: entry.hours * rate,
       };
     });
+
+    if (format === 'xlsx') {
+      const settings = await prisma.settings.findUnique({ where: { companyId: request.user.companyId } });
+      const vatRate = settings?.vatRate || 25;
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = 'TidApp';
+      workbook.created = new Date();
+      const worksheet = workbook.addWorksheet('Fakturaunderlag');
+      worksheet.columns = [
+        { header: 'Kund', key: 'customer', width: 28 },
+        { header: 'Projekt', key: 'project', width: 28 },
+        { header: 'Projektkod', key: 'code', width: 14 },
+        { header: 'Datum', key: 'date', width: 14 },
+        { header: 'Aktivitet', key: 'activity', width: 24 },
+        { header: 'Person', key: 'person', width: 22 },
+        { header: 'Timmar', key: 'hours', width: 12 },
+        { header: 'Á-pris', key: 'rate', width: 12 },
+        { header: 'Belopp', key: 'amount', width: 14 },
+        { header: 'Kommentar', key: 'note', width: 36 },
+      ];
+      styleHeader(worksheet);
+      for (const entry of entriesWithAmount) {
+        worksheet.addRow({
+          customer: entry.project?.customer?.name || '',
+          project: entry.project?.name || '',
+          code: entry.project?.code || '',
+          date: entry.date.toISOString().split('T')[0],
+          activity: entry.activity.name,
+          person: entry.user.name,
+          hours: entry.hours,
+          rate: entry.rate,
+          amount: entry.amount,
+          note: entry.note || '',
+        });
+      }
+      const totalAmount = entriesWithAmount.reduce((sum, entry) => sum + entry.amount, 0);
+      const totalHours = entriesWithAmount.reduce((sum, entry) => sum + entry.hours, 0);
+      worksheet.addRow({ person: 'SUMMA', hours: totalHours, amount: totalAmount });
+      worksheet.addRow({ person: `Moms ${vatRate}%`, amount: totalAmount * vatRate / 100 });
+      worksheet.addRow({ person: 'ATT BETALA', amount: totalAmount * (1 + vatRate / 100) });
+      worksheet.getColumn('hours').numFmt = '0.00';
+      worksheet.getColumn('rate').numFmt = '#,##0.00';
+      worksheet.getColumn('amount').numFmt = '#,##0.00';
+      worksheet.views = [{ state: 'frozen', ySplit: 1 }];
+      worksheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: Math.max(entriesWithAmount.length + 1, 1), column: 10 } };
+
+      await prisma.auditLog.create({
+        data: {
+          userId: request.user.id,
+          action: 'EXPORT',
+          entityType: 'InvoiceReportExcel',
+          newValue: JSON.stringify({ from, to, customerId, projectId, rowCount: entries.length }),
+        },
+      });
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      reply.header('Content-Disposition', `attachment; filename="fakturaunderlag_${from}_${to}.xlsx"`);
+      return reply.send(Buffer.from(buffer));
+    }
 
     // Om CSV-format
     if (format === 'csv') {
@@ -457,6 +562,15 @@ function addBackupWorksheet(workbook: ExcelJS.Workbook, name: string, entries: a
   worksheet.autoFilter = {
     from: { row: 1, column: 1 },
     to: { row: Math.max(entries.length + 1, 1), column: 9 },
+  };
+}
+
+function styleHeader(worksheet: ExcelJS.Worksheet) {
+  worksheet.getRow(1).font = { bold: true };
+  worksheet.getRow(1).fill = {
+    type: 'pattern',
+    pattern: 'solid',
+    fgColor: { argb: 'FFE2E8F0' },
   };
 }
 

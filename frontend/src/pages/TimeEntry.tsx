@@ -34,10 +34,23 @@ export default function TimeEntry() {
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
   const [saved, setSaved] = useState(false);
+  const [recentProjectIds, setRecentProjectIds] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('tidapp-recent-projects') || '[]');
+    } catch {
+      return [];
+    }
+  });
 
   const { data: projects } = useQuery({ queryKey: ['projects', 'active'], queryFn: () => projectsApi.list({ active: true }) });
   const { data: activities } = useQuery({ queryKey: ['activities', 'active'], queryFn: () => activitiesApi.list(true) });
   const { data: users } = useQuery({ queryKey: ['users'], queryFn: usersApi.list, enabled: canReportForOthers });
+  const yesterday = format(new Date(new Date(date).getTime() - 86400000), 'yyyy-MM-dd');
+  const { refetch: fetchYesterday } = useQuery({
+    queryKey: ['copy-yesterday', yesterday, selectedUserId],
+    queryFn: () => timeEntriesApi.list({ from: yesterday, to: yesterday, userId: canReportForOthers ? selectedUserId || undefined : undefined }),
+    enabled: false,
+  });
   const { data: existingEntry, isLoading: isLoadingEntry } = useQuery({
     queryKey: ['timeEntry', entryId],
     queryFn: () => timeEntriesApi.get(entryId || ''),
@@ -80,11 +93,19 @@ export default function TimeEntry() {
     if (projectId) queryClient.invalidateQueries({ queryKey: ['project', projectId] });
   };
 
+  const rememberProject = (id: string) => {
+    if (!id) return;
+    const next = [id, ...recentProjectIds.filter((recentId) => recentId !== id)].slice(0, 4);
+    setRecentProjectIds(next);
+    localStorage.setItem('tidapp-recent-projects', JSON.stringify(next));
+  };
+
   const createMutation = useMutation({
     mutationFn: (data: any) => timeEntriesApi.create(data),
     onSuccess: () => {
       haptic('success');
       toast.success('Tid sparad');
+      rememberProject(projectId);
       setSaved(true);
       setTimeout(() => setSaved(false), 1800);
       invalidate();
@@ -131,10 +152,28 @@ export default function TimeEntry() {
   ]);
   const isSaving = createMutation.isPending || updateMutation.isPending;
   const canEditEntry = existingEntry?.status !== 'APPROVED' || canReportForOthers;
+  const recentProjects = projects
+    ?.filter((project) => recentProjectIds.includes(project.id))
+    .sort((a, b) => recentProjectIds.indexOf(a.id) - recentProjectIds.indexOf(b.id));
 
   const adjustHours = (delta: number) => {
     const current = Number.isFinite(hoursNumber) ? hoursNumber : 0;
     setHours(String(Math.max(current + delta, 0)).replace('.', ','));
+  };
+
+  const copyYesterday = async () => {
+    const result = await fetchYesterday();
+    const first = result.data?.[0];
+    if (!first) {
+      toast.error('Hittade ingen tidrad från gårdagen');
+      return;
+    }
+    setProjectId(first.projectId || '');
+    setActivityId(first.activityId);
+    setHours(String(first.hours).replace('.', ','));
+    setNote(first.note || '');
+    setBillable(first.billable);
+    toast.success('Kopierade gårdagens första tidrad');
   };
 
   const handleSubmit = (event: React.FormEvent) => {
@@ -157,12 +196,14 @@ export default function TimeEntry() {
     if (isEditMode) {
       if (!isOnline) return toast.error('Redigering kräver uppkoppling');
       updateMutation.mutate({ id: entryId!, data: entryData });
+      rememberProject(projectId);
       return;
     }
 
     if (isOnline) createMutation.mutate(entryData);
     else {
       addPendingEntry(entryData);
+      rememberProject(projectId);
       haptic('success');
       toast.success('Sparad offline - synkas när du är online');
       setHours('');
@@ -186,6 +227,20 @@ export default function TimeEntry() {
       </div>
 
       <form onSubmit={handleSubmit} className="card space-y-5">
+        {!isEditMode && (
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <span className="text-sm font-semibold text-slate-700">Snabbval</span>
+            <button type="button" onClick={copyYesterday} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+              Kopiera gårdagen
+            </button>
+            {recentProjects?.map((project) => (
+              <button key={project.id} type="button" onClick={() => setProjectId(project.id)} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                {project.code}
+              </button>
+            ))}
+          </div>
+        )}
+
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {canReportForOthers && (
             <FormField label="Anställd">
