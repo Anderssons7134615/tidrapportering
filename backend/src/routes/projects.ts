@@ -1,4 +1,5 @@
 import { FastifyPluginAsync } from 'fastify';
+import ExcelJS from 'exceljs';
 import { z } from 'zod';
 import { prisma } from '../index.js';
 import { getProjectMetrics } from '../lib/projectMetrics.js';
@@ -61,6 +62,27 @@ function getDayEnd(date: string): Date {
   const d = new Date(date);
   d.setHours(23, 59, 59, 999);
   return d;
+}
+
+function styleMaterialWorksheet(worksheet: ExcelJS.Worksheet) {
+  worksheet.getRow(1).font = { bold: true };
+  worksheet.getRow(1).fill = {
+    type: 'pattern',
+    pattern: 'solid',
+    fgColor: { argb: 'FFE2E8F0' },
+  };
+  worksheet.views = [{ state: 'frozen', ySplit: 1 }];
+  worksheet.autoFilter = {
+    from: { row: 1, column: 1 },
+    to: { row: Math.max(worksheet.rowCount, 1), column: worksheet.columnCount },
+  };
+}
+
+async function sendMaterialWorkbook(reply: any, workbook: ExcelJS.Workbook, filename: string) {
+  const buffer = await workbook.xlsx.writeBuffer();
+  reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  reply.header('Content-Disposition', `attachment; filename="${filename}"`);
+  return reply.send(Buffer.from(buffer));
 }
 
 const projectRoutes: FastifyPluginAsync = async (fastify) => {
@@ -171,6 +193,109 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
     });
   });
 
+  fastify.get('/materials/articles.xlsx', {
+    preHandler: [requireAdminOrSupervisor],
+  }, async (request, reply) => {
+    const articles = await prisma.materialArticle.findMany({
+      where: { companyId: request.user.companyId },
+      orderBy: [{ active: 'desc' }, { name: 'asc' }],
+    });
+
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'TidApp';
+    workbook.created = new Date();
+    const worksheet = workbook.addWorksheet('Materialregister');
+    worksheet.columns = [
+      { header: 'Artikel', key: 'name', width: 28 },
+      { header: 'Artikelnummer', key: 'articleNumber', width: 18 },
+      { header: 'Kategori', key: 'category', width: 18 },
+      { header: 'Enhet', key: 'unit', width: 12 },
+      { header: 'Inköpspris', key: 'purchasePrice', width: 14 },
+      { header: 'Försäljningspris', key: 'defaultUnitPrice', width: 18 },
+      { header: 'Påslag %', key: 'markupPercent', width: 12 },
+      { header: 'Aktiv', key: 'active', width: 10 },
+    ];
+
+    for (const article of articles) {
+      worksheet.addRow({
+        name: article.name,
+        articleNumber: article.articleNumber || '',
+        category: article.category || 'Övrigt',
+        unit: article.unit,
+        purchasePrice: article.purchasePrice ?? '',
+        defaultUnitPrice: article.defaultUnitPrice ?? '',
+        markupPercent: article.markupPercent ?? '',
+        active: article.active ? 'Ja' : 'Nej',
+      });
+    }
+
+    worksheet.getColumn('purchasePrice').numFmt = '#,##0.00';
+    worksheet.getColumn('defaultUnitPrice').numFmt = '#,##0.00';
+    worksheet.getColumn('markupPercent').numFmt = '0.00';
+    styleMaterialWorksheet(worksheet);
+
+    await prisma.auditLog.create({
+      data: {
+        userId: request.user.id,
+        action: 'EXPORT',
+        entityType: 'MaterialArticleExcel',
+        newValue: JSON.stringify({ rowCount: articles.length }),
+      },
+    });
+
+    return sendMaterialWorkbook(reply, workbook, 'materialregister.xlsx');
+  });
+
+  fastify.get('/materials/template.xlsx', {
+    preHandler: [requireAdminOrSupervisor],
+  }, async (_request, reply) => {
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'TidApp';
+    workbook.created = new Date();
+    const worksheet = workbook.addWorksheet('Materialmall');
+    worksheet.columns = [
+      { header: 'Artikel', key: 'name', width: 28 },
+      { header: 'Artikelnummer', key: 'articleNumber', width: 18 },
+      { header: 'Kategori', key: 'category', width: 18 },
+      { header: 'Enhet', key: 'unit', width: 12 },
+      { header: 'Inköpspris', key: 'purchasePrice', width: 14 },
+      { header: 'Försäljningspris', key: 'defaultUnitPrice', width: 18 },
+      { header: 'Påslag %', key: 'markupPercent', width: 12 },
+      { header: 'Aktiv', key: 'active', width: 10 },
+    ];
+
+    [
+      ['Rörskål 42 mm', 'RS-42', 'Rörskål', 'm', 0, 0, 0, 'Ja'],
+      ['Lamellmatta 50 mm', 'LM-50', 'Lamellmatta', 'm2', 0, 0, 0, 'Ja'],
+      ['Plåt aluminium', 'PL-ALU', 'Plåt', 'm2', 0, 0, 0, 'Ja'],
+      ['Tejp aluminium', 'TEJP-ALU', 'Tejp', 'st', 0, 0, 0, 'Ja'],
+      ['Brandtätningsmassa', 'BT-MASSA', 'Brandtätning', 'st', 0, 0, 0, 'Ja'],
+      ['Skruv/nit', 'SKRUV-NIT', 'Skruv/nit', 'st', 0, 0, 0, 'Ja'],
+      ['Övrigt material', '', 'Övrigt', 'st', 0, 0, 0, 'Ja'],
+    ].forEach(([name, articleNumber, category, unit, purchasePrice, defaultUnitPrice, markupPercent, active]) => {
+      worksheet.addRow({ name, articleNumber, category, unit, purchasePrice, defaultUnitPrice, markupPercent, active });
+    });
+
+    worksheet.getColumn('purchasePrice').numFmt = '#,##0.00';
+    worksheet.getColumn('defaultUnitPrice').numFmt = '#,##0.00';
+    worksheet.getColumn('markupPercent').numFmt = '0.00';
+    styleMaterialWorksheet(worksheet);
+
+    const info = workbook.addWorksheet('Instruktion');
+    info.columns = [{ header: 'Fält', key: 'field', width: 24 }, { header: 'Beskrivning', key: 'description', width: 72 }];
+    info.addRows([
+      { field: 'Artikel', description: 'Namnet som montörer och projektledare ser i materialregistret.' },
+      { field: 'Kategori', description: 'Använd en av kategorierna i mallen: Rörskål, Lamellmatta, Plåt, Tejp, Brandtätning, Skruv/nit eller Övrigt.' },
+      { field: 'Inköpspris', description: 'Din kostnad per enhet, till exempel per meter, styck eller kvadratmeter.' },
+      { field: 'Försäljningspris', description: 'Pris per enhet som används på projekt och faktureringsunderlag.' },
+      { field: 'Påslag %', description: 'Valfritt påslag om du vill räkna försäljningspris från inköpspris.' },
+      { field: 'Aktiv', description: 'Skriv Ja för aktiva artiklar och Nej för sådant som inte ska användas framåt.' },
+    ]);
+    styleMaterialWorksheet(info);
+
+    return sendMaterialWorkbook(reply, workbook, 'materialmall.xlsx');
+  });
+
   fastify.post('/materials/articles', {
     preHandler: [requireAdminOrSupervisor],
   }, async (request, reply) => {
@@ -231,14 +356,19 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(404).send({ error: 'Materialartikeln hittades inte' });
       }
 
+      const data: any = {};
+      if (body.name !== undefined) data.name = body.name.trim();
+      if (body.articleNumber !== undefined) data.articleNumber = body.articleNumber?.trim() || null;
+      if (body.category !== undefined) data.category = body.category;
+      if (body.unit !== undefined) data.unit = body.unit.trim() || 'st';
+      if (body.purchasePrice !== undefined) data.purchasePrice = body.purchasePrice;
+      if (body.defaultUnitPrice !== undefined) data.defaultUnitPrice = body.defaultUnitPrice;
+      if (body.markupPercent !== undefined) data.markupPercent = body.markupPercent;
+      if (body.active !== undefined) data.active = body.active;
+
       const article = await prisma.materialArticle.update({
         where: { id: articleId },
-        data: {
-          ...body,
-          name: body.name?.trim(),
-          articleNumber: body.articleNumber?.trim() || null,
-          unit: body.unit?.trim(),
-        },
+        data,
       });
 
       await prisma.auditLog.create({

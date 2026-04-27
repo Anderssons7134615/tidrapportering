@@ -141,6 +141,8 @@ export const projectsApi = {
   get: (id: string) => fetchApi<Project>(`/projects/${id}`),
   listMaterialArticles: (active?: boolean) =>
     fetchApi<MaterialArticle[]>(`/projects/materials/articles${active !== undefined ? `?active=${active}` : ''}`),
+  exportMaterialArticlesExcel: () => fetchBlob('/projects/materials/articles.xlsx'),
+  downloadMaterialTemplate: () => fetchBlob('/projects/materials/template.xlsx'),
   createMaterialArticle: (data: {
     name: string;
     articleNumber?: string;

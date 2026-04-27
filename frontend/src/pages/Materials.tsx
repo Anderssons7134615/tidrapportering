@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Edit2, Plus, Power, X } from 'lucide-react';
+import { Download, Edit2, FileSpreadsheet, Plus, Power, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { projectsApi } from '../services/api';
 import type { MaterialArticle, MaterialCategory } from '../types';
@@ -34,6 +34,8 @@ export default function Materials() {
   const [form, setForm] = useState<MaterialForm>(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showInactive, setShowInactive] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [isDownloadingTemplate, setIsDownloadingTemplate] = useState(false);
 
   const { data: articles, isLoading } = useQuery({
     queryKey: ['material-articles', showInactive],
@@ -103,15 +105,62 @@ export default function Materials() {
     else createMutation.mutate();
   };
 
+  const downloadBlob = (blob: Blob, filename: string) => {
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  };
+
+  const exportMaterials = async () => {
+    setIsExporting(true);
+    try {
+      const blob = await projectsApi.exportMaterialArticlesExcel();
+      downloadBlob(blob, 'materialregister.xlsx');
+      toast.success('Materialregister exporterat');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Kunde inte exportera material');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const downloadTemplate = async () => {
+    setIsDownloadingTemplate(true);
+    try {
+      const blob = await projectsApi.downloadMaterialTemplate();
+      downloadBlob(blob, 'materialmall.xlsx');
+      toast.success('Excel-mall nedladdad');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Kunde inte ladda ner mall');
+    } finally {
+      setIsDownloadingTemplate(false);
+    }
+  };
+
   return (
     <AppShell>
       <PageHeader
         title="Materialregister"
         description="Hantera artiklar, kategorier, inköpspris och försäljningspris som sedan används på projekten."
         action={
-          <button className="btn-secondary" onClick={() => setShowInactive((value) => !value)}>
-            {showInactive ? 'Visa aktiva' : 'Visa även inaktiva'}
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button className="btn-secondary" onClick={downloadTemplate} disabled={isDownloadingTemplate}>
+              <FileSpreadsheet className="h-4 w-4" />
+              {isDownloadingTemplate ? 'Hämtar mall...' : 'Ladda ner mall'}
+            </button>
+            <button className="btn-secondary" onClick={exportMaterials} disabled={isExporting}>
+              <Download className="h-4 w-4" />
+              {isExporting ? 'Exporterar...' : 'Exportera Excel'}
+            </button>
+            <button className="btn-secondary" onClick={() => setShowInactive((value) => !value)}>
+              {showInactive ? 'Visa aktiva' : 'Visa även inaktiva'}
+            </button>
+          </div>
         }
       />
 
