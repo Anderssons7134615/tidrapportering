@@ -133,50 +133,6 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
     return projectsWithHours;
   });
 
-  // Get project by ID
-  fastify.get('/:id', {
-    preHandler: [fastify.authenticate],
-  }, async (request, reply) => {
-    const { id } = request.params as { id: string };
-
-    const project = await prisma.project.findUnique({
-      where: { id },
-      include: {
-        customer: true,
-      },
-    });
-
-    if (!project || project.companyId !== request.user.companyId) {
-      return reply.status(404).send({ error: 'Projekt hittades inte' });
-    }
-
-    const hideResults = shouldHideResultsForEmployee(request.user.role, project);
-    const metrics = await getProjectMetrics(prisma, project);
-
-    // Beräkna statistik
-    const stats = hideResults
-      ? null
-      : await prisma.timeEntry.aggregate({
-          where: { projectId: id },
-          _sum: { hours: true },
-        });
-
-    const billableStats = hideResults
-      ? null
-      : await prisma.timeEntry.aggregate({
-          where: { projectId: id, billable: true },
-          _sum: { hours: true },
-        });
-
-    return {
-      ...project,
-      resultsVisibleToCurrentUser: !hideResults,
-      totalHours: hideResults ? null : (stats?._sum.hours || 0),
-      billableHours: hideResults ? null : (billableStats?._sum.hours || 0),
-      metrics: hideResults ? null : metrics,
-    };
-  });
-
   fastify.get('/materials/articles', {
     preHandler: [fastify.authenticate],
   }, async (request) => {
@@ -419,6 +375,50 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     return { message: 'Materialartikeln inaktiverad' };
+  });
+
+  // Project by ID is registered after material registry routes so static
+  // material paths can never be interpreted as project ids.
+  fastify.get('/:id', {
+    preHandler: [fastify.authenticate],
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+
+    const project = await prisma.project.findUnique({
+      where: { id },
+      include: {
+        customer: true,
+      },
+    });
+
+    if (!project || project.companyId !== request.user.companyId) {
+      return reply.status(404).send({ error: 'Projekt hittades inte' });
+    }
+
+    const hideResults = shouldHideResultsForEmployee(request.user.role, project);
+    const metrics = await getProjectMetrics(prisma, project);
+
+    const stats = hideResults
+      ? null
+      : await prisma.timeEntry.aggregate({
+          where: { projectId: id },
+          _sum: { hours: true },
+        });
+
+    const billableStats = hideResults
+      ? null
+      : await prisma.timeEntry.aggregate({
+          where: { projectId: id, billable: true },
+          _sum: { hours: true },
+        });
+
+    return {
+      ...project,
+      resultsVisibleToCurrentUser: !hideResults,
+      totalHours: hideResults ? null : (stats?._sum.hours || 0),
+      billableHours: hideResults ? null : (billableStats?._sum.hours || 0),
+      metrics: hideResults ? null : metrics,
+    };
   });
 
   fastify.get('/:id/materials', {
