@@ -2,7 +2,7 @@ export interface User {
   id: string;
   email: string;
   name: string;
-  role: 'ADMIN' | 'SUPERVISOR' | 'EMPLOYEE';
+  role: 'ADMIN' | 'SUPERVISOR' | 'EMPLOYEE' | 'ACCOUNTANT';
   hourlyCost?: number;
   active: boolean;
   createdAt: string;

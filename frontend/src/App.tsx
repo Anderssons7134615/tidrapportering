@@ -37,6 +37,22 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function ReportRoute({ children }: { children: React.ReactNode }) {
+  const { user } = useAuthStore();
+  if (!user || !['ADMIN', 'SUPERVISOR', 'ACCOUNTANT'].includes(user.role)) {
+    return <Navigate to="/" replace />;
+  }
+  return <>{children}</>;
+}
+
+function HomeRoute() {
+  const { user } = useAuthStore();
+  if (user?.role === 'ACCOUNTANT') {
+    return <Navigate to="/reports" replace />;
+  }
+  return <Dashboard />;
+}
+
 export default function App() {
   return (
     <Suspense fallback={<LoadingSpinner fullScreen />}>
@@ -51,7 +67,7 @@ export default function App() {
           </ProtectedRoute>
         }
       >
-        <Route index element={<Dashboard />} />
+        <Route index element={<HomeRoute />} />
         <Route path="overview/details/:metric" element={<DashboardDetail />} />
         <Route path="time-entry" element={<TimeEntry />} />
         <Route path="week" element={<WeekView />} />
@@ -122,9 +138,9 @@ export default function App() {
         <Route
           path="reports"
           element={
-            <AdminRoute>
+            <ReportRoute>
               <Reports />
-            </AdminRoute>
+            </ReportRoute>
           }
         />
         <Route path="settings" element={<Settings />} />

@@ -115,7 +115,7 @@ export default function Settings() {
             </p>
           </div>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-            <div className="chip justify-center">{user?.role === 'ADMIN' ? 'Admin' : user?.role === 'SUPERVISOR' ? 'Arbetsledare' : 'Medarbetare'}</div>
+            <div className="chip justify-center">{user?.role === 'ADMIN' ? 'Admin' : user?.role === 'SUPERVISOR' ? 'Arbetsledare' : user?.role === 'ACCOUNTANT' ? 'Revisor' : 'Medarbetare'}</div>
             <div className="chip justify-center">{pushSubscriptions.length} enhet(er)</div>
             <div className="chip justify-center">{pushStatus?.permission || 'standard'}</div>
           </div>
@@ -291,7 +291,7 @@ export default function Settings() {
               <div className="flex items-center justify-between gap-3 rounded-2xl bg-slate-50 px-4 py-3">
                 <span>Roll</span>
                 <span className="font-semibold text-slate-900">
-                  {user?.role === 'ADMIN' ? 'Admin' : user?.role === 'SUPERVISOR' ? 'Arbetsledare' : 'Medarbetare'}
+                  {user?.role === 'ADMIN' ? 'Admin' : user?.role === 'SUPERVISOR' ? 'Arbetsledare' : user?.role === 'ACCOUNTANT' ? 'Revisor' : 'Medarbetare'}
                 </span>
               </div>
             </div>

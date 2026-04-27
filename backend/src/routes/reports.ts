@@ -2,7 +2,7 @@ import { FastifyPluginAsync } from 'fastify';
 import ExcelJS from 'exceljs';
 import { prisma } from '../index.js';
 
-const requireAdminOrSupervisor = async (request: any, reply: any) => {
+const requireReportViewer = async (request: any, reply: any) => {
   await request.jwtVerify();
   const user = await prisma.user.findUnique({
     where: { id: request.user.id },
@@ -11,14 +11,14 @@ const requireAdminOrSupervisor = async (request: any, reply: any) => {
   if (!user || !user.active || user.companyId !== request.user.companyId) {
     return reply.status(401).send({ error: 'Unauthorized' });
   }
-  if (!['ADMIN', 'SUPERVISOR'].includes(request.user.role)) {
+  if (!['ADMIN', 'SUPERVISOR', 'ACCOUNTANT'].includes(request.user.role)) {
     return reply.status(403).send({ error: 'Åtkomst nekad' });
   }
 };
 
 const reportRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get('/time-backup.xlsx', {
-    preHandler: [requireAdminOrSupervisor],
+    preHandler: [requireReportViewer],
   }, async (request, reply) => {
     const { from, to } = request.query as { from?: string; to?: string };
 
@@ -78,9 +78,172 @@ const reportRoutes: FastifyPluginAsync = async (fastify) => {
     reply.header('Content-Disposition', `attachment; filename="tidbackup_${from}_${to}.xlsx"`);
     return reply.send(Buffer.from(buffer));
   });
+
+  fastify.get('/accountant', {
+    preHandler: [requireReportViewer],
+  }, async (request, reply) => {
+    const { from, to, userId, format } = request.query as {
+      from?: string;
+      to?: string;
+      userId?: string;
+      format?: string;
+    };
+
+    if (!from || !to) {
+      return reply.status(400).send({ error: 'from och to krävs' });
+    }
+
+    const entries = await prisma.timeEntry.findMany({
+      where: {
+        date: {
+          gte: new Date(from),
+          lte: getDayEnd(to),
+        },
+        status: 'APPROVED',
+        ...(userId ? { userId } : {}),
+        user: { companyId: request.user.companyId },
+      },
+      include: {
+        user: { select: { id: true, name: true, email: true } },
+        project: {
+          select: {
+            id: true,
+            name: true,
+            code: true,
+            customer: { select: { id: true, name: true } },
+          },
+        },
+        activity: { select: { id: true, name: true, code: true, category: true } },
+      },
+      orderBy: [{ user: { name: 'asc' } }, { date: 'asc' }, { createdAt: 'asc' }],
+    });
+
+    const byUser = new Map<string, { userName: string; email: string; hours: number; days: Set<string> }>();
+    const byActivity = new Map<string, { code: string; activity: string; hours: number }>();
+
+    for (const entry of entries) {
+      const userSummary = byUser.get(entry.userId) || {
+        userName: entry.user.name,
+        email: entry.user.email,
+        hours: 0,
+        days: new Set<string>(),
+      };
+      userSummary.hours += entry.hours;
+      userSummary.days.add(entry.date.toISOString().split('T')[0]);
+      byUser.set(entry.userId, userSummary);
+
+      const activityKey = entry.activity.code || entry.activity.id;
+      const activitySummary = byActivity.get(activityKey) || {
+        code: entry.activity.code,
+        activity: entry.activity.name,
+        hours: 0,
+      };
+      activitySummary.hours += entry.hours;
+      byActivity.set(activityKey, activitySummary);
+    }
+
+    if (format === 'xlsx') {
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = 'TidApp';
+      workbook.created = new Date();
+
+      const importSheet = workbook.addWorksheet('Import');
+      importSheet.columns = [
+        { header: 'Anställd', key: 'employee', width: 26 },
+        { header: 'E-post', key: 'email', width: 30 },
+        { header: 'Lönekod', key: 'code', width: 12 },
+        { header: 'Aktivitet', key: 'activity', width: 24 },
+        { header: 'Datum', key: 'date', width: 14 },
+        { header: 'Timmar', key: 'hours', width: 12 },
+        { header: 'Projekt', key: 'project', width: 28 },
+        { header: 'Kund', key: 'customer', width: 24 },
+        { header: 'Kommentar', key: 'note', width: 40 },
+      ];
+      styleHeader(importSheet);
+
+      for (const entry of entries) {
+        importSheet.addRow({
+          employee: entry.user.name,
+          email: entry.user.email,
+          code: entry.activity.code,
+          activity: entry.activity.name,
+          date: entry.date.toISOString().split('T')[0],
+          hours: entry.hours,
+          project: entry.project ? `${entry.project.code} ${entry.project.name}` : 'Intern',
+          customer: entry.project?.customer?.name || '',
+          note: entry.note || '',
+        });
+      }
+      importSheet.getColumn('hours').numFmt = '0.00';
+      importSheet.views = [{ state: 'frozen', ySplit: 1 }];
+      importSheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: Math.max(entries.length + 1, 1), column: 9 } };
+
+      const userSheet = workbook.addWorksheet('Summering person');
+      userSheet.columns = [
+        { header: 'Anställd', key: 'employee', width: 26 },
+        { header: 'E-post', key: 'email', width: 30 },
+        { header: 'Timmar', key: 'hours', width: 12 },
+        { header: 'Rapporterade dagar', key: 'days', width: 18 },
+      ];
+      styleHeader(userSheet);
+      for (const item of Array.from(byUser.values()).sort((a, b) => a.userName.localeCompare(b.userName, 'sv'))) {
+        userSheet.addRow({ employee: item.userName, email: item.email, hours: item.hours, days: item.days.size });
+      }
+      userSheet.getColumn('hours').numFmt = '0.00';
+
+      const activitySheet = workbook.addWorksheet('Summering lönekod');
+      activitySheet.columns = [
+        { header: 'Lönekod', key: 'code', width: 12 },
+        { header: 'Aktivitet', key: 'activity', width: 28 },
+        { header: 'Timmar', key: 'hours', width: 12 },
+      ];
+      styleHeader(activitySheet);
+      for (const item of Array.from(byActivity.values()).sort((a, b) => a.code.localeCompare(b.code, 'sv'))) {
+        activitySheet.addRow({ code: item.code, activity: item.activity, hours: item.hours });
+      }
+      activitySheet.getColumn('hours').numFmt = '0.00';
+
+      const infoSheet = workbook.addWorksheet('Info');
+      infoSheet.columns = [{ header: 'Fält', key: 'field', width: 24 }, { header: 'Värde', key: 'value', width: 42 }];
+      infoSheet.addRows([
+        { field: 'Period', value: `${from} till ${to}` },
+        { field: 'Brytdatum', value: '20:e varje månad' },
+        { field: 'Status', value: 'Endast attesterade tidrader' },
+        { field: 'Totala timmar', value: entries.reduce((sum, entry) => sum + entry.hours, 0) },
+      ]);
+      styleHeader(infoSheet);
+
+      await prisma.auditLog.create({
+        data: {
+          userId: request.user.id,
+          action: 'EXPORT',
+          entityType: 'AccountantPayrollExcel',
+          newValue: JSON.stringify({ from, to, userId, rowCount: entries.length }),
+        },
+      });
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      reply.header('Content-Disposition', `attachment; filename="revisorsunderlag_${from}_${to}.xlsx"`);
+      return reply.send(Buffer.from(buffer));
+    }
+
+    return {
+      period: { from, to, cutoffDay: 20 },
+      entries,
+      totals: {
+        totalHours: entries.reduce((sum, entry) => sum + entry.hours, 0),
+        uniqueUsers: byUser.size,
+        activityCount: byActivity.size,
+      },
+      byUser: Array.from(byUser.values()).map((item) => ({ ...item, days: item.days.size })),
+      byActivity: Array.from(byActivity.values()),
+    };
+  });
+
   // Löneunderlag
   fastify.get('/salary', {
-    preHandler: [requireAdminOrSupervisor],
+    preHandler: [requireReportViewer],
   }, async (request, reply) => {
     const { from, to, userId, format } = request.query as {
       from: string;
@@ -225,7 +388,7 @@ const reportRoutes: FastifyPluginAsync = async (fastify) => {
 
   // Fakturaunderlag
   fastify.get('/invoice', {
-    preHandler: [requireAdminOrSupervisor],
+    preHandler: [requireReportViewer],
   }, async (request, reply) => {
     const { from, to, customerId, projectId, format } = request.query as {
       from: string;
@@ -305,7 +468,7 @@ const reportRoutes: FastifyPluginAsync = async (fastify) => {
         { header: 'Aktivitet', key: 'activity', width: 24 },
         { header: 'Person', key: 'person', width: 22 },
         { header: 'Timmar', key: 'hours', width: 12 },
-        { header: 'Á-pris', key: 'rate', width: 12 },
+        { header: 'A-pris', key: 'rate', width: 12 },
         { header: 'Belopp', key: 'amount', width: 14 },
         { header: 'Kommentar', key: 'note', width: 36 },
       ];
@@ -360,7 +523,7 @@ const reportRoutes: FastifyPluginAsync = async (fastify) => {
       const BOM = '\uFEFF';
       const headers = [
         'Kund', 'Projekt', 'Projektkod', 'Datum', 'Aktivitet',
-        'Person', 'Timmar', 'á-pris', 'Belopp', 'Kommentar'
+        'Person', 'Timmar', 'A-pris', 'Belopp', 'Kommentar'
       ];
 
       const rows = entriesWithAmount.map((e) => [

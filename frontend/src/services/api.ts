@@ -296,6 +296,16 @@ export const weekLocksApi = {
 
 // Reports
 export const reportsApi = {
+  accountant: (from: string, to: string, userId?: string) => {
+    const params = new URLSearchParams({ from, to });
+    if (userId) params.set('userId', userId);
+    return fetchApi<any>(`/reports/accountant?${params}`);
+  },
+  accountantExcel: (from: string, to: string, userId?: string) => {
+    const params = new URLSearchParams({ from, to, format: 'xlsx' });
+    if (userId) params.set('userId', userId);
+    return fetchBlob(`/reports/accountant?${params.toString()}`);
+  },
   salary: (from: string, to: string, userId?: string, format?: 'json' | 'csv') => {
     const params = new URLSearchParams({ from, to });
     if (userId) params.set('userId', userId);

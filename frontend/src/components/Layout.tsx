@@ -34,15 +34,16 @@ const navItems = [
   { to: '/materials', icon: Package, label: 'Material', roles: ['ADMIN', 'SUPERVISOR'] },
   { to: '/activities', icon: Tags, label: 'Aktiviteter', roles: ['ADMIN'] },
   { to: '/users', icon: Users, label: 'Användare', roles: ['ADMIN'] },
-  { to: '/reports', icon: FileBarChart, label: 'Rapporter', roles: ['ADMIN', 'SUPERVISOR'] },
-  { to: '/settings', icon: Settings, label: 'Inställningar', roles: ['ADMIN', 'SUPERVISOR', 'EMPLOYEE'] },
+  { to: '/reports', icon: FileBarChart, label: 'Rapporter', roles: ['ADMIN', 'SUPERVISOR', 'ACCOUNTANT'] },
+  { to: '/settings', icon: Settings, label: 'Inställningar', roles: ['ADMIN', 'SUPERVISOR', 'EMPLOYEE', 'ACCOUNTANT'] },
 ];
 
 const bottomTabs = [
-  { to: '/', icon: Home, label: 'Hem' },
-  { to: '/time-entry', icon: Clock, label: 'Rapportera' },
-  { to: '/week', icon: Calendar, label: 'Vecka' },
-  { to: '/settings', icon: Settings, label: 'Mer' },
+  { to: '/', icon: Home, label: 'Hem', roles: ['ADMIN', 'SUPERVISOR', 'EMPLOYEE'] },
+  { to: '/time-entry', icon: Clock, label: 'Rapportera', roles: ['ADMIN', 'SUPERVISOR', 'EMPLOYEE'] },
+  { to: '/week', icon: Calendar, label: 'Vecka', roles: ['ADMIN', 'SUPERVISOR', 'EMPLOYEE'] },
+  { to: '/reports', icon: FileBarChart, label: 'Rapporter', roles: ['ADMIN', 'SUPERVISOR', 'ACCOUNTANT'] },
+  { to: '/settings', icon: Settings, label: 'Mer', roles: ['ADMIN', 'SUPERVISOR', 'EMPLOYEE', 'ACCOUNTANT'] },
 ];
 
 export default function Layout() {
@@ -55,6 +56,7 @@ export default function Layout() {
   const [menuOpen, setMenuOpen] = useState(false);
 
   const filteredNavItems = navItems.filter((item) => item.roles.includes(user?.role || ''));
+  const filteredBottomTabs = bottomTabs.filter((item) => item.roles.includes(user?.role || ''));
   const activeItem =
     filteredNavItems.find((item) => location.pathname === item.to) ||
     filteredNavItems.find((item) => item.to !== '/' && location.pathname.startsWith(item.to));
@@ -65,8 +67,8 @@ export default function Layout() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-800">
-      <header className="safe-top sticky top-0 z-50 border-b border-slate-200 bg-white">
+    <div className="min-h-screen text-slate-800">
+      <header className="safe-top sticky top-0 z-50 border-b border-white/70 bg-white/80 backdrop-blur-xl">
         <div className="mx-auto flex h-16 max-w-[90rem] items-center justify-between px-4 lg:h-[4.25rem] lg:px-6">
           <div className="flex items-center gap-3">
             <button
@@ -114,12 +116,12 @@ export default function Layout() {
       </header>
 
       <div className="mx-auto flex w-full max-w-[90rem]">
-        <aside className="sticky top-[4.25rem] hidden h-[calc(100vh-4.25rem)] w-72 border-r border-slate-200 bg-white px-4 py-5 lg:block">
-          <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+        <aside className="sticky top-[4.25rem] hidden h-[calc(100vh-4.25rem)] w-72 border-r border-white/70 bg-white/55 px-4 py-5 backdrop-blur-xl lg:block">
+          <div className="mb-4 rounded-xl border border-white/80 bg-gradient-to-br from-white to-primary-50 p-4 shadow-sm">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Företag</p>
             <p className="mt-2 text-lg font-semibold text-slate-900">{user?.companyName || 'TidApp'}</p>
             <p className="mt-1 text-sm text-slate-500">
-              {user?.role === 'ADMIN' ? 'Adminöversikt' : user?.role === 'SUPERVISOR' ? 'Arbetsledare' : 'Medarbetare'}
+              {user?.role === 'ADMIN' ? 'Adminöversikt' : user?.role === 'SUPERVISOR' ? 'Arbetsledare' : user?.role === 'ACCOUNTANT' ? 'Revisor' : 'Medarbetare'}
             </p>
           </div>
           <nav className="space-y-1.5">
@@ -131,7 +133,7 @@ export default function Layout() {
                   `group flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition ${
                     isActive
                       ? 'bg-white text-primary-700 shadow-sm ring-1 ring-primary-200/70'
-                      : 'text-slate-600 hover:bg-white hover:text-slate-900'
+                      : 'text-slate-600 hover:bg-white/75 hover:text-slate-900'
                   }`
                 }
               >
@@ -215,7 +217,7 @@ export default function Layout() {
 
       <nav className="safe-bottom fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200 bg-white/95 backdrop-blur-xl lg:hidden">
         <div className="mx-auto flex max-w-md items-center justify-around px-2 py-2">
-          {bottomTabs.map((item) => (
+          {filteredBottomTabs.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}

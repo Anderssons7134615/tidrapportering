@@ -10,12 +10,14 @@ const roleLabels: Record<string, string> = {
   ADMIN: 'Admin',
   SUPERVISOR: 'Arbetsledare',
   EMPLOYEE: 'Medarbetare',
+  ACCOUNTANT: 'Revisor',
 };
 
 const roleColors: Record<string, string> = {
   ADMIN: 'badge-red',
   SUPERVISOR: 'badge-yellow',
   EMPLOYEE: 'badge-blue',
+  ACCOUNTANT: 'badge-green',
 };
 
 export default function UsersPage() {
@@ -236,6 +238,7 @@ export default function UsersPage() {
                     className="input"
                   >
                     <option value="EMPLOYEE">Medarbetare</option>
+                    <option value="ACCOUNTANT">Revisor</option>
                     <option value="SUPERVISOR">Arbetsledare</option>
                     <option value="ADMIN">Admin</option>
                   </select>

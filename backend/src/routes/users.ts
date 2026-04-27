@@ -7,14 +7,14 @@ const createUserSchema = z.object({
   email: z.string().email(),
   password: z.string().min(6),
   name: z.string().min(2),
-  role: z.enum(['ADMIN', 'SUPERVISOR', 'EMPLOYEE']),
+  role: z.enum(['ADMIN', 'SUPERVISOR', 'EMPLOYEE', 'ACCOUNTANT']),
   hourlyCost: z.number().optional(),
 });
 
 const updateUserSchema = z.object({
   email: z.string().email().optional(),
   name: z.string().min(2).optional(),
-  role: z.enum(['ADMIN', 'SUPERVISOR', 'EMPLOYEE']).optional(),
+  role: z.enum(['ADMIN', 'SUPERVISOR', 'EMPLOYEE', 'ACCOUNTANT']).optional(),
   hourlyCost: z.number().nullable().optional(),
   active: z.boolean().optional(),
 });
@@ -26,7 +26,7 @@ const requireAdminOrSupervisor = async (request: any, reply: any) => {
   if (!user || !user.active || user.companyId !== request.user.companyId) {
     return reply.status(401).send({ error: 'Unauthorized' });
   }
-  if (!['ADMIN', 'SUPERVISOR'].includes(request.user.role)) {
+  if (!['ADMIN', 'SUPERVISOR', 'ACCOUNTANT'].includes(request.user.role)) {
     return reply.status(403).send({ error: 'Åtkomst nekad' });
   }
 };

@@ -26,12 +26,16 @@ export function PageHeader({
   action?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+    <div className="relative overflow-hidden rounded-2xl border border-white/80 bg-white/85 p-5 shadow-soft backdrop-blur sm:p-6">
+      <div className="absolute right-0 top-0 h-28 w-28 rounded-full bg-primary-200/50 blur-3xl" />
+      <div className="absolute bottom-0 left-1/3 h-20 w-40 rounded-full bg-emerald-200/35 blur-3xl" />
+      <div className="relative flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
       <div>
         <h1 className="page-title">{title}</h1>
         {description && <p className="mt-1 text-sm text-slate-500">{description}</p>}
       </div>
       {action}
+      </div>
     </div>
   );
 }
@@ -52,7 +56,7 @@ export function KpiCard({
   tone?: Tone;
 }) {
   return (
-    <div className={`rounded-xl border p-4 ${toneClasses[tone]}`}>
+    <div className={`rounded-xl border p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${toneClasses[tone]}`}>
       <p className="text-xs font-semibold uppercase tracking-wide opacity-75">{label}</p>
       <p className="mt-2 text-2xl font-semibold tracking-tight">{value}</p>
       {hint && <p className="mt-1 text-xs opacity-80">{hint}</p>}
