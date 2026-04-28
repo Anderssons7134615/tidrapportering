@@ -207,7 +207,7 @@ const reportRoutes: FastifyPluginAsync = async (fastify) => {
       infoSheet.columns = [{ header: 'Fält', key: 'field', width: 24 }, { header: 'Värde', key: 'value', width: 42 }];
       infoSheet.addRows([
         { field: 'Period', value: `${from} till ${to}` },
-        { field: 'Brytdatum', value: '20:e varje månad' },
+        { field: 'Periodregel', value: 'Från den 21:a till den 20:e varje månad' },
         { field: 'Status', value: 'Endast attesterade tidrader' },
         { field: 'Totala timmar', value: entries.reduce((sum, entry) => sum + entry.hours, 0) },
       ]);
@@ -229,7 +229,7 @@ const reportRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     return {
-      period: { from, to, cutoffDay: 20 },
+      period: { from, to, cutoffDay: 20, startDay: 21 },
       entries,
       totals: {
         totalHours: entries.reduce((sum, entry) => sum + entry.hours, 0),

@@ -20,7 +20,7 @@ function latestClosedPayrollPeriod(referenceDate = new Date()) {
   const month = referenceDate.getMonth();
   const currentCutoff = new Date(year, month, 20);
   const end = referenceDate > currentCutoff ? currentCutoff : new Date(year, month - 1, 20);
-  const start = new Date(end.getFullYear(), end.getMonth() - 1, 20);
+  const start = new Date(end.getFullYear(), end.getMonth() - 1, 21);
   return { from: toDateInput(start), to: toDateInput(end) };
 }
 
@@ -28,8 +28,9 @@ function currentPayrollPeriod(referenceDate = new Date()) {
   const year = referenceDate.getFullYear();
   const month = referenceDate.getMonth();
   const currentCutoff = new Date(year, month, 20);
-  const start = referenceDate >= currentCutoff ? currentCutoff : new Date(year, month - 1, 20);
-  const end = addMonths(start, 1);
+  const start = referenceDate > currentCutoff ? new Date(year, month, 21) : new Date(year, month - 1, 21);
+  const nextMonth = addMonths(start, 1);
+  const end = new Date(nextMonth.getFullYear(), nextMonth.getMonth(), 20);
   return { from: toDateInput(start), to: toDateInput(end) };
 }
 
@@ -148,7 +149,7 @@ export default function Reports() {
     <AppShell>
       <PageHeader
         title="Rapporter"
-        description={reportType === 'accountant' ? 'Exportera ett rent löne- och revisionsunderlag med brytdatum den 20:e.' : 'Ta fram löneunderlag, fakturaunderlag och Excel-backup utan att leta.'}
+        description={reportType === 'accountant' ? 'Exportera ett rent löne- och revisionsunderlag från den 21:a till den 20:e.' : 'Ta fram löneunderlag, fakturaunderlag och Excel-backup utan att leta.'}
         action={
           <Button type="button" onClick={handleExport} isLoading={isExporting}>
             <Download className="h-4 w-4" />
@@ -163,7 +164,7 @@ export default function Reports() {
           <div>
             <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-primary-200 bg-white/80 px-3 py-1 text-xs font-semibold text-primary-700">
               <Sparkles className="h-3.5 w-3.5" />
-              Brytdatum 20:e
+              Period 21:a till 20:e
             </div>
             <h2 className="text-xl font-semibold text-slate-950">Period {fromDate} till {toDate}</h2>
             <p className="mt-1 max-w-2xl text-sm text-slate-600">
@@ -183,8 +184,8 @@ export default function Reports() {
       <FilterBar>
         <div className="grid grid-cols-1 gap-3 xl:grid-cols-[auto_0.7fr_0.7fr_1fr_1fr]">
           <div className="flex flex-wrap gap-2">
-            <button onClick={() => setQuickPeriod('closedPayroll')} className="btn-secondary">Senaste 20:e-period</button>
-            <button onClick={() => setQuickPeriod('currentPayroll')} className="btn-secondary">Pågående 20:e-period</button>
+            <button onClick={() => setQuickPeriod('closedPayroll')} className="btn-secondary">Senaste 21-20-period</button>
+            <button onClick={() => setQuickPeriod('currentPayroll')} className="btn-secondary">Pågående 21-20-period</button>
             {!isAccountant && <button onClick={() => setQuickPeriod('thisMonth')} className="btn-secondary">Denna månad</button>}
             {!isAccountant && <button onClick={() => setQuickPeriod('lastMonth')} className="btn-secondary">Förra månaden</button>}
           </div>
