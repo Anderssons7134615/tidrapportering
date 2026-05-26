@@ -1,6 +1,6 @@
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
-import { useAuthStore } from '../stores/authStore';
-import { useOfflineStore } from '../stores/offlineStore';
+import { useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import {
   Home,
   Clock,
@@ -18,9 +18,10 @@ import {
   X,
   WifiOff,
   Wifi,
+  ShieldCheck,
 } from 'lucide-react';
-import { useState } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { useAuthStore } from '../stores/authStore';
+import { useOfflineStore } from '../stores/offlineStore';
 import { useSync } from '../hooks/useSync';
 
 const navItems = [
@@ -46,6 +47,13 @@ const bottomTabs = [
   { to: '/settings', icon: Settings, label: 'Mer', roles: ['ADMIN', 'SUPERVISOR', 'EMPLOYEE', 'ACCOUNTANT'] },
 ];
 
+const roleLabel: Record<string, string> = {
+  ADMIN: 'Adminöversikt',
+  SUPERVISOR: 'Arbetsledare',
+  ACCOUNTANT: 'Revisor',
+  EMPLOYEE: 'Medarbetare',
+};
+
 export default function Layout() {
   useSync();
 
@@ -67,77 +75,66 @@ export default function Layout() {
   };
 
   return (
-    <div className="min-h-screen text-slate-800">
-      <header className="safe-top sticky top-0 z-50 border-b border-white/70 bg-white/80 backdrop-blur-xl">
-        <div className="mx-auto flex h-16 max-w-[90rem] items-center justify-between px-4 lg:h-[4.25rem] lg:px-6">
+    <div className="min-h-screen text-graphite-900">
+      <header className="safe-top sticky top-0 z-50 border-b border-graphite-900/10 bg-white/90 shadow-sm backdrop-blur-xl lg:hidden">
+        <div className="mx-auto flex h-16 max-w-[90rem] items-center justify-between px-4">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setMenuOpen(!menuOpen)}
-              className="rounded-xl border border-slate-200 bg-white p-2 text-slate-700 transition hover:bg-slate-50 lg:hidden"
+              className="rounded-lg border border-graphite-200 bg-white p-2 text-graphite-700 transition hover:bg-primary-50 hover:text-primary-800"
               aria-label="Meny"
             >
               {menuOpen ? <X size={20} /> : <Menu size={20} />}
             </button>
+            <BrandMark />
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-base font-semibold text-slate-900 sm:text-lg">Anderssons TidApp</h1>
+                <h1 className="text-base font-semibold text-graphite-950 sm:text-lg">Anderssons TidApp</h1>
                 {activeItem && <span className="chip hidden sm:inline-flex">{activeItem.label}</span>}
               </div>
-              {user?.companyName && <p className="text-xs text-slate-500">{user.companyName}</p>}
+              {user?.companyName && <p className="text-xs text-graphite-500">{user.companyName}</p>}
             </div>
           </div>
 
-          <div className="flex items-center gap-2 sm:gap-3">
-            <div
-              className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs font-medium ${
-                isOnline
-                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                  : 'border-amber-200 bg-amber-50 text-amber-700'
-              }`}
-            >
-              {isOnline ? <Wifi size={14} /> : <WifiOff size={14} />}
-              <span className="hidden sm:inline">{isOnline ? 'Online' : 'Offline'}</span>
-              {pendingEntries.length > 0 && (
-                <span className="rounded-full bg-amber-200 px-1.5 py-0.5 text-[11px] font-semibold text-amber-900">
-                  {pendingEntries.length}
-                </span>
-              )}
-            </div>
-            <span className="hidden text-sm text-slate-700 sm:block">{user?.name}</span>
-            <button
-              onClick={handleLogout}
-              className="rounded-xl border border-slate-200 bg-white p-2 text-slate-600 transition hover:bg-slate-50 hover:text-slate-900"
-              title="Logga ut"
-            >
-              <LogOut size={18} />
-            </button>
-          </div>
+          <TopStatus isOnline={isOnline} pendingEntries={pendingEntries.length} userName={user?.name} onLogout={handleLogout} />
         </div>
       </header>
 
-      <div className="mx-auto flex w-full max-w-[90rem]">
-        <aside className="sticky top-[4.25rem] hidden h-[calc(100vh-4.25rem)] w-72 border-r border-white/70 bg-white/55 px-4 py-5 backdrop-blur-xl lg:block">
-          <div className="mb-4 rounded-xl border border-white/80 bg-gradient-to-br from-white to-primary-50 p-4 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Företag</p>
-            <p className="mt-2 text-lg font-semibold text-slate-900">{user?.companyName || 'TidApp'}</p>
-            <p className="mt-1 text-sm text-slate-500">
-              {user?.role === 'ADMIN' ? 'Adminöversikt' : user?.role === 'SUPERVISOR' ? 'Arbetsledare' : user?.role === 'ACCOUNTANT' ? 'Revisor' : 'Medarbetare'}
-            </p>
+      <div className="mx-auto flex w-full max-w-[96rem]">
+        <aside className="sticky top-0 hidden h-screen w-72 shrink-0 border-r border-white/10 bg-graphite-950 px-4 py-5 text-white shadow-premium lg:block">
+          <div className="mb-5 flex items-center gap-3 px-1">
+            <BrandMark />
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-white">Anderssons TidApp</p>
+              <p className="truncate text-xs text-graphite-300">Projekt · Tid · Ekonomi</p>
+            </div>
           </div>
+
+          <div className="mb-4 rounded-lg border border-white/10 bg-white/[0.06] p-4 shadow-sm">
+            <div className="flex items-center gap-2 text-primary-300">
+              <ShieldCheck className="h-4 w-4" />
+              <p className="text-xs font-semibold uppercase tracking-wide">Företag</p>
+            </div>
+            <p className="mt-2 truncate text-lg font-semibold text-white">{user?.companyName || 'TidApp'}</p>
+            <p className="mt-1 text-sm text-graphite-300">{roleLabel[user?.role || ''] || 'Medarbetare'}</p>
+          </div>
+
           <nav className="space-y-1.5">
             {filteredNavItems.map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}
                 className={({ isActive }) =>
-                  `group flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition ${
+                  `group flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-semibold transition ${
                     isActive
-                      ? 'bg-white text-primary-700 shadow-sm ring-1 ring-primary-200/70'
-                      : 'text-slate-600 hover:bg-white/75 hover:text-slate-900'
+                      ? 'bg-primary-500 text-white shadow-lg shadow-primary-950/25'
+                      : 'text-graphite-300 hover:bg-white/[0.08] hover:text-white'
                   }`
                 }
               >
-                <item.icon size={18} className="text-slate-500 transition group-hover:text-slate-700" />
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/[0.08] transition group-hover:bg-white/[0.12]">
+                  <item.icon size={17} />
+                </span>
                 <span>{item.label}</span>
               </NavLink>
             ))}
@@ -151,23 +148,26 @@ export default function Layout() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.15 }}
-              className="fixed inset-0 z-40 bg-slate-900/45 lg:hidden"
+              className="fixed inset-0 z-40 bg-graphite-950/65 lg:hidden"
               onClick={() => setMenuOpen(false)}
             />
           )}
         </AnimatePresence>
 
         <aside
-          className={`fixed left-0 top-0 z-50 h-full w-72 border-r border-slate-200 bg-white p-4 transition-transform duration-200 lg:hidden ${
+          className={`fixed left-0 top-0 z-50 h-full w-72 border-r border-white/10 bg-graphite-950 p-4 text-white shadow-premium transition-transform duration-200 lg:hidden ${
             menuOpen ? 'translate-x-0' : '-translate-x-full'
           }`}
         >
-          <div className="mb-4 flex items-center justify-between border-b border-slate-200 pb-3">
-            <div>
-              <p className="font-semibold text-slate-900">TidApp</p>
-              <p className="text-xs text-slate-500">{user?.companyName || 'Navigation'}</p>
+          <div className="mb-4 flex items-center justify-between border-b border-white/10 pb-3">
+            <div className="flex items-center gap-3">
+              <BrandMark />
+              <div>
+                <p className="font-semibold text-white">TidApp</p>
+                <p className="text-xs text-graphite-300">{user?.companyName || 'Navigation'}</p>
+              </div>
             </div>
-            <button onClick={() => setMenuOpen(false)} className="rounded-lg p-1.5 text-slate-600 hover:bg-slate-100">
+            <button onClick={() => setMenuOpen(false)} className="rounded-lg p-1.5 text-graphite-300 hover:bg-white/10 hover:text-white">
               <X size={20} />
             </button>
           </div>
@@ -179,8 +179,8 @@ export default function Layout() {
                 to={item.to}
                 onClick={() => setMenuOpen(false)}
                 className={({ isActive }) =>
-                  `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
-                    isActive ? 'bg-primary-50 text-primary-700 ring-1 ring-primary-100' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                  `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold transition ${
+                    isActive ? 'bg-primary-500 text-white' : 'text-graphite-300 hover:bg-white/10 hover:text-white'
                   }`
                 }
               >
@@ -192,14 +192,14 @@ export default function Layout() {
 
           <button
             onClick={handleLogout}
-            className="mt-5 flex w-full items-center gap-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-sm font-medium text-rose-700 hover:bg-rose-100"
+            className="mt-5 flex w-full items-center gap-3 rounded-lg border border-rose-300/20 bg-rose-500/10 px-3 py-2.5 text-sm font-semibold text-rose-100 hover:bg-rose-500/20"
           >
             <LogOut size={18} />
             <span>Logga ut</span>
           </button>
         </aside>
 
-        <main className="w-full flex-1 px-4 pb-24 pt-4 sm:px-6 sm:pt-6 lg:px-8 lg:pb-10">
+        <main className="w-full flex-1 px-4 pb-24 pt-4 sm:px-6 sm:pt-6 lg:px-8 lg:pb-10 lg:pt-7">
           <AnimatePresence mode="wait">
             <motion.div
               key={location.pathname}
@@ -215,15 +215,15 @@ export default function Layout() {
         </main>
       </div>
 
-      <nav className="safe-bottom fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200 bg-white/95 backdrop-blur-xl lg:hidden">
+      <nav className="safe-bottom fixed bottom-0 left-0 right-0 z-40 border-t border-white/10 bg-graphite-950/96 text-white shadow-premium backdrop-blur-xl lg:hidden">
         <div className="mx-auto flex max-w-md items-center justify-around px-2 py-2">
           {filteredBottomTabs.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
               className={({ isActive }) =>
-                `flex min-w-[72px] flex-col items-center rounded-2xl px-2 py-2 text-[11px] font-medium transition ${
-                  isActive ? 'bg-primary-50 text-primary-700 shadow-sm' : 'text-slate-500'
+                `flex min-w-[72px] flex-col items-center rounded-lg px-2 py-2 text-[11px] font-semibold transition ${
+                  isActive ? 'bg-primary-500 text-white shadow-sm' : 'text-graphite-300'
                 }`
               }
             >
@@ -233,6 +233,54 @@ export default function Layout() {
           ))}
         </div>
       </nav>
+    </div>
+  );
+}
+
+function BrandMark() {
+  return (
+    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary-500 text-sm font-black text-white shadow-lg shadow-primary-950/25">
+      AI
+    </div>
+  );
+}
+
+function TopStatus({
+  isOnline,
+  pendingEntries,
+  userName,
+  onLogout,
+}: {
+  isOnline: boolean;
+  pendingEntries: number;
+  userName?: string;
+  onLogout: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-2 sm:gap-3">
+      <div
+        className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs font-semibold ${
+          isOnline
+            ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+            : 'border-amber-200 bg-amber-50 text-amber-700'
+        }`}
+      >
+        {isOnline ? <Wifi size={14} /> : <WifiOff size={14} />}
+        <span className="hidden sm:inline">{isOnline ? 'Online' : 'Offline'}</span>
+        {pendingEntries > 0 && (
+          <span className="rounded-full bg-amber-200 px-1.5 py-0.5 text-[11px] font-semibold text-amber-900">
+            {pendingEntries}
+          </span>
+        )}
+      </div>
+      <span className="hidden text-sm font-medium text-graphite-700 sm:block">{userName}</span>
+      <button
+        onClick={onLogout}
+        className="rounded-lg border border-graphite-200 bg-white p-2 text-graphite-600 transition hover:bg-primary-50 hover:text-primary-800"
+        title="Logga ut"
+      >
+        <LogOut size={18} />
+      </button>
     </div>
   );
 }

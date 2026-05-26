@@ -6,13 +6,13 @@
   :root {
     color-scheme: light;
 
-    --color-bg: #f3f6fb;
-    --color-bg-soft: #edf2f9;
+    --color-bg: #f4f4f1;
+    --color-bg-soft: #e9e8e2;
     --color-surface: #ffffff;
-    --color-text: #0f172a;
-    --color-text-muted: #5b6b82;
-    --color-border: #d8e1ee;
-    --color-focus: #4f6fbf;
+    --color-text: #171b1a;
+    --color-text-muted: #65685f;
+    --color-border: #dedbd2;
+    --color-focus: #f97316;
 
     --radius-sm: 0.5rem;
     --radius-md: 0.8rem;
@@ -27,11 +27,10 @@
   }
 
   body {
-    @apply bg-slate-100 text-slate-800 antialiased;
+    @apply bg-graphite-50 text-graphite-900 antialiased;
     background:
-      radial-gradient(circle at top left, rgba(85, 106, 193, 0.16), transparent 34rem),
-      radial-gradient(circle at 82% 12%, rgba(16, 185, 129, 0.12), transparent 26rem),
-      linear-gradient(180deg, #f8fbff 0%, #eef4fb 100%);
+      linear-gradient(180deg, rgba(23, 27, 26, 0.07) 0%, rgba(23, 27, 26, 0) 15rem),
+      linear-gradient(135deg, #f7f5ef 0%, #eeece4 48%, #f8f8f5 100%);
   }
 
   input,
@@ -43,95 +42,113 @@
 
 @layer components {
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .btn-primary {
-    @apply btn bg-primary-600 text-white shadow-sm hover:bg-primary-500 focus:ring-primary-400;
+    @apply btn bg-primary-600 text-white shadow-sm shadow-primary-900/15 hover:-translate-y-0.5 hover:bg-primary-500 hover:shadow-md hover:shadow-primary-900/20 focus:ring-primary-300;
   }
 
   .btn-secondary {
-    @apply btn border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 focus:ring-slate-300;
+    @apply btn border border-graphite-200 bg-white text-graphite-800 shadow-sm hover:-translate-y-0.5 hover:border-primary-200 hover:bg-primary-50 hover:text-primary-800 focus:ring-primary-200;
   }
 
   .btn-danger {
-    @apply btn bg-rose-600 text-white hover:bg-rose-500 focus:ring-rose-500;
+    @apply btn bg-rose-600 text-white shadow-sm hover:-translate-y-0.5 hover:bg-rose-500 focus:ring-rose-500;
   }
 
   .btn-success {
-    @apply btn bg-emerald-600 text-white hover:bg-emerald-500 focus:ring-emerald-500;
+    @apply btn bg-emerald-600 text-white shadow-sm hover:-translate-y-0.5 hover:bg-emerald-500 focus:ring-emerald-500;
   }
 
   .input {
-    @apply w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 shadow-sm transition focus:border-primary-300 focus:ring-2 focus:ring-primary-100;
+    @apply w-full rounded-lg border border-graphite-200 bg-white px-3.5 py-2.5 text-sm text-graphite-950 placeholder:text-graphite-400 shadow-sm transition focus:border-primary-400 focus:ring-2 focus:ring-primary-100;
   }
 
   .label {
-    @apply mb-1.5 block text-sm font-medium text-slate-700;
+    @apply mb-1.5 block text-sm font-semibold text-graphite-800;
   }
 
   .card {
-    @apply rounded-xl border border-white/80 bg-white/90 p-4 shadow-soft backdrop-blur sm:p-5;
+    @apply rounded-lg border border-white/80 bg-white/95 p-4 shadow-soft ring-1 ring-graphite-900/[0.03] backdrop-blur sm:p-5;
   }
 
   .hero-card {
-    @apply overflow-hidden rounded-xl border border-slate-200/90 bg-white p-5 shadow-sm sm:p-6;
+    @apply overflow-hidden rounded-lg border border-graphite-200/80 bg-white p-5 shadow-soft sm:p-6;
   }
 
   .page-title {
-    @apply text-2xl font-semibold tracking-tight text-slate-950;
+    @apply text-2xl font-semibold tracking-tight text-graphite-950 sm:text-3xl;
   }
 
   .badge {
-    @apply inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold;
+    @apply inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold;
   }
 
   .badge-blue {
-    @apply badge bg-sky-100 text-sky-700;
+    @apply badge border-sky-200 bg-sky-50 text-sky-700;
   }
 
   .badge-green {
-    @apply badge bg-emerald-100 text-emerald-700;
+    @apply badge border-emerald-200 bg-emerald-50 text-emerald-700;
   }
 
   .badge-yellow {
-    @apply badge bg-amber-100 text-amber-700;
+    @apply badge border-amber-200 bg-amber-50 text-amber-800;
   }
 
   .badge-red {
-    @apply badge bg-rose-100 text-rose-700;
+    @apply badge border-rose-200 bg-rose-50 text-rose-700;
   }
 
   .badge-gray {
-    @apply badge bg-slate-100 text-slate-600;
+    @apply badge border-graphite-200 bg-graphite-100 text-graphite-700;
   }
 
   .section-title {
-    @apply text-base font-semibold text-slate-900;
+    @apply text-base font-semibold text-graphite-950;
   }
 
   .surface-muted {
-    @apply rounded-xl border border-slate-200 bg-slate-50/80;
+    @apply rounded-lg border border-graphite-200 bg-graphite-50/80;
   }
 
   .soft-panel {
-    @apply rounded-2xl border border-white/70 bg-white/75 shadow-sm backdrop-blur;
+    @apply rounded-lg border border-white/70 bg-white/80 shadow-sm backdrop-blur;
   }
 
   .stat-card {
-    @apply rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md;
+    @apply rounded-lg border border-graphite-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-primary-200 hover:shadow-md;
   }
 
   .chip {
-    @apply inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600;
+    @apply inline-flex items-center gap-2 rounded-full border border-primary-200 bg-primary-50 px-3 py-1.5 text-xs font-semibold text-primary-800;
   }
 
   .table-wrap {
-    @apply overflow-hidden rounded-xl border border-slate-200 bg-white;
+    @apply overflow-hidden rounded-lg border border-graphite-200 bg-white shadow-sm;
   }
 
   .table-head {
-    @apply bg-slate-100/80 text-left text-[11px] uppercase tracking-wide text-slate-500;
+    @apply bg-graphite-900 text-left text-[11px] uppercase tracking-wide text-white;
+  }
+
+  .table-wrap tbody tr {
+    @apply transition hover:bg-primary-50/60;
+  }
+
+  .premium-panel {
+    @apply rounded-lg border border-graphite-800 bg-graphite-950 text-white shadow-premium;
+    background-image: linear-gradient(135deg, #171b1a 0%, #282d2b 55%, #3a2417 100%);
+  }
+
+  .accent-line {
+    @apply relative overflow-hidden;
+  }
+
+  .accent-line::before {
+    content: '';
+    @apply absolute left-0 top-0 h-full w-1 bg-primary-500;
   }
 }
 

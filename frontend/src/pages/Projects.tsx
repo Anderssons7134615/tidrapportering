@@ -140,8 +140,8 @@ export default function Projects() {
       />
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label="Projekt" value={filteredProjects.length} />
-        <KpiCard label="Timmar totalt" value={formatHours(totals.hours)} tone="blue" />
+        <KpiCard label="Projekt" value={filteredProjects.length} tone="dark" />
+        <KpiCard label="Timmar totalt" value={formatHours(totals.hours)} tone="orange" />
         <KpiCard label="Fakturerbart värde" value={formatCurrency(totals.billable)} tone="green" />
         <KpiCard label="Risk / saknar budget" value={`${totals.risk} / ${totals.missingBudget}`} tone={totals.risk ? 'red' : totals.missingBudget ? 'yellow' : 'green'} />
       </div>
@@ -149,7 +149,7 @@ export default function Projects() {
       <FilterBar>
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1.2fr_0.8fr_0.8fr_0.8fr]">
           <label className="relative">
-            <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-slate-400" />
+            <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-graphite-400" />
             <input className="input pl-9" placeholder="Sök projekt, kund eller projektnummer" value={search} onChange={(event) => setSearch(event.target.value)} />
           </label>
           <select className="input" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
@@ -177,114 +177,183 @@ export default function Projects() {
       {!filteredProjects.length ? (
         <EmptyState title="Inga projekt matchar filtret" description="Justera filtren eller skapa ett nytt projekt." />
       ) : (
-        <div className="space-y-3">
-          {filteredProjects.map((project) => {
-            const metrics = project.metrics;
-            const missingBudget = metrics?.warnings.includes('Saknar budget');
-            return (
-              <Card key={project.id} className={`transition hover:shadow-md ${!project.active ? 'opacity-70' : ''}`}>
-                <div className="grid gap-4 xl:grid-cols-[1.1fr_1.8fr_auto] xl:items-center">
-                  <Link to={`/projects/${project.id}`} className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="truncate text-base font-semibold text-slate-900">{project.name}</h2>
-                      {metrics?.status && <StatusBadge label={metrics.status.label} tone={metrics.status.tone} />}
-                      {missingBudget && <StatusBadge label="Saknar budget" tone="yellow" />}
-                    </div>
-                    <p className="mt-1 text-sm text-slate-500">{project.code} · {project.customer?.name || 'Intern'} · {billingLabels[project.billingModel] || project.billingModel}</p>
-                    {metrics?.lastActivityAt && <p className="mt-1 text-xs text-slate-400">Senaste aktivitet {formatDate(metrics.lastActivityAt)}</p>}
-                  </Link>
-
-                  <Link to={`/projects/${project.id}`} className="grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
-                    <Metric label="Timmar" value={formatHours(metrics?.totalHours)} />
-                    <Metric label="Denna vecka" value={formatHours(metrics?.weekHours)} />
-                    <Metric label="Budget" value={project.budgetHours ? formatHours(project.budgetHours) : 'Saknas'} warning={!project.budgetHours && (metrics?.totalHours || 0) > 0} />
-                    <Metric label="Använt" value={formatPercent(metrics?.budgetUsagePercent)} warning={(metrics?.budgetUsagePercent || 0) >= 80} />
-                    <Metric label="Fakt. timmar" value={formatHours(metrics?.billableHours)} />
-                    <Metric label="Fakt. värde" value={formatCurrency(metrics?.billableValue)} warning={(metrics?.billableHours || 0) > 0 && (metrics?.billableValue || 0) === 0} />
-                    <Metric label="Kostnad" value={formatCurrency((metrics?.laborCost || 0) + (metrics?.materialCost || 0))} />
-                    <Metric label="Resultat" value={metrics?.projectResult == null ? '-' : formatCurrency(metrics.projectResult)} warning={(metrics?.projectResult || 0) < 0} />
-                  </Link>
-
-                  {isManager && (
-                    <div className="flex items-center justify-end gap-1">
-                      <button onClick={() => { setEditingProject(project); setIsModalOpen(true); }} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" title="Redigera">
-                        <Edit2 className="h-4 w-4" />
-                      </button>
-                      <button onClick={() => window.confirm('Inaktivera projekt?') && deleteMutation.mutate(project.id)} className="rounded-lg p-2 text-rose-600 hover:bg-rose-50" title="Inaktivera">
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </Card>
-            );
-          })}
+        <div className="grid grid-cols-1 gap-3">
+          {filteredProjects.map((project) => (
+            <ProjectRow
+              key={project.id}
+              project={project}
+              isManager={isManager}
+              onEdit={() => {
+                setEditingProject(project);
+                setIsModalOpen(true);
+              }}
+              onDelete={() => window.confirm('Inaktivera projekt?') && deleteMutation.mutate(project.id)}
+            />
+          ))}
         </div>
       )}
 
       {isManager && isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
-          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-2xl">
-            <div className="border-b border-slate-200 px-5 py-4">
-              <h2 className="text-lg font-semibold text-slate-900">{editingProject ? 'Redigera projekt' : 'Nytt projekt'}</h2>
-            </div>
-            <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-4 p-5 md:grid-cols-2">
-              <label className="md:col-span-2">
-                <span className="label">Kund</span>
-                <select name="customerId" defaultValue={editingProject?.customerId || ''} className="input">
-                  <option value="">Intern</option>
-                  {customers?.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}
-                </select>
-              </label>
-              <Field name="name" label="Projektnamn" defaultValue={editingProject?.name} required />
-              <Field name="code" label="Projektnummer" defaultValue={editingProject?.code} required />
-              <Field name="site" label="Arbetsplats" defaultValue={editingProject?.site} />
-              <label>
-                <span className="label">Status</span>
-                <select name="status" defaultValue={editingProject?.status || 'PLANNED'} className="input">
-                  <option value="PLANNED">Planerad</option>
-                  <option value="ONGOING">Pågående</option>
-                  <option value="COMPLETED">Avslutad</option>
-                  <option value="INVOICED">Fakturerad</option>
-                </select>
-              </label>
-              <label>
-                <span className="label">Faktureringstyp</span>
-                <select name="billingModel" defaultValue={editingProject?.billingModel || 'HOURLY'} className="input">
-                  <option value="HOURLY">Löpande</option>
-                  <option value="FIXED">Fastpris</option>
-                </select>
-              </label>
-              <Field name="budgetHours" label="Budget timmar" defaultValue={editingProject?.budgetHours} placeholder="80" />
-              <Field name="defaultRate" label="Timpris kr/h" defaultValue={editingProject?.defaultRate} placeholder="650" />
-              <Field name="fixedPrice" label="Fastpris/anbud kr" defaultValue={editingProject?.fixedPrice || undefined} placeholder="120000" />
-              <label className="md:col-span-2">
-                <span className="label">Anteckningar</span>
-                <textarea name="notes" defaultValue={editingProject?.notes || ''} className="input" rows={3} />
-              </label>
-              <label className="md:col-span-2 flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
-                <input name="employeeCanSeeResults" type="checkbox" defaultChecked={editingProject?.employeeCanSeeResults || false} />
-                Visa projektresultat för anställda
-              </label>
-              <div className="flex gap-3 md:col-span-2">
-                <button type="button" onClick={closeModal} className="btn-secondary flex-1">Avbryt</button>
-                <button type="submit" className="btn-primary flex-1" disabled={createMutation.isPending || updateMutation.isPending}>
-                  {editingProject ? 'Spara' : 'Skapa'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <ProjectModal
+          editingProject={editingProject}
+          customers={customers}
+          isSaving={createMutation.isPending || updateMutation.isPending}
+          onClose={closeModal}
+          onSubmit={handleSubmit}
+        />
       )}
     </AppShell>
   );
 }
 
+function ProjectRow({
+  project,
+  isManager,
+  onEdit,
+  onDelete,
+}: {
+  project: ProjectListItem;
+  isManager: boolean;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const metrics = project.metrics;
+  const missingBudget = metrics?.warnings.includes('Saknar budget');
+  const budgetUsage = Math.max(0, Math.min(metrics?.budgetUsagePercent || 0, 100));
+  const progressTone =
+    (metrics?.budgetUsagePercent || 0) >= 100
+      ? 'bg-rose-500'
+      : (metrics?.budgetUsagePercent || 0) >= 80
+        ? 'bg-amber-500'
+        : 'bg-emerald-500';
+
+  return (
+    <Card className={`accent-line transition hover:-translate-y-0.5 hover:shadow-premium ${!project.active ? 'opacity-70' : ''}`}>
+      <div className="grid gap-4 xl:grid-cols-[1.05fr_1.75fr_auto] xl:items-center">
+        <Link to={`/projects/${project.id}`} className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="truncate text-lg font-semibold text-graphite-950">{project.name}</h2>
+            {metrics?.status && <StatusBadge label={metrics.status.label} tone={metrics.status.tone} />}
+            {missingBudget && <StatusBadge label="Saknar budget" tone="yellow" />}
+          </div>
+          <p className="mt-1 text-sm text-graphite-500">
+            {project.code} · {project.customer?.name || 'Intern'} · {billingLabels[project.billingModel] || project.billingModel}
+          </p>
+          {metrics?.lastActivityAt && <p className="mt-1 text-xs font-medium text-graphite-400">Senaste aktivitet {formatDate(metrics.lastActivityAt)}</p>}
+        </Link>
+
+        <Link to={`/projects/${project.id}`} className="space-y-3">
+          <div>
+            <div className="mb-1.5 flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-graphite-500">
+              <span>Budgetförbrukning</span>
+              <span>{project.budgetHours ? formatPercent(metrics?.budgetUsagePercent) : 'Budget saknas'}</span>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-graphite-100">
+              <div className={`h-full rounded-full ${progressTone}`} style={{ width: project.budgetHours ? `${budgetUsage}%` : '100%' }} />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 text-sm md:grid-cols-4">
+            <Metric label="Timmar" value={formatHours(metrics?.totalHours)} />
+            <Metric label="Denna vecka" value={formatHours(metrics?.weekHours)} />
+            <Metric label="Budget" value={project.budgetHours ? formatHours(project.budgetHours) : 'Saknas'} warning={!project.budgetHours && (metrics?.totalHours || 0) > 0} />
+            <Metric label="Fakt. värde" value={formatCurrency(metrics?.billableValue)} warning={(metrics?.billableHours || 0) > 0 && (metrics?.billableValue || 0) === 0} />
+            <Metric label="Fakt. timmar" value={formatHours(metrics?.billableHours)} />
+            <Metric label="Kostnad" value={formatCurrency((metrics?.laborCost || 0) + (metrics?.materialCost || 0))} />
+            <Metric label="Resultat" value={metrics?.projectResult == null ? '-' : formatCurrency(metrics.projectResult)} warning={(metrics?.projectResult || 0) < 0} />
+            <Metric label="Marginal" value={metrics?.marginPercent == null ? '-' : formatPercent(metrics.marginPercent)} warning={(metrics?.marginPercent || 0) < 0} />
+          </div>
+        </Link>
+
+        {isManager && (
+          <div className="flex items-center justify-end gap-1">
+            <button onClick={onEdit} className="rounded-lg p-2 text-graphite-500 hover:bg-primary-50 hover:text-primary-700" title="Redigera">
+              <Edit2 className="h-4 w-4" />
+            </button>
+            <button onClick={onDelete} className="rounded-lg p-2 text-rose-600 hover:bg-rose-50" title="Inaktivera">
+              <Trash2 className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
 function Metric({ label, value, warning }: { label: string; value: string; warning?: boolean }) {
   return (
-    <div className={`rounded-lg border px-3 py-2 ${warning ? 'border-amber-200 bg-amber-50 text-amber-900' : 'border-slate-200 bg-slate-50 text-slate-700'}`}>
-      <p className="text-xs text-slate-500">{label}</p>
+    <div className={`rounded-lg border px-3 py-2 ${warning ? 'border-amber-200 bg-amber-50 text-amber-900' : 'border-graphite-200 bg-graphite-50 text-graphite-700'}`}>
+      <p className="text-xs text-graphite-500">{label}</p>
       <p className="mt-0.5 font-semibold">{warning && <AlertTriangle className="mr-1 inline h-3.5 w-3.5" />}{value}</p>
+    </div>
+  );
+}
+
+function ProjectModal({
+  editingProject,
+  customers,
+  isSaving,
+  onClose,
+  onSubmit,
+}: {
+  editingProject: Project | null;
+  customers?: Array<{ id: string; name: string }>;
+  isSaving: boolean;
+  onClose: () => void;
+  onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-graphite-950/65 p-4 backdrop-blur-sm">
+      <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg border border-graphite-200 bg-white shadow-2xl">
+        <div className="border-b border-graphite-200 bg-graphite-950 px-5 py-4 text-white">
+          <h2 className="text-lg font-semibold">{editingProject ? 'Redigera projekt' : 'Nytt projekt'}</h2>
+        </div>
+        <form onSubmit={onSubmit} className="grid grid-cols-1 gap-4 p-5 md:grid-cols-2">
+          <label className="md:col-span-2">
+            <span className="label">Kund</span>
+            <select name="customerId" defaultValue={editingProject?.customerId || ''} className="input">
+              <option value="">Intern</option>
+              {customers?.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}
+            </select>
+          </label>
+          <Field name="name" label="Projektnamn" defaultValue={editingProject?.name} required />
+          <Field name="code" label="Projektnummer" defaultValue={editingProject?.code} required />
+          <Field name="site" label="Arbetsplats" defaultValue={editingProject?.site} />
+          <label>
+            <span className="label">Status</span>
+            <select name="status" defaultValue={editingProject?.status || 'PLANNED'} className="input">
+              <option value="PLANNED">Planerad</option>
+              <option value="ONGOING">Pågående</option>
+              <option value="COMPLETED">Avslutad</option>
+              <option value="INVOICED">Fakturerad</option>
+            </select>
+          </label>
+          <label>
+            <span className="label">Faktureringstyp</span>
+            <select name="billingModel" defaultValue={editingProject?.billingModel || 'HOURLY'} className="input">
+              <option value="HOURLY">Löpande</option>
+              <option value="FIXED">Fastpris</option>
+            </select>
+          </label>
+          <Field name="budgetHours" label="Budget timmar" defaultValue={editingProject?.budgetHours} placeholder="80" />
+          <Field name="defaultRate" label="Timpris kr/h" defaultValue={editingProject?.defaultRate} placeholder="650" />
+          <Field name="fixedPrice" label="Fastpris/anbud kr" defaultValue={editingProject?.fixedPrice || undefined} placeholder="120000" />
+          <label className="md:col-span-2">
+            <span className="label">Anteckningar</span>
+            <textarea name="notes" defaultValue={editingProject?.notes || ''} className="input" rows={3} />
+          </label>
+          <label className="md:col-span-2 flex items-center gap-3 rounded-lg border border-graphite-200 bg-graphite-50 p-3 text-sm">
+            <input name="employeeCanSeeResults" type="checkbox" defaultChecked={editingProject?.employeeCanSeeResults || false} />
+            Visa projektresultat för anställda
+          </label>
+          <div className="flex gap-3 md:col-span-2">
+            <button type="button" onClick={onClose} className="btn-secondary flex-1">Avbryt</button>
+            <button type="submit" className="btn-primary flex-1" disabled={isSaving}>
+              {editingProject ? 'Spara' : 'Skapa'}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
