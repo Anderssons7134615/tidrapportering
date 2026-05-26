@@ -50,15 +50,28 @@ function HomeRoute() {
   if (user?.role === 'ACCOUNTANT') {
     return <Navigate to="/reports" replace />;
   }
-  return <Dashboard />;
+  return <PageLoader><Dashboard /></PageLoader>;
+}
+
+function PageLoader({ children }: { children: React.ReactNode }) {
+  return (
+    <Suspense
+      fallback={
+        <div className="card flex min-h-[260px] items-center justify-center">
+          <LoadingSpinner />
+        </div>
+      }
+    >
+      {children}
+    </Suspense>
+  );
 }
 
 export default function App() {
   return (
-    <Suspense fallback={<LoadingSpinner fullScreen />}>
     <Routes>
-      <Route path="/login" element={<Login />} />
-      <Route path="/register" element={<Register />} />
+      <Route path="/login" element={<PageLoader><Login /></PageLoader>} />
+      <Route path="/register" element={<PageLoader><Register /></PageLoader>} />
       <Route
         path="/"
         element={
@@ -68,14 +81,14 @@ export default function App() {
         }
       >
         <Route index element={<HomeRoute />} />
-        <Route path="overview/details/:metric" element={<DashboardDetail />} />
-        <Route path="time-entry" element={<TimeEntry />} />
-        <Route path="week" element={<WeekView />} />
+        <Route path="overview/details/:metric" element={<PageLoader><DashboardDetail /></PageLoader>} />
+        <Route path="time-entry" element={<PageLoader><TimeEntry /></PageLoader>} />
+        <Route path="week" element={<PageLoader><WeekView /></PageLoader>} />
         <Route
           path="team-week"
           element={
             <AdminRoute>
-              <TeamWeekOverview />
+              <PageLoader><TeamWeekOverview /></PageLoader>
             </AdminRoute>
           }
         />
@@ -83,7 +96,7 @@ export default function App() {
           path="approval"
           element={
             <AdminRoute>
-              <Approval />
+              <PageLoader><Approval /></PageLoader>
             </AdminRoute>
           }
         />
@@ -91,7 +104,7 @@ export default function App() {
           path="customers"
           element={
             <AdminRoute>
-              <Customers />
+              <PageLoader><Customers /></PageLoader>
             </AdminRoute>
           }
         />
@@ -99,7 +112,7 @@ export default function App() {
           path="projects"
           element={
             <ProtectedRoute>
-              <Projects />
+              <PageLoader><Projects /></PageLoader>
             </ProtectedRoute>
           }
         />
@@ -107,7 +120,7 @@ export default function App() {
           path="projects/:id"
           element={
             <ProtectedRoute>
-              <ProjectDetail />
+              <PageLoader><ProjectDetail /></PageLoader>
             </ProtectedRoute>
           }
         />
@@ -115,7 +128,7 @@ export default function App() {
           path="materials"
           element={
             <AdminRoute>
-              <Materials />
+              <PageLoader><Materials /></PageLoader>
             </AdminRoute>
           }
         />
@@ -123,7 +136,7 @@ export default function App() {
           path="activities"
           element={
             <AdminRoute>
-              <Activities />
+              <PageLoader><Activities /></PageLoader>
             </AdminRoute>
           }
         />
@@ -131,7 +144,7 @@ export default function App() {
           path="users"
           element={
             <AdminRoute>
-              <Users />
+              <PageLoader><Users /></PageLoader>
             </AdminRoute>
           }
         />
@@ -139,13 +152,12 @@ export default function App() {
           path="reports"
           element={
             <ReportRoute>
-              <Reports />
+              <PageLoader><Reports /></PageLoader>
             </ReportRoute>
           }
         />
-        <Route path="settings" element={<Settings />} />
+        <Route path="settings" element={<PageLoader><Settings /></PageLoader>} />
       </Route>
     </Routes>
-    </Suspense>
   );
 }

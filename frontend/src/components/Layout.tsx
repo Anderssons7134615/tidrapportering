@@ -1,6 +1,5 @@
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useState } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
 import {
   Home,
   Clock,
@@ -141,18 +140,12 @@ export default function Layout() {
           </nav>
         </aside>
 
-        <AnimatePresence>
-          {menuOpen && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.15 }}
-              className="fixed inset-0 z-40 bg-graphite-950/65 lg:hidden"
-              onClick={() => setMenuOpen(false)}
-            />
-          )}
-        </AnimatePresence>
+        {menuOpen && (
+          <div
+            className="fixed inset-0 z-40 bg-graphite-950/65 lg:hidden"
+            onClick={() => setMenuOpen(false)}
+          />
+        )}
 
         <aside
           className={`fixed left-0 top-0 z-50 h-full w-72 border-r border-white/10 bg-graphite-950 p-4 text-white shadow-premium transition-transform duration-200 lg:hidden ${
@@ -200,18 +193,9 @@ export default function Layout() {
         </aside>
 
         <main className="w-full flex-1 px-4 pb-24 pt-4 sm:px-6 sm:pt-6 lg:px-8 lg:pb-10 lg:pt-7">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={location.pathname}
-              initial={{ opacity: 0, y: 4 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.12, ease: 'easeOut' }}
-              className="mx-auto w-full max-w-7xl"
-            >
-              <Outlet />
-            </motion.div>
-          </AnimatePresence>
+          <div className="mx-auto w-full max-w-7xl">
+            <Outlet />
+          </div>
         </main>
       </div>
 
