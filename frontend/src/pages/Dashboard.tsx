@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, CheckCircle2, Clock, FileText, Receipt, TrendingUp } from 'lucide-react';
+import { AlertTriangle, ArrowRight, CheckCircle2, Clock, FileText, Receipt, Sparkles, TrendingUp } from 'lucide-react';
 import { dashboardApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
 import { DashboardSkeleton } from '../components/ui/Skeleton';
@@ -34,6 +34,58 @@ export default function Dashboard() {
           </Link>
         }
       />
+
+      {isManager && (
+        <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-950 text-white shadow-soft">
+          <div className="grid gap-0 lg:grid-cols-[1.2fr_0.8fr]">
+            <div className="p-5 sm:p-6">
+              <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-200">
+                <Sparkles className="h-3.5 w-3.5 text-amber-300" />
+                Dagens koll
+              </div>
+              <h2 className="mt-4 text-2xl font-semibold tracking-tight sm:text-3xl">
+                {data?.summary.pendingApprovalCount
+                  ? `${data.summary.pendingApprovalCount} veckor väntar på attest`
+                  : data?.summary.projectsWithoutBudgetCount
+                    ? `${data.summary.projectsWithoutBudgetCount} projekt saknar budget`
+                    : data?.summary.riskProjectCount
+                      ? `${data.summary.riskProjectCount} projekt behöver granskas`
+                      : 'Allt ser lugnt ut just nu'}
+              </h2>
+              <p className="mt-2 max-w-2xl text-sm text-slate-300">
+                Här får du snabbaste vägen till det som påverkar lön, fakturering och projektkontroll mest.
+              </p>
+              <div className="mt-5 flex flex-wrap gap-2">
+                <Link
+                  to={
+                    data?.summary.pendingApprovalCount
+                      ? '/approval'
+                      : data?.summary.projectsWithoutBudgetCount || data?.summary.riskProjectCount
+                        ? '/projects'
+                        : '/team-week'
+                  }
+                  className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-slate-100"
+                >
+                  Öppna åtgärder
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+                <Link
+                  to="/team-week"
+                  className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/15"
+                >
+                  Teamvecka
+                </Link>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-px bg-white/10 lg:grid-cols-1">
+              <DashboardPulse label="Ej attesterade" value={data?.summary.pendingApprovalCount || 0} tone="amber" />
+              <DashboardPulse label="Projekt i risk" value={data?.summary.riskProjectCount || 0} tone="rose" />
+              <DashboardPulse label="Utan budget" value={data?.summary.projectsWithoutBudgetCount || 0} tone="sky" />
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label="Timmar denna vecka" value={formatHours(data?.summary.weeklyHours)} tone="blue" />
@@ -154,5 +206,24 @@ export default function Dashboard() {
         </Card>
       </div>
     </AppShell>
+  );
+}
+
+function DashboardPulse({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone: 'amber' | 'rose' | 'sky';
+}) {
+  const toneClass = tone === 'amber' ? 'text-amber-300' : tone === 'rose' ? 'text-rose-300' : 'text-sky-300';
+
+  return (
+    <div className="bg-slate-950/70 p-4 sm:p-5">
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{label}</p>
+      <p className={`mt-2 text-3xl font-semibold tracking-tight ${toneClass}`}>{value}</p>
+    </div>
   );
 }

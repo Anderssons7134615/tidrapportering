@@ -349,6 +349,25 @@ export interface TeamWeekSummaryProject {
   billableHours: number;
 }
 
+export type TeamWeekAttentionStatus = 'OK' | 'MISSING' | 'DEVIATION' | 'PENDING' | 'APPROVED' | 'REJECTED';
+export type TeamWeekDayStatus = 'EMPTY' | 'FUTURE' | 'OFF' | 'APPROVED' | 'MISSING' | 'DEVIATION' | 'REPORTED';
+
+export interface TeamWeekSummaryDay {
+  date: string;
+  dayName: string;
+  hours: number;
+  billableHours: number;
+  entryCount: number;
+  expected: boolean;
+  status: TeamWeekDayStatus;
+  warnings: string[];
+}
+
+export interface TeamWeekDeviation {
+  date: string | null;
+  type: string;
+}
+
 export interface TeamWeekSummaryUser {
   userId: string;
   userName: string;
@@ -357,6 +376,11 @@ export interface TeamWeekSummaryUser {
   billableHours: number;
   entryCount: number;
   status: 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED';
+  attentionStatus: TeamWeekAttentionStatus;
+  needsAction: boolean;
+  missingDays: string[];
+  deviations: TeamWeekDeviation[];
+  days: TeamWeekSummaryDay[];
   projects: TeamWeekSummaryProject[];
   entries: TimeEntry[];
 }
@@ -367,6 +391,11 @@ export interface TeamWeekSummary {
   totals: {
     totalHours: number;
     billableHours: number;
+    missingUsers?: number;
+    pendingUsers?: number;
+    deviationUsers?: number;
+    approvedUsers?: number;
+    needsActionUsers?: number;
   };
   users: TeamWeekSummaryUser[];
 }

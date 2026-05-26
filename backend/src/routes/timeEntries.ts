@@ -83,7 +83,7 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
 
     const [activeUsers, entries, weekLocks] = await Promise.all([
       prisma.user.findMany({
-        where: { companyId: request.user.companyId, active: true },
+        where: { companyId: request.user.companyId, active: true, role: { not: 'ACCOUNTANT' } },
         select: { id: true, name: true, role: true },
       }),
       prisma.timeEntry.findMany({
@@ -99,6 +99,8 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
           createdAt: true,
           hours: true,
           billable: true,
+          status: true,
+          note: true,
           projectId: true,
           activity: { select: { id: true, name: true, code: true } },
           project: { select: { id: true, name: true, code: true } },
@@ -127,7 +129,9 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
     for (const lock of weekLocks) {
       usersById.set(lock.user.id, lock.user);
     }
-    const users = Array.from(usersById.values()).sort((a, b) => a.name.localeCompare(b.name, 'sv'));
+    const users = Array.from(usersById.values())
+      .filter((user) => user.role !== 'ACCOUNTANT')
+      .sort((a, b) => a.name.localeCompare(b.name, 'sv'));
 
     const weekLockByUser = new Map(weekLocks.map((lock) => [lock.userId, lock.status]));
     const entriesByUser = new Map<string, typeof entries>();
@@ -139,8 +143,18 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
       entriesByUser.get(entry.userId)!.push(entry);
     }
 
+    const weekDays = Array.from({ length: 7 }, (_, index) => {
+      const date = new Date(startDate);
+      date.setDate(startDate.getDate() + index);
+      date.setHours(0, 0, 0, 0);
+      return date;
+    });
+    const today = new Date();
+    today.setHours(23, 59, 59, 999);
+
     const summaries = users.map((u) => {
       const userEntries = entriesByUser.get(u.id) || [];
+      const lockStatus = weekLockByUser.get(u.id) || 'DRAFT';
 
       const projectMap = new Map<string, {
         projectId: string | null;
@@ -173,6 +187,76 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
 
       const totalHours = userEntries.reduce((sum, entry) => sum + entry.hours, 0);
       const billableHours = userEntries.reduce((sum, entry) => sum + (entry.billable ? entry.hours : 0), 0);
+      const internalHours = userEntries.reduce((sum, entry) => sum + (!entry.projectId ? entry.hours : 0), 0);
+      const entriesByDate = new Map<string, typeof userEntries>();
+
+      for (const entry of userEntries) {
+        const dateKey = toDateKey(entry.date);
+        if (!entriesByDate.has(dateKey)) {
+          entriesByDate.set(dateKey, []);
+        }
+        entriesByDate.get(dateKey)!.push(entry);
+      }
+
+      const days = weekDays.map((date, index) => {
+        const dateKey = toDateKey(date);
+        const dayEntries = entriesByDate.get(dateKey) || [];
+        const hours = dayEntries.reduce((sum, entry) => sum + entry.hours, 0);
+        const billableDayHours = dayEntries.reduce((sum, entry) => sum + (entry.billable ? entry.hours : 0), 0);
+        const isWeekday = index < 5;
+        const isExpected = isWeekday && date <= today;
+        const isFuture = date > today;
+        const hasMissingActivity = dayEntries.some((entry) => !entry.activity);
+        const warnings: string[] = [];
+
+        if (isExpected && hours === 0 && lockStatus !== 'APPROVED') {
+          warnings.push('Saknar tid');
+        }
+        if (hours > 10) {
+          warnings.push('Mer än 10 h');
+        }
+        if (hasMissingActivity) {
+          warnings.push('Saknar aktivitet');
+        }
+
+        let status = 'EMPTY';
+        if (isFuture) status = 'FUTURE';
+        else if (!isWeekday && hours === 0) status = 'OFF';
+        else if (lockStatus === 'APPROVED' && hours > 0) status = 'APPROVED';
+        else if (warnings.length > 0) status = hours === 0 ? 'MISSING' : 'DEVIATION';
+        else if (hours > 0) status = 'REPORTED';
+
+        return {
+          date: dateKey,
+          dayName: ['Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör', 'Sön'][index],
+          hours,
+          billableHours: billableDayHours,
+          entryCount: dayEntries.length,
+          expected: isExpected,
+          status,
+          warnings,
+        };
+      });
+
+      const missingDays = days.filter((day) => day.status === 'MISSING').map((day) => day.date);
+      const deviations = [
+        ...days.flatMap((day) => day.warnings.map((warning) => ({ date: day.date, type: warning }))),
+        ...(internalHours > Math.max(8, totalHours * 0.4) && internalHours > 0
+          ? [{ date: null, type: 'Mycket intern tid' }]
+          : []),
+      ];
+      const hasSubmittedWeek = lockStatus === 'SUBMITTED';
+      const hasRejectedWeek = lockStatus === 'REJECTED';
+      const hasMissingTime = missingDays.length > 0;
+      const hasDeviation = deviations.some((deviation) => deviation.type !== 'Intern tid');
+      const needsAction = lockStatus !== 'APPROVED' && (hasSubmittedWeek || hasRejectedWeek || hasMissingTime || hasDeviation);
+
+      let attentionStatus = 'OK';
+      if (lockStatus === 'APPROVED') attentionStatus = 'APPROVED';
+      else if (hasRejectedWeek) attentionStatus = 'REJECTED';
+      else if (hasMissingTime) attentionStatus = 'MISSING';
+      else if (hasDeviation) attentionStatus = 'DEVIATION';
+      else if (hasSubmittedWeek) attentionStatus = 'PENDING';
 
       return {
         userId: u.id,
@@ -181,7 +265,12 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
         totalHours,
         billableHours,
         entryCount: userEntries.length,
-        status: weekLockByUser.get(u.id) || 'DRAFT',
+        status: lockStatus,
+        attentionStatus,
+        needsAction,
+        missingDays,
+        deviations,
+        days,
         projects: Array.from(projectMap.values()).sort((a, b) => b.hours - a.hours),
         entries: userEntries
           .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
@@ -195,6 +284,11 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
       totals: {
         totalHours: summaries.reduce((s, x) => s + x.totalHours, 0),
         billableHours: summaries.reduce((s, x) => s + x.billableHours, 0),
+        missingUsers: summaries.filter((x) => x.attentionStatus === 'MISSING').length,
+        pendingUsers: summaries.filter((x) => x.attentionStatus === 'PENDING').length,
+        deviationUsers: summaries.filter((x) => x.attentionStatus === 'DEVIATION').length,
+        approvedUsers: summaries.filter((x) => x.attentionStatus === 'APPROVED').length,
+        needsActionUsers: summaries.filter((x) => x.needsAction).length,
       },
       users: summaries,
     };
@@ -746,6 +840,10 @@ function getDayEnd(date: string): Date {
   const d = new Date(date);
   d.setHours(23, 59, 59, 999);
   return d;
+}
+
+function toDateKey(date: Date): string {
+  return date.toISOString().split('T')[0];
 }
 
 async function upsertSubmittedWeekLock(tx: any, userId: string, weekStartDate: Date) {
