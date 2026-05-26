@@ -38,7 +38,7 @@ export default function Settings() {
   const updateSettingsMutation = useMutation({
     mutationFn: settingsApi.update,
     onSuccess: () => {
-      toast.success('Installningar sparade');
+      toast.success('Inställningar sparade');
       queryClient.invalidateQueries({ queryKey: ['settings'] });
     },
     onError: (error: Error) => toast.error(error.message),
@@ -47,7 +47,7 @@ export default function Settings() {
   const changePasswordMutation = useMutation({
     mutationFn: () => authApi.changePassword(currentPassword, newPassword),
     onSuccess: () => {
-      toast.success('Losenord andrat');
+      toast.success('Lösenord ändrat');
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
@@ -90,11 +90,11 @@ export default function Settings() {
   const handlePasswordSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (newPassword !== confirmPassword) {
-      toast.error('Losenorden matchar inte');
+      toast.error('Lösenorden matchar inte');
       return;
     }
     if (newPassword.length < 6) {
-      toast.error('Losenordet maste vara minst 6 tecken');
+      toast.error('Lösenordet måste vara minst 6 tecken');
       return;
     }
     changePasswordMutation.mutate();
@@ -109,9 +109,9 @@ export default function Settings() {
       <section className="hero-card">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <h1 className="page-title">Installningar</h1>
+            <h1 className="page-title">Inställningar</h1>
             <p className="mt-2 max-w-2xl text-sm text-slate-600">
-              Hantera konto, foretag och notiser pa ett satt som fungerar lika bra i mobilen som pa datorn.
+              Hantera konto, företag och notiser på ett sätt som fungerar lika bra i mobilen som på datorn.
             </p>
           </div>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
@@ -130,28 +130,28 @@ export default function Settings() {
                 <Lock className="h-5 w-5" />
               </div>
               <div>
-                <h2 className="section-title">Sakerhet</h2>
-                <p className="text-sm text-slate-500">Byt losenord utan att lamna sidan.</p>
+                <h2 className="section-title">Säkerhet</h2>
+                <p className="text-sm text-slate-500">Byt lösenord utan att lämna sidan.</p>
               </div>
             </div>
 
             <form onSubmit={handlePasswordSubmit} className="space-y-4">
               <div>
-                <label className="label">Nuvarande losenord</label>
+                <label className="label">Nuvarande lösenord</label>
                 <input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} className="input" required />
               </div>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
-                  <label className="label">Nytt losenord</label>
+                  <label className="label">Nytt lösenord</label>
                   <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="input" required minLength={6} />
                 </div>
                 <div>
-                  <label className="label">Bekrafta nytt losenord</label>
+                  <label className="label">Bekräfta nytt lösenord</label>
                   <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="input" required />
                 </div>
               </div>
               <button type="submit" disabled={changePasswordMutation.isPending} className="btn-primary">
-                {changePasswordMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Byt losenord'}
+                {changePasswordMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Byt lösenord'}
               </button>
             </form>
           </div>
@@ -163,14 +163,14 @@ export default function Settings() {
                   <Building className="h-5 w-5" />
                 </div>
                 <div>
-                  <h2 className="section-title">Foretagsinstallningar</h2>
-                  <p className="text-sm text-slate-500">Grundvarden for export, paminnelser och bolagsnamn.</p>
+                  <h2 className="section-title">Företagsinställningar</h2>
+                  <p className="text-sm text-slate-500">Grundvärden för export, påminnelser och bolagsnamn.</p>
                 </div>
               </div>
 
               <form onSubmit={handleSettingsSubmit} className="space-y-4">
                 <div>
-                  <label className="label">Foretagsnamn</label>
+                  <label className="label">Företagsnamn</label>
                   <input name="companyName" defaultValue={settings.companyName} className="input" />
                 </div>
 
@@ -191,11 +191,11 @@ export default function Settings() {
 
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div>
-                    <label className="label">Paminnelsetid</label>
+                    <label className="label">Påminnelsetid</label>
                     <input name="reminderTime" type="time" defaultValue={settings.reminderTime} className="input" />
                   </div>
                   <div>
-                    <label className="label">Paminnelser</label>
+                    <label className="label">Påminnelser</label>
                     <select name="reminderEnabled" defaultValue={settings.reminderEnabled ? 'true' : 'false'} className="input">
                       <option value="true">Aktiverade</option>
                       <option value="false">Avaktiverade</option>
@@ -204,7 +204,7 @@ export default function Settings() {
                 </div>
 
                 <button type="submit" disabled={updateSettingsMutation.isPending} className="btn-primary">
-                  {updateSettingsMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Spara installningar'}
+                  {updateSettingsMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Spara inställningar'}
                 </button>
               </form>
             </div>
@@ -225,13 +225,13 @@ export default function Settings() {
 
             {!pushStatus?.supported ? (
               <p className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                Din webblasare stodjer inte push-notiser.
+                Din webbläsare stödjer inte push-notiser.
               </p>
             ) : (
               <div className="space-y-4">
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div className="soft-panel p-4">
-                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Behorighet</p>
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Behörighet</p>
                     <p className="mt-2 text-lg font-semibold text-slate-900">{pushStatus.permission}</p>
                   </div>
                   <div className="soft-panel p-4">
@@ -271,7 +271,7 @@ export default function Settings() {
               </div>
               <div>
                 <h2 className="section-title">Om appen</h2>
-                <p className="text-sm text-slate-500">En snabb oversikt over ditt konto.</p>
+                <p className="text-sm text-slate-500">En snabb översikt över ditt konto.</p>
               </div>
             </div>
 

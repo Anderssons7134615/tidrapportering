@@ -16,7 +16,7 @@ export default function Login() {
     mutationFn: () => authApi.login(email, password),
     onSuccess: (data) => {
       setAuth(data.token, data.user);
-      toast.success(`Valkommen, ${data.user.name}!`);
+      toast.success(`Välkommen, ${data.user.name}!`);
       navigate('/');
     },
     onError: (error: Error) => {
@@ -31,8 +31,8 @@ export default function Login() {
 
   const highlights = [
     'Snabb tidrapportering i mobilen',
-    'Veckooversikt och attest i samma flode',
-    'Offline-stod nar du jobbar ute pa plats',
+    'Veckoöversikt och attest i samma flöde',
+    'Offline-stöd när du jobbar ute på plats',
   ];
 
   return (
@@ -46,10 +46,10 @@ export default function Login() {
             <div className="mt-6">
               <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">TidApp</p>
               <h1 className="mt-3 text-4xl font-semibold tracking-tight text-slate-900 sm:text-5xl">
-                Enkel tidrapportering for hantverksteam.
+                Enkel tidrapportering för hantverksteam.
               </h1>
               <p className="mt-4 max-w-xl text-base text-slate-600">
-                Samla rapportering, veckovy, attest och projektlage i ett lugnare arbetsflode som fungerar bra pa byggmoten, i bilen och pa kontoret.
+                Samla rapportering, veckovy, attest och projektläge i ett lugnare arbetsflöde som fungerar bra på byggmöten, i bilen och på kontoret.
               </p>
             </div>
           </div>
@@ -57,18 +57,18 @@ export default function Login() {
           <div className="grid gap-3 sm:grid-cols-3">
             <div className="soft-panel p-4">
               <ShieldCheck className="h-5 w-5 text-emerald-600" />
-              <p className="mt-3 text-sm font-semibold text-slate-900">Tryggt flode</p>
-              <p className="mt-1 text-sm text-slate-500">Spara lokalt och synka nar uppkopplingen ar tillbaka.</p>
+              <p className="mt-3 text-sm font-semibold text-slate-900">Tryggt flöde</p>
+              <p className="mt-1 text-sm text-slate-500">Spara lokalt och synka när uppkopplingen är tillbaka.</p>
             </div>
             <div className="soft-panel p-4">
               <Sparkles className="h-5 w-5 text-primary-600" />
-              <p className="mt-3 text-sm font-semibold text-slate-900">Fa klick</p>
-              <p className="mt-1 text-sm text-slate-500">Byggt for snabb registrering med tydliga val.</p>
+              <p className="mt-3 text-sm font-semibold text-slate-900">Få klick</p>
+              <p className="mt-1 text-sm text-slate-500">Byggt för snabb registrering med tydliga val.</p>
             </div>
             <div className="soft-panel p-4">
               <ArrowRight className="h-5 w-5 text-amber-600" />
               <p className="mt-3 text-sm font-semibold text-slate-900">Direkt vidare</p>
-              <p className="mt-1 text-sm text-slate-500">Ga fran rapportering till veckovy utan att leta.</p>
+              <p className="mt-1 text-sm text-slate-500">Gå från rapportering till veckovy utan att leta.</p>
             </div>
           </div>
         </section>
@@ -77,8 +77,8 @@ export default function Login() {
           <div className="w-full rounded-[1.75rem] border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
             <div className="mb-6">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Logga in</p>
-              <h2 className="mt-2 text-3xl font-semibold tracking-tight text-slate-900">Fortsatt dar du slutade</h2>
-              <p className="mt-2 text-sm text-slate-500">Anvand samma konto pa mobil och dator.</p>
+              <h2 className="mt-2 text-3xl font-semibold tracking-tight text-slate-900">Fortsätt där du slutade</h2>
+              <p className="mt-2 text-sm text-slate-500">Använd samma konto på mobil och dator.</p>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -97,7 +97,7 @@ export default function Login() {
               </div>
 
               <div>
-                <label htmlFor="password" className="label">Losenord</label>
+                <label htmlFor="password" className="label">Lösenord</label>
                 <input
                   type="password"
                   id="password"
@@ -116,7 +116,7 @@ export default function Login() {
             </form>
 
             <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Det har far du</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Det här får du</p>
               <div className="mt-3 space-y-2">
                 {highlights.map((item) => (
                   <div key={item} className="flex items-center gap-2 text-sm text-slate-600">
@@ -128,9 +128,9 @@ export default function Login() {
             </div>
 
             <p className="mt-6 text-center text-sm text-slate-500">
-              Nytt foretag?{' '}
+              Nytt företag?{' '}
               <Link to="/register" className="font-semibold text-primary-700 hover:text-primary-600">
-                Registrera er har
+                Registrera er här
               </Link>
             </p>
           </div>

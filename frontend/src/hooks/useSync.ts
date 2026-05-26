@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useOfflineStore } from '../stores/offlineStore';
 import { timeEntriesApi } from '../services/api';
@@ -7,6 +7,7 @@ import toast from 'react-hot-toast';
 export function useSync() {
   const queryClient = useQueryClient();
   const { pendingEntries, setPendingEntries, isOnline } = useOfflineStore();
+  const lastFailureSignature = useRef('');
 
   useEffect(() => {
     if (!isOnline || pendingEntries.length === 0) return;
@@ -17,9 +18,16 @@ export function useSync() {
 
         const failed = results.filter((r) => r.error);
         if (failed.length > 0) {
-          toast.error(`${failed.length} rad(er) kunde inte synkas`);
+          const signature = failed.map((result) => `${result.localId || result.id || 'okänd'}:${result.error}`).join('|');
+          if (signature !== lastFailureSignature.current) {
+            const firstReason = failed[0]?.error ? `: ${failed[0].error}` : '';
+            toast.error(`${failed.length} rad(er) kunde inte synkas${firstReason}`);
+            console.warn('TidApp sync failed rows:', failed);
+            lastFailureSignature.current = signature;
+          }
         } else {
           toast.success(`${results.length} rad(er) synkade`);
+          lastFailureSignature.current = '';
         }
 
         const failedLocalIds = new Set(
@@ -28,9 +36,10 @@ export function useSync() {
             .filter((localId): localId is string => Boolean(localId))
         );
 
-        setPendingEntries(
-          pendingEntries.filter((entry) => failedLocalIds.has(entry.localId))
-        );
+        const nextPendingEntries = pendingEntries.filter((entry) => failedLocalIds.has(entry.localId));
+        if (nextPendingEntries.length !== pendingEntries.length) {
+          setPendingEntries(nextPendingEntries);
+        }
         queryClient.invalidateQueries({ queryKey: ['timeEntries'] });
         queryClient.invalidateQueries({ queryKey: ['week'] });
         queryClient.invalidateQueries({ queryKey: ['weekLocks'] });
