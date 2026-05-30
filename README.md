@@ -33,6 +33,8 @@ npm run db:seed:safe
 npm run dev
 ```
 
+`npm run db:seed:safe` är avsett för lokal utveckling/test. Produktionsstart seedar inte längre automatiskt.
+
 Frontend:
 
 ```bash
@@ -99,12 +101,7 @@ VITE_API_URL=https://din-railway-backend.up.railway.app/api
 
 ## Testkonton efter seed
 
-```text
-rick@anderssonsisolering.se / Rick1234
-admin@testforetaget.se / Test1234
-```
-
-Byt lösenord och seed-data innan riktig produktion.
+Seed-skripten skapar lokala testkonton för utveckling. Kör inte seed i produktion utan att först byta standarddata och lösenord. I produktion blockeras seed om `NODE_ENV=production`, om inte `ALLOW_PRODUCTION_SEED=true` uttryckligen sätts.
 
 ## Kommandon
 
@@ -112,6 +109,8 @@ Backend:
 
 ```bash
 npm run build
+npm start
+npm run start:seed # endast lokal/test: migrera, seeda tom DB och starta
 npm run db:generate
 npm run db:migrate
 npm run db:seed:safe
