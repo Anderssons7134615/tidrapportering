@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Edit2, Plus, Search, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -217,6 +217,7 @@ function ProjectRow({
   onEdit: () => void;
   onDelete: () => void;
 }) {
+  const navigate = useNavigate();
   const metrics = project.metrics;
   const missingBudget = metrics?.warnings.includes('Saknar budget');
   const budgetUsage = Math.max(0, Math.min(metrics?.budgetUsagePercent || 0, 100));
@@ -228,9 +229,21 @@ function ProjectRow({
         : 'bg-emerald-500';
 
   return (
-    <Card className={`accent-line transition hover:-translate-y-0.5 hover:shadow-premium ${!project.active ? 'opacity-70' : ''}`}>
+    <Card
+      role="button"
+      tabIndex={0}
+      onClick={() => navigate(`/projects/${project.id}`)}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          navigate(`/projects/${project.id}`);
+        }
+      }}
+      className={`accent-line cursor-pointer transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 hover:-translate-y-0.5 hover:shadow-premium ${!project.active ? 'opacity-70' : ''}`}
+      title="Öppna projekt"
+    >
       <div className="grid gap-4 xl:grid-cols-[1.05fr_1.75fr_auto] xl:items-center">
-        <Link to={`/projects/${project.id}`} className="min-w-0">
+        <Link to={`/projects/${project.id}`} onClick={(event) => event.stopPropagation()} className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="truncate text-lg font-semibold text-graphite-950">{project.name}</h2>
             {metrics?.status && <StatusBadge label={metrics.status.label} tone={metrics.status.tone} />}
@@ -242,7 +255,7 @@ function ProjectRow({
           {metrics?.lastActivityAt && <p className="mt-1 text-xs font-medium text-graphite-400">Senaste aktivitet {formatDate(metrics.lastActivityAt)}</p>}
         </Link>
 
-        <Link to={`/projects/${project.id}`} className="space-y-3">
+        <Link to={`/projects/${project.id}`} onClick={(event) => event.stopPropagation()} className="space-y-3">
           <div>
             <div className="mb-1.5 flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-graphite-500">
               <span>Budgetförbrukning</span>
@@ -267,10 +280,10 @@ function ProjectRow({
 
         {isManager && (
           <div className="flex items-center justify-end gap-1">
-            <button onClick={onEdit} className="rounded-lg p-2 text-graphite-500 hover:bg-primary-50 hover:text-primary-700" title="Redigera">
+            <button onClick={(event) => { event.stopPropagation(); onEdit(); }} className="rounded-lg p-2 text-graphite-500 hover:bg-primary-50 hover:text-primary-700" title="Redigera">
               <Edit2 className="h-4 w-4" />
             </button>
-            <button onClick={onDelete} className="rounded-lg p-2 text-rose-600 hover:bg-rose-50" title="Inaktivera">
+            <button onClick={(event) => { event.stopPropagation(); onDelete(); }} className="rounded-lg p-2 text-rose-600 hover:bg-rose-50" title="Inaktivera">
               <Trash2 className="h-4 w-4" />
             </button>
           </div>
