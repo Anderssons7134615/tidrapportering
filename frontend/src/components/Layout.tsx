@@ -40,11 +40,11 @@ const navItems = [
 
 const bottomTabs = [
   { to: '/', icon: Home, label: 'Hem', roles: ['ADMIN', 'SUPERVISOR', 'EMPLOYEE'] },
-  { to: '/time-entry', icon: Clock, label: 'Rapportera', roles: ['ADMIN', 'SUPERVISOR', 'EMPLOYEE'] },
   { to: '/week', icon: Calendar, label: 'Vecka', roles: ['ADMIN', 'SUPERVISOR', 'EMPLOYEE'] },
+  { to: '/time-entry', icon: Clock, label: 'Rapportera', roles: ['ADMIN', 'SUPERVISOR', 'EMPLOYEE'], primary: true },
   { to: '/projects', icon: FolderKanban, label: 'Projekt', roles: ['ADMIN', 'SUPERVISOR', 'EMPLOYEE'] },
-  { to: '/reports', icon: FileBarChart, label: 'Rapporter', roles: ['ADMIN', 'SUPERVISOR', 'ACCOUNTANT'] },
-  { to: '/settings', icon: Settings, label: 'Mer', roles: ['ACCOUNTANT'] },
+  { to: '/approval', icon: CheckSquare, label: 'Attest', roles: ['ADMIN', 'SUPERVISOR'] },
+  { to: '/reports', icon: FileBarChart, label: 'Rapporter', roles: ['ACCOUNTANT'] },
 ];
 
 const roleLabel: Record<string, string> = {
@@ -193,7 +193,7 @@ export default function Layout() {
           </button>
         </aside>
 
-        <main className="w-full flex-1 px-4 pb-24 pt-4 sm:px-6 sm:pt-6 lg:px-8 lg:pb-10 lg:pt-7">
+        <main className="w-full flex-1 px-4 pb-32 pt-4 sm:px-6 sm:pt-6 lg:px-8 lg:pb-10 lg:pt-7">
           <div className="mx-auto w-full max-w-7xl">
             <Outlet />
           </div>
@@ -201,18 +201,24 @@ export default function Layout() {
       </div>
 
       <nav className="safe-bottom fixed bottom-0 left-0 right-0 z-40 border-t border-white/10 bg-graphite-950/96 text-white shadow-premium backdrop-blur-xl lg:hidden">
-        <div className="mx-auto flex max-w-md items-center justify-around px-2 py-2">
-          {filteredBottomTabs.map((item) => (
+        <div className="mx-auto grid max-w-md grid-cols-5 items-end gap-1 px-2 pb-2 pt-2">
+          {filteredBottomTabs.slice(0, 5).map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
               className={({ isActive }) =>
-                `flex min-w-[72px] flex-col items-center rounded-lg px-2 py-2 text-[11px] font-semibold transition ${
-                  isActive ? 'bg-primary-500 text-white shadow-sm' : 'text-graphite-300'
-                }`
+                item.primary
+                  ? `-mt-7 flex min-h-[70px] flex-col items-center justify-center rounded-2xl px-2 py-3 text-[11px] font-black transition ${
+                      isActive
+                        ? 'bg-primary-500 text-white shadow-lg shadow-primary-950/40'
+                        : 'bg-primary-500 text-white shadow-lg shadow-primary-950/35'
+                    }`
+                  : `flex min-h-[56px] flex-col items-center justify-center rounded-xl px-1.5 py-2 text-[11px] font-semibold transition ${
+                      isActive ? 'bg-white/12 text-white shadow-sm' : 'text-graphite-300 hover:bg-white/8 hover:text-white'
+                    }`
               }
             >
-              <item.icon size={19} />
+              <item.icon size={item.primary ? 22 : 20} />
               <span className="mt-0.5">{item.label}</span>
             </NavLink>
           ))}

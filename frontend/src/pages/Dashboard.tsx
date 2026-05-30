@@ -1,6 +1,7 @@
+import type { ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, ArrowRight, CheckCircle2, Clock, FileText, Receipt, Sparkles, TrendingUp } from 'lucide-react';
+import { AlertTriangle, ArrowRight, CalendarDays, CheckCircle2, Clock, FileText, FolderKanban, Receipt, Sparkles, TrendingUp } from 'lucide-react';
 import { dashboardApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
 import { DashboardSkeleton } from '../components/ui/Skeleton';
@@ -34,6 +35,31 @@ export default function Dashboard() {
           </Link>
         }
       />
+
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+        <NextStepCard
+          to="/time-entry"
+          icon={<Clock className="h-5 w-5" />}
+          eyebrow="Snabbast nu"
+          title="Rapportera dagens tid"
+          description="Stor knapp, färre klick och snabbval för timmar/projekt."
+          primary
+        />
+        <NextStepCard
+          to={isManager ? '/approval' : '/week'}
+          icon={isManager ? <CheckCircle2 className="h-5 w-5" /> : <CalendarDays className="h-5 w-5" />}
+          eyebrow={isManager ? 'Attest' : 'Vecka'}
+          title={isManager ? `${data?.summary.pendingApprovalCount || 0} veckor att hantera` : 'Öppna min vecka'}
+          description={isManager ? 'Granska och attestera veckor innan rapport/fakturering.' : 'Se om veckan är komplett innan du skickar in.'}
+        />
+        <NextStepCard
+          to={isManager ? '/reports' : '/projects'}
+          icon={isManager ? <FileText className="h-5 w-5" /> : <FolderKanban className="h-5 w-5" />}
+          eyebrow={isManager ? 'Ekonomi' : 'Projekt'}
+          title={isManager ? 'Ta fram rapport' : 'Mina projekt'}
+          description={isManager ? 'Få koll på timmar, fakturerbart och projektutfall.' : 'Hitta rätt projekt snabbare ute på jobb.'}
+        />
+      </div>
 
       {isManager && (
         <div className="premium-panel overflow-hidden">
@@ -211,6 +237,43 @@ export default function Dashboard() {
         </Card>
       </div>
     </AppShell>
+  );
+}
+
+function NextStepCard({
+  to,
+  icon,
+  eyebrow,
+  title,
+  description,
+  primary = false,
+}: {
+  to: string;
+  icon: ReactNode;
+  eyebrow: string;
+  title: string;
+  description: string;
+  primary?: boolean;
+}) {
+  return (
+    <Link
+      to={to}
+      className={`group relative overflow-hidden rounded-lg border p-4 shadow-soft transition hover:-translate-y-0.5 hover:shadow-premium ${
+        primary
+          ? 'border-primary-200 bg-primary-600 text-white'
+          : 'border-white/80 bg-white/95 text-graphite-950 ring-1 ring-graphite-900/[0.03]'
+      }`}
+    >
+      <div className={`mb-4 inline-flex h-11 w-11 items-center justify-center rounded-xl ${primary ? 'bg-white/18 text-white' : 'bg-primary-50 text-primary-700'}`}>
+        {icon}
+      </div>
+      <p className={`text-xs font-black uppercase tracking-wide ${primary ? 'text-primary-100' : 'text-primary-700'}`}>{eyebrow}</p>
+      <div className="mt-1 flex items-start justify-between gap-3">
+        <h2 className="text-xl font-semibold tracking-tight">{title}</h2>
+        <ArrowRight className={`mt-1 h-5 w-5 shrink-0 transition group-hover:translate-x-0.5 ${primary ? 'text-primary-100' : 'text-primary-600'}`} />
+      </div>
+      <p className={`mt-2 text-sm leading-6 ${primary ? 'text-primary-50' : 'text-graphite-600'}`}>{description}</p>
+    </Link>
   );
 }
 

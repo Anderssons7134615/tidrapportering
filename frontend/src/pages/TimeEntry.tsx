@@ -157,6 +157,8 @@ export default function TimeEntry() {
   const recentProjects = projects
     ?.filter((project) => recentProjectIds.includes(project.id))
     .sort((a, b) => recentProjectIds.indexOf(a.id) - recentProjectIds.indexOf(b.id));
+  const commonActivities = activities?.slice(0, 4) || [];
+  const selectedProject = projects?.find((project) => project.id === projectId);
 
   const adjustHours = (delta: number) => {
     const current = Number.isFinite(hoursNumber) ? hoursNumber : 0;
@@ -235,27 +237,49 @@ export default function TimeEntry() {
           }
         />
 
-        <form onSubmit={handleSubmit} className="space-y-5">
+        <form onSubmit={handleSubmit} className="space-y-5 pb-16 lg:pb-0">
           {!isEditMode && (
             <Card className="bg-graphite-950 text-white">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
                 <div>
                   <div className="flex items-center gap-2 text-primary-300">
                     <Sparkles className="h-4 w-4" />
-                    <p className="text-xs font-semibold uppercase tracking-wide">Snabbval</p>
+                    <p className="text-xs font-semibold uppercase tracking-wide">Snabbflöde</p>
                   </div>
-                  <p className="mt-1 text-sm text-graphite-200">Kopiera gårdagen eller välj ett nyligen använt projekt.</p>
+                  <h2 className="mt-2 text-xl font-semibold">Börja med dagens tid</h2>
+                  <p className="mt-1 text-sm text-graphite-200">Välj datum, projekt och standardtimmar med stora mobilvänliga knappar.</p>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  <button type="button" onClick={copyYesterday} className="inline-flex items-center gap-2 rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-sm font-semibold text-white transition hover:bg-white/15">
-                    <Copy className="h-4 w-4" />
-                    Kopiera gårdagen
-                  </button>
-                  {recentProjects?.map((project) => (
-                    <button key={project.id} type="button" onClick={() => setProjectId(project.id)} className="rounded-lg border border-primary-300/20 bg-primary-500/15 px-3 py-2 text-sm font-semibold text-primary-100 transition hover:bg-primary-500/25">
-                      {project.code}
+                <div className="space-y-3">
+                  <div className="grid grid-cols-3 gap-2">
+                    <button type="button" onClick={() => setDate(format(new Date(), 'yyyy-MM-dd'))} className="rounded-xl border border-white/15 bg-white/10 px-3 py-3 text-sm font-bold text-white transition hover:bg-white/15">Idag</button>
+                    <button type="button" onClick={() => setDate(yesterday)} className="rounded-xl border border-white/15 bg-white/10 px-3 py-3 text-sm font-bold text-white transition hover:bg-white/15">Igår</button>
+                    <button type="button" onClick={copyYesterday} className="rounded-xl border border-primary-300/30 bg-primary-500/20 px-3 py-3 text-sm font-bold text-primary-100 transition hover:bg-primary-500/30">
+                      <Copy className="mx-auto mb-1 h-4 w-4" />
+                      Kopiera
                     </button>
-                  ))}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    {[7.5, 8, 4, 2].map((preset) => (
+                      <button key={preset} type="button" onClick={() => setHours(String(preset).replace('.', ','))} className="rounded-xl border border-white/15 bg-white/10 px-3 py-3 text-base font-black text-white transition hover:bg-white/15">{String(preset).replace('.', ',')} h</button>
+                    ))}
+                  </div>
+                  {!!recentProjects?.length && (
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {recentProjects.map((project) => (
+                        <button
+                          key={project.id}
+                          type="button"
+                          onClick={() => setProjectId(project.id)}
+                          className={`rounded-xl border px-3 py-3 text-left transition ${
+                            projectId === project.id ? 'border-primary-300 bg-primary-500/25 text-white' : 'border-white/15 bg-white/10 text-graphite-100 hover:bg-white/15'
+                          }`}
+                        >
+                          <span className="block text-sm font-black">{project.code}</span>
+                          <span className="block truncate text-xs opacity-80">{project.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             </Card>
@@ -283,6 +307,24 @@ export default function TimeEntry() {
                 {!projectRequired && <p className="mt-1 text-xs font-medium text-graphite-500">Projekt är valfritt för intern tid och frånvaro.</p>}
               </FormField>
               <FormField label="Aktivitet">
+                {!!commonActivities.length && (
+                  <div className="mb-2 grid grid-cols-2 gap-2">
+                    {commonActivities.map((activity) => (
+                      <button
+                        key={activity.id}
+                        type="button"
+                        onClick={() => setActivityId(activity.id)}
+                        className={`rounded-lg border px-3 py-2.5 text-left text-sm font-semibold transition ${
+                          activityId === activity.id
+                            ? 'border-primary-300 bg-primary-50 text-primary-800 ring-2 ring-primary-100'
+                            : 'border-graphite-200 bg-white text-graphite-700 hover:border-primary-200 hover:bg-primary-50'
+                        }`}
+                      >
+                        {activity.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <select value={activityId} onChange={(event) => setActivityId(event.target.value)} className="input">
                   <option value="">Välj aktivitet...</option>
                   {groupedActivities && Object.entries(groupedActivities).map(([category, items]) => (
@@ -326,7 +368,12 @@ export default function TimeEntry() {
               </div>
             </details>
 
-            <Button type="submit" isLoading={isSaving} variant={saved ? 'success' : 'primary'} disabledReason={disabledReason}>
+            <div className="rounded-lg border border-graphite-200 bg-graphite-50 p-3 text-sm text-graphite-700">
+              <span className="font-semibold text-graphite-950">Nästa steg:</span>{' '}
+              {selectedProject ? `${selectedProject.code} · ${selectedProject.name}` : 'välj projekt'} · {hours || 'ange timmar'} h · {selectedActivity?.name || 'välj aktivitet'}
+            </div>
+
+            <Button type="submit" className="mobile-sticky-submit" isLoading={isSaving} variant={saved ? 'success' : 'primary'} disabledReason={disabledReason}>
               {saved ? <><Check className="h-5 w-5" /> Sparad!</> : <>{isEditMode ? <PencilLine className="h-5 w-5" /> : <Save className="h-5 w-5" />}{isEditMode ? 'Uppdatera tidrad' : 'Spara tidrad'}</>}
             </Button>
           </Card>
