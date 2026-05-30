@@ -42,8 +42,9 @@ const bottomTabs = [
   { to: '/', icon: Home, label: 'Hem', roles: ['ADMIN', 'SUPERVISOR', 'EMPLOYEE'] },
   { to: '/time-entry', icon: Clock, label: 'Rapportera', roles: ['ADMIN', 'SUPERVISOR', 'EMPLOYEE'] },
   { to: '/week', icon: Calendar, label: 'Vecka', roles: ['ADMIN', 'SUPERVISOR', 'EMPLOYEE'] },
+  { to: '/projects', icon: FolderKanban, label: 'Projekt', roles: ['ADMIN', 'SUPERVISOR', 'EMPLOYEE'] },
   { to: '/reports', icon: FileBarChart, label: 'Rapporter', roles: ['ADMIN', 'SUPERVISOR', 'ACCOUNTANT'] },
-  { to: '/settings', icon: Settings, label: 'Mer', roles: ['ADMIN', 'SUPERVISOR', 'EMPLOYEE', 'ACCOUNTANT'] },
+  { to: '/settings', icon: Settings, label: 'Mer', roles: ['ACCOUNTANT'] },
 ];
 
 const roleLabel: Record<string, string> = {

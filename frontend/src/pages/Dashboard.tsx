@@ -163,13 +163,18 @@ export default function Dashboard() {
           ) : (
             <div className="divide-y divide-graphite-100">
               {data.recentEntries.map((entry) => (
-                <div key={entry.id} className="grid grid-cols-[1fr_auto] gap-3 rounded-lg px-2 py-3 transition hover:bg-primary-50/60">
+                <Link
+                  key={entry.id}
+                  to={`/time-entry?id=${entry.id}&return=/`}
+                  className="grid grid-cols-[1fr_auto] gap-3 rounded-lg px-2 py-3 transition hover:bg-primary-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
+                  title="Öppna tidraden"
+                >
                   <div className="min-w-0">
                     <p className="truncate font-semibold text-graphite-950">{entry.project?.name || 'Intern tid'}</p>
                     <p className="text-sm text-graphite-500">{entry.user?.name} · {entry.activity?.name || 'Aktivitet saknas'} · {formatDate(entry.date)}</p>
                   </div>
                   <p className="font-semibold text-graphite-950">{formatHours(entry.hours)}</p>
-                </div>
+                </Link>
               ))}
             </div>
           )}
