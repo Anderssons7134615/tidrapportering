@@ -23,7 +23,7 @@ export default function Projects() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState(searchParams.get('risk') ? 'RISK' : searchParams.get('missingBudget') ? 'MISSING_BUDGET' : 'ALL');
+  const [statusFilter, setStatusFilter] = useState(searchParams.get('risk') ? 'RISK' : searchParams.get('missingBudget') ? 'RUNNING_JOB' : 'ALL');
   const [billingFilter, setBillingFilter] = useState('ALL');
   const [activeFilter, setActiveFilter] = useState('ACTIVE');
 
@@ -76,7 +76,8 @@ export default function Projects() {
       const matchesSearch = !term || [project.name, project.code, project.customer?.name, project.site]
         .filter(Boolean)
         .some((value) => value!.toLowerCase().includes(term));
-      const matchesStatus = statusFilter === 'ALL' || metrics?.status.code === statusFilter;
+      const matchesStatus = statusFilter === 'ALL'
+        || (statusFilter === 'RUNNING_JOB' ? !project.budgetHours : metrics?.status.code === statusFilter);
       const matchesBilling = billingFilter === 'ALL' || project.billingModel === billingFilter;
       return matchesSearch && matchesStatus && matchesBilling;
     });
@@ -88,7 +89,7 @@ export default function Projects() {
         acc.hours += project.metrics?.totalHours || 0;
         acc.billable += project.metrics?.billableValue || 0;
         acc.risk += project.metrics?.status.code === 'RISK' ? 1 : 0;
-        acc.missingBudget += project.metrics?.warnings.includes('Saknar budget') ? 1 : 0;
+        acc.missingBudget += !project.budgetHours ? 1 : 0;
         return acc;
       },
       { hours: 0, billable: 0, risk: 0, missingBudget: 0 }
@@ -143,7 +144,7 @@ export default function Projects() {
         <KpiCard label="Projekt" value={filteredProjects.length} tone="dark" />
         <KpiCard label="Timmar totalt" value={formatHours(totals.hours)} tone="orange" />
         <KpiCard label="Fakturerbart värde" value={formatCurrency(totals.billable)} tone="green" />
-        <KpiCard label="Risk / saknar budget" value={`${totals.risk} / ${totals.missingBudget}`} tone={totals.risk ? 'red' : totals.missingBudget ? 'yellow' : 'green'} />
+        <KpiCard label="Risk / löpande" value={`${totals.risk} / ${totals.missingBudget}`} tone={totals.risk ? 'red' : 'green'} />
       </div>
 
       <FilterBar>
@@ -156,7 +157,7 @@ export default function Projects() {
             <option value="ALL">Alla statusar</option>
             <option value="PLANNED">Planerad</option>
             <option value="ONGOING">Pågående</option>
-            <option value="MISSING_BUDGET">Saknar budget</option>
+            <option value="RUNNING_JOB">Löpande jobb</option>
             <option value="RISK">Riskprojekt</option>
             <option value="READY_TO_INVOICE">Klar för fakturering</option>
             <option value="COMPLETED">Avslutad</option>
@@ -219,14 +220,16 @@ function ProjectRow({
 }) {
   const navigate = useNavigate();
   const metrics = project.metrics;
-  const missingBudget = metrics?.warnings.includes('Saknar budget');
+  const runningJob = !project.budgetHours;
   const budgetUsage = Math.max(0, Math.min(metrics?.budgetUsagePercent || 0, 100));
   const progressTone =
     (metrics?.budgetUsagePercent || 0) >= 100
       ? 'bg-rose-500'
       : (metrics?.budgetUsagePercent || 0) >= 80
         ? 'bg-amber-500'
-        : 'bg-emerald-500';
+        : runningJob
+          ? 'bg-sky-500'
+          : 'bg-emerald-500';
 
   return (
     <Card
@@ -247,7 +250,7 @@ function ProjectRow({
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="truncate text-lg font-semibold text-graphite-950">{project.name}</h2>
             {metrics?.status && <StatusBadge label={metrics.status.label} tone={metrics.status.tone} />}
-            {missingBudget && <StatusBadge label="Saknar budget" tone="yellow" />}
+            {runningJob && <StatusBadge label="Löpande jobb" tone="green" />}
           </div>
           <p className="mt-1 text-sm text-graphite-500">
             {project.code} · {project.customer?.name || 'Intern'} · {billingLabels[project.billingModel] || project.billingModel}
@@ -259,7 +262,7 @@ function ProjectRow({
           <div>
             <div className="mb-1.5 flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-graphite-500">
               <span>Budgetförbrukning</span>
-              <span>{project.budgetHours ? formatPercent(metrics?.budgetUsagePercent) : 'Budget saknas'}</span>
+              <span>{project.budgetHours ? formatPercent(metrics?.budgetUsagePercent) : 'Löpande jobb'}</span>
             </div>
             <div className="h-2 overflow-hidden rounded-full bg-graphite-100">
               <div className={`h-full rounded-full ${progressTone}`} style={{ width: project.budgetHours ? `${budgetUsage}%` : '100%' }} />
@@ -269,7 +272,7 @@ function ProjectRow({
           <div className="grid grid-cols-2 gap-2 text-sm md:grid-cols-4">
             <Metric label="Timmar" value={formatHours(metrics?.totalHours)} />
             <Metric label="Denna vecka" value={formatHours(metrics?.weekHours)} />
-            <Metric label="Budget" value={project.budgetHours ? formatHours(project.budgetHours) : 'Saknas'} warning={!project.budgetHours && (metrics?.totalHours || 0) > 0} />
+            <Metric label="Budget" value={project.budgetHours ? formatHours(project.budgetHours) : 'Löpande'} />
             <Metric label="Fakt. värde" value={formatCurrency(metrics?.billableValue)} warning={(metrics?.billableHours || 0) > 0 && (metrics?.billableValue || 0) === 0} />
             <Metric label="Fakt. timmar" value={formatHours(metrics?.billableHours)} />
             <Metric label="Kostnad" value={formatCurrency((metrics?.laborCost || 0) + (metrics?.materialCost || 0))} />

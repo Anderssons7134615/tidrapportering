@@ -73,7 +73,7 @@ export default function Dashboard() {
                 {data?.summary.pendingApprovalCount
                   ? `${data.summary.pendingApprovalCount} veckor väntar på attest`
                   : data?.summary.projectsWithoutBudgetCount
-                    ? `${data.summary.projectsWithoutBudgetCount} projekt saknar budget`
+                    ? `${data.summary.projectsWithoutBudgetCount} löpande projekt`
                     : data?.summary.riskProjectCount
                       ? `${data.summary.riskProjectCount} projekt behöver granskas`
                       : 'Allt ser lugnt ut just nu'}
@@ -107,7 +107,7 @@ export default function Dashboard() {
             <div className="grid grid-cols-2 gap-px bg-white/10 lg:grid-cols-1">
               <DashboardPulse label="Ej attesterade" value={data?.summary.pendingApprovalCount || 0} tone="amber" />
               <DashboardPulse label="Projekt i risk" value={data?.summary.riskProjectCount || 0} tone="rose" />
-              <DashboardPulse label="Utan budget" value={data?.summary.projectsWithoutBudgetCount || 0} tone="sky" />
+              <DashboardPulse label="Löpande jobb" value={data?.summary.projectsWithoutBudgetCount || 0} tone="sky" />
             </div>
           </div>
         </div>
@@ -122,7 +122,7 @@ export default function Dashboard() {
           <>
             <KpiCard label="Väntar attest" value={data?.summary.pendingApprovalCount || 0} tone="yellow" />
             <KpiCard label="Projekt i risk" value={data?.summary.riskProjectCount || 0} tone="red" />
-            <KpiCard label="Projekt utan budget" value={data?.summary.projectsWithoutBudgetCount || 0} tone="yellow" />
+            <KpiCard label="Löpande projekt" value={data?.summary.projectsWithoutBudgetCount || 0} tone="green" />
             <KpiCard label="Fakturerbart månaden" value={formatHours(data?.summary.monthlyBillableHours)} tone="green" />
           </>
         )}

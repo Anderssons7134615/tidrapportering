@@ -156,7 +156,7 @@ export default function ProjectDetail() {
         <KpiCard label="Fakturerbart värde" value={formatCurrency(metrics?.billableValue)} tone="green" />
         <KpiCard label="Arbetskostnad" value={canViewMoney ? formatCurrency(metrics?.laborCost) : 'Doljt'} />
         <KpiCard label="Materialkostnad" value={canViewMoney ? formatCurrency(metrics?.materialCost) : 'Doljt'} />
-        <KpiCard label="Budgetförbrukning" value={formatPercent(metrics?.budgetUsagePercent)} tone={(metrics?.budgetUsagePercent || 0) >= 80 ? 'red' : p.budgetHours ? 'green' : 'yellow'} />
+        <KpiCard label="Budgetförbrukning" value={p.budgetHours ? formatPercent(metrics?.budgetUsagePercent) : 'Löpande jobb'} tone={(metrics?.budgetUsagePercent || 0) >= 80 ? 'red' : 'green'} />
         <KpiCard label="Resultat / marginal" value={canViewMoney && metrics?.projectResult != null ? formatCurrency(metrics.projectResult) : '-'} hint={canViewMoney ? formatPercent(metrics?.marginPercent) : undefined} />
       </div>
 
@@ -171,7 +171,7 @@ export default function ProjectDetail() {
                 {metrics.warnings.map((warning) => <StatusBadge key={warning} label={warning} tone={warning.includes('budget') ? 'yellow' : 'red'} />)}
               </div>
             ) : (
-              <EmptyState title="Inga varningar" description="Projektets budget och priser ser kompletta ut." />
+              <EmptyState title="Inga varningar" description={p.budgetHours ? 'Projektets budget och priser ser kompletta ut.' : 'Projektet är markerat som löpande eftersom ingen budget är angiven.'} />
             )}
           </Card>
           <Card>
@@ -246,10 +246,10 @@ export default function ProjectDetail() {
         <Card>
           <h2 className="section-title mb-3">Ekonomi</h2>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            <Line label="Budget timmar" value={p.budgetHours ? formatHours(p.budgetHours) : 'Saknas'} />
+            <Line label="Budget timmar" value={p.budgetHours ? formatHours(p.budgetHours) : 'Löpande jobb'} />
             <Line label="Fastpris/anbud" value={formatCurrency(p.fixedPrice)} />
             <Line label="Timpris" value={p.defaultRate ? `${formatCurrency(p.defaultRate)}/h` : 'Saknas'} />
-            <Line label="Budgetförbrukning" value={formatPercent(metrics?.budgetUsagePercent)} />
+            <Line label="Budgetförbrukning" value={p.budgetHours ? formatPercent(metrics?.budgetUsagePercent) : 'Löpande jobb'} />
             <Line label="Fakturerbart värde" value={formatCurrency(metrics?.billableValue)} />
             <Line label="Resultat" value={metrics?.projectResult == null ? '-' : formatCurrency(metrics.projectResult)} />
           </div>

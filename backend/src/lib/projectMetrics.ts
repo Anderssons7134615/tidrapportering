@@ -36,7 +36,7 @@ export type ProjectMetrics = {
 const STATUS: Record<ProjectComputedStatus, ProjectStatusInfo> = {
   PLANNED: { code: 'PLANNED', label: 'Planerad', tone: 'blue', priority: 10 },
   ONGOING: { code: 'ONGOING', label: 'Pågående', tone: 'green', priority: 20 },
-  MISSING_BUDGET: { code: 'MISSING_BUDGET', label: 'Saknar budget', tone: 'yellow', priority: 40 },
+  MISSING_BUDGET: { code: 'MISSING_BUDGET', label: 'Löpande jobb', tone: 'green', priority: 20 },
   RISK: { code: 'RISK', label: 'Risk', tone: 'red', priority: 60 },
   READY_TO_INVOICE: { code: 'READY_TO_INVOICE', label: 'Klar för fakturering', tone: 'yellow', priority: 50 },
   COMPLETED: { code: 'COMPLETED', label: 'Avslutad', tone: 'gray', priority: 5 },
@@ -117,7 +117,6 @@ export async function getProjectMetrics(
   }, null);
   const warnings: string[] = [];
 
-  if (totalHours > 0 && !project.budgetHours) warnings.push('Saknar budget');
   if (budgetUsagePercent != null && budgetUsagePercent >= 100) warnings.push('Över budget');
   else if (budgetUsagePercent != null && budgetUsagePercent >= 80) warnings.push('Nära budget');
   if (billableHours > 0 && billableValue === 0) warnings.push('Saknar timpris');
@@ -164,7 +163,6 @@ export function getProjectStatus(input: {
   if (!input.active) return STATUS.INACTIVE;
   if (['COMPLETED', 'INVOICED'].includes(input.manualStatus)) return STATUS.COMPLETED;
   if (input.totalHours === 0) return STATUS.PLANNED;
-  if (!input.budgetHours) return STATUS.MISSING_BUDGET;
   if (input.budgetUsagePercent != null && input.budgetUsagePercent >= 80) return STATUS.RISK;
   if (input.uninvoicedValue > 0) return STATUS.READY_TO_INVOICE;
   if (input.lastActivityAt && input.nowMinus30Days && input.lastActivityAt >= input.nowMinus30Days) {

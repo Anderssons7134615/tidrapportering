@@ -87,17 +87,8 @@ const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
       const dailyHours = createDailyHoursMap(period.weekStart, weeklyEntries);
       const billableWeekValue = billableWeekEntries.reduce((sum, entry) => sum + entry.hours * getRate(entry), 0);
       const riskProjects = projectMetrics.filter((project: any) => project.metrics.status.code === 'RISK');
-      const projectsWithoutBudget = projectMetrics.filter((project: any) => project.metrics.warnings.includes('Saknar budget'));
+      const runningProjects = projectMetrics.filter((project: any) => project.active && !project.budgetHours);
       const actionItems = [
-        ...(projectsWithoutBudget.length
-          ? [{
-              id: 'projects-missing-budget',
-              title: `${projectsWithoutBudget.length} projekt saknar budget`,
-              description: 'Sätt budget för att kunna följa risk och marginal.',
-              tone: 'yellow',
-              to: '/projects?missingBudget=true',
-            }]
-          : []),
         ...(pendingApprovals.length
           ? [{
               id: 'pending-approvals',
@@ -127,12 +118,12 @@ const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
           weeklyBillableValue: billableWeekValue,
           pendingApprovalCount: pendingApprovals.length,
           riskProjectCount: riskProjects.length,
-          projectsWithoutBudgetCount: projectsWithoutBudget.length,
+          projectsWithoutBudgetCount: runningProjects.length,
         },
         pendingApprovals,
         actionItems,
         riskProjects: riskProjects.slice(0, 6),
-        projectsWithoutBudget: projectsWithoutBudget.slice(0, 6),
+        projectsWithoutBudget: runningProjects.slice(0, 6),
         myPendingWeeks,
         recentEntries,
         dailyHours,
