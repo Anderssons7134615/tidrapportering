@@ -145,9 +145,11 @@ export default function TimeEntry() {
   };
 
   const hoursNumber = parseSwedishNumber(hours);
+  const selectedActivity = activities?.find((item) => item.id === activityId);
+  const projectRequired = !selectedActivity || !['ABSENCE', 'INTERNAL'].includes(selectedActivity.category);
   const disabledReason = getDisabledReason([
-    [!projectId, 'Välj projekt'],
     [!activityId, 'Välj aktivitet'],
+    [projectRequired && !projectId, 'Välj projekt'],
     [!hours || !Number.isFinite(hoursNumber) || hoursNumber <= 0, 'Ange antal timmar större än 0'],
   ]);
   const isSaving = createMutation.isPending || updateMutation.isPending;
@@ -182,7 +184,7 @@ export default function TimeEntry() {
 
     const entryData = {
       date,
-      projectId,
+      projectId: projectId || null,
       activityId,
       userId: canReportForOthers ? selectedUserId || undefined : undefined,
       hours: hoursNumber,
@@ -275,9 +277,10 @@ export default function TimeEntry() {
               </FormField>
               <FormField label="Projekt">
                 <select value={projectId} onChange={(event) => setProjectId(event.target.value)} className="input">
-                  <option value="">Välj projekt...</option>
+                  <option value="">{projectRequired ? 'Välj projekt...' : 'Inget projekt (intern/frånvaro)'}</option>
                   {projects?.map((project) => <option key={project.id} value={project.id}>{project.code} - {project.name}{project.customer ? ` (${project.customer.name})` : ''}</option>)}
                 </select>
+                {!projectRequired && <p className="mt-1 text-xs font-medium text-graphite-500">Projekt är valfritt för intern tid och frånvaro.</p>}
               </FormField>
               <FormField label="Aktivitet">
                 <select value={activityId} onChange={(event) => setActivityId(event.target.value)} className="input">

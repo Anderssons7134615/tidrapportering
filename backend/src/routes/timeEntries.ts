@@ -596,11 +596,13 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
       const targetUserId = body.userId && ['ADMIN', 'SUPERVISOR'].includes(request.user.role)
         ? body.userId
         : entry.userId;
+      const effectiveActivityId = body.activityId ?? entry.activityId;
+      const effectiveProjectId = body.projectId !== undefined ? body.projectId : entry.projectId;
       const validation = await validateEntryReferences({
         companyId: request.user.companyId,
         targetUserId,
-        activityId: body.activityId,
-        projectId: body.projectId,
+        activityId: effectiveActivityId,
+        projectId: effectiveProjectId,
       });
 
       if (validation.error) {
@@ -888,7 +890,7 @@ async function validateEntryReferences({
     activityId
       ? prisma.activity.findFirst({
           where: { id: activityId, companyId },
-          select: { id: true, billableDefault: true },
+          select: { id: true, billableDefault: true, category: true },
         })
       : Promise.resolve(null),
     projectId
@@ -909,6 +911,10 @@ async function validateEntryReferences({
 
   if (projectId && !project) {
     return { error: 'Projektet tillhör inte företaget', activity: null };
+  }
+
+  if (activity && !projectId && !['ABSENCE', 'INTERNAL'].includes(activity.category)) {
+    return { error: 'Projekt krävs för vald aktivitet', activity: null };
   }
 
   return { error: null, activity };

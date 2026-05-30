@@ -34,6 +34,11 @@ const fastify = Fastify({
   logger: true,
 });
 
+const jwtSecret = process.env.JWT_SECRET;
+if (!jwtSecret) {
+  throw new Error('JWT_SECRET måste vara satt. Generera ett långt slumpat värde i miljövariablerna.');
+}
+
 // Register plugins
 const allowedOrigins = [
   'http://localhost:5173',
@@ -64,7 +69,7 @@ await fastify.register(cors, {
 });
 
 await fastify.register(jwt, {
-  secret: process.env.JWT_SECRET || 'default-secret-change-me',
+  secret: jwtSecret,
 });
 
 await fastify.register(multipart, {

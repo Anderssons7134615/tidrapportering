@@ -3,7 +3,7 @@ import { persist } from 'zustand/middleware';
 
 interface PendingEntry {
   localId: string;
-  projectId?: string;
+  projectId?: string | null;
   activityId: string;
   date: string;
   startTime?: string;

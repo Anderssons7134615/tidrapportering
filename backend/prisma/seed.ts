@@ -24,6 +24,10 @@ const DEFAULT_ACTIVITIES = [
 ];
 
 async function main() {
+  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_PRODUCTION_SEED !== 'true') {
+    throw new Error('Seed är blockerat i produktion. Sätt ALLOW_PRODUCTION_SEED=true om detta är avsiktligt.');
+  }
+
   console.log('🌱 Seedar databas...');
 
   // Rensa befintlig data
