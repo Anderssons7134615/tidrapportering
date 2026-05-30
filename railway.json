@@ -5,9 +5,10 @@
     "buildCommand": "npm --prefix backend ci && npm --prefix backend run build"
   },
   "deploy": {
+    "preDeployCommand": ["npm --prefix backend run db:push"],
     "startCommand": "npm --prefix backend start",
     "healthcheckPath": "/api/health",
-    "healthcheckTimeout": 120,
+    "healthcheckTimeout": 300,
     "restartPolicyType": "ON_FAILURE"
   }
 }
