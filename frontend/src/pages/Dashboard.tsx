@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, ArrowRight, CalendarDays, CheckCircle2, Clock, FileText, FolderKanban, Receipt, Sparkles, TrendingUp } from 'lucide-react';
+import { AlertTriangle, ArrowRight, CalendarDays, CheckCircle2, Clock, FileText, Sparkles, TrendingUp } from 'lucide-react';
 import { dashboardApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
 import { DashboardSkeleton } from '../components/ui/Skeleton';
@@ -27,7 +27,7 @@ export default function Dashboard() {
         title={isManager ? 'Översikt för chef' : 'Min översikt'}
         description={
           isManager
-            ? 'Följ timmar, attest, budgetrisk och fakturerbart värde på ett ställe.'
+            ? 'Följ timmar, attestläge och fakturerbart värde på ett ställe.'
             : 'Rapportera tid snabbt och håll koll på veckan.'
         }
         action={
@@ -55,11 +55,11 @@ export default function Dashboard() {
           description={isManager ? 'Granska och attestera veckor innan rapport/fakturering.' : 'Se om veckan är komplett innan du skickar in.'}
         />
         <NextStepCard
-          to={isManager ? '/reports' : '/projects'}
-          icon={isManager ? <FileText className="h-5 w-5" /> : <FolderKanban className="h-5 w-5" />}
-          eyebrow={isManager ? 'Ekonomi' : 'Projekt'}
-          title={isManager ? 'Ta fram rapport' : 'Mina projekt'}
-          description={isManager ? 'Få koll på timmar, fakturerbart och projektutfall.' : 'Hitta rätt projekt snabbare ute på jobb.'}
+          to={isManager ? '/reports' : '/week'}
+          icon={isManager ? <FileText className="h-5 w-5" /> : <CalendarDays className="h-5 w-5" />}
+          eyebrow={isManager ? 'Ekonomi' : 'Uppföljning'}
+          title={isManager ? 'Ta fram rapport' : 'Kolla veckoläge'}
+          description={isManager ? 'Få koll på timmar, fakturerbart och utfall.' : 'Se direkt vilka dagar som saknar rapporterad tid.'}
         />
       </div>
 
@@ -233,7 +233,7 @@ export default function Dashboard() {
             <div className="grid grid-cols-1 gap-2">
               <Link to="/time-entry" className="btn-primary"><Clock className="h-4 w-4" /> Rapportera tid</Link>
               <Link to="/week" className="btn-secondary"><FileText className="h-4 w-4" /> Min vecka</Link>
-              <Link to="/projects" className="btn-secondary"><Receipt className="h-4 w-4" /> Projekt</Link>
+              <Link to="/week" className="btn-secondary"><CalendarDays className="h-4 w-4" /> Veckostatus</Link>
             </div>
           )}
         </Card>

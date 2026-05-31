@@ -30,11 +30,11 @@ const navItems = [
   { to: '/team-week', icon: Users, label: 'Teamvecka', roles: ['ADMIN', 'SUPERVISOR'] },
   { to: '/approval', icon: CheckSquare, label: 'Attestera', roles: ['ADMIN', 'SUPERVISOR'] },
   { to: '/customers', icon: Building2, label: 'Kunder', roles: ['ADMIN', 'SUPERVISOR'] },
+  { to: '/reports', icon: FileBarChart, label: 'Rapporter', roles: ['ADMIN', 'SUPERVISOR', 'ACCOUNTANT'] },
   { to: '/projects', icon: FolderKanban, label: 'Projekt', roles: ['ADMIN', 'SUPERVISOR', 'EMPLOYEE'] },
   { to: '/materials', icon: Package, label: 'Material', roles: ['ADMIN', 'SUPERVISOR'] },
   { to: '/activities', icon: Tags, label: 'Aktiviteter', roles: ['ADMIN'] },
   { to: '/users', icon: Users, label: 'Användare', roles: ['ADMIN'] },
-  { to: '/reports', icon: FileBarChart, label: 'Rapporter', roles: ['ADMIN', 'SUPERVISOR', 'ACCOUNTANT'] },
   { to: '/settings', icon: Settings, label: 'Inställningar', roles: ['ADMIN', 'SUPERVISOR', 'EMPLOYEE', 'ACCOUNTANT'] },
 ];
 
@@ -42,8 +42,8 @@ const bottomTabs = [
   { to: '/', icon: Home, label: 'Hem', roles: ['ADMIN', 'SUPERVISOR', 'EMPLOYEE'] },
   { to: '/week', icon: Calendar, label: 'Vecka', roles: ['ADMIN', 'SUPERVISOR', 'EMPLOYEE'] },
   { to: '/time-entry', icon: Clock, label: 'Rapportera', roles: ['ADMIN', 'SUPERVISOR', 'EMPLOYEE'], primary: true },
-  { to: '/projects', icon: FolderKanban, label: 'Projekt', roles: ['ADMIN', 'SUPERVISOR', 'EMPLOYEE'] },
   { to: '/approval', icon: CheckSquare, label: 'Attest', roles: ['ADMIN', 'SUPERVISOR'] },
+  { to: '/projects', icon: FolderKanban, label: 'Projekt', roles: ['ADMIN', 'SUPERVISOR', 'EMPLOYEE'] },
   { to: '/reports', icon: FileBarChart, label: 'Rapporter', roles: ['ACCOUNTANT'] },
 ];
 
@@ -106,7 +106,7 @@ export default function Layout() {
             <BrandMark />
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold text-white">Anderssons TidApp</p>
-              <p className="truncate text-xs text-graphite-300">Projekt · Tid · Ekonomi</p>
+              <p className="truncate text-xs text-graphite-300">Tid · Vecka · Attest</p>
             </div>
           </div>
 
