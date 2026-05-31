@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { addDays, addWeeks, format, startOfWeek, subWeeks } from 'date-fns';
 import { sv } from 'date-fns/locale';
 import { AnimatePresence, motion, PanInfo, useMotionValue, useTransform } from 'framer-motion';
@@ -110,6 +110,7 @@ function SwipeableEntry({
 
 export default function WeekView() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { trigger: haptic } = useHaptic();
 
@@ -150,6 +151,18 @@ export default function WeekView() {
   };
 
   const weekDays = Array.from({ length: 7 }, (_, index) => addDays(weekStart, index));
+
+  const getDayReportUrl = (day: Date) => {
+    const dateStr = format(day, 'yyyy-MM-dd');
+    const returnParams = new URLSearchParams({ date: weekStartStr });
+    const params = new URLSearchParams({ date: dateStr, return: `/week?${returnParams.toString()}` });
+    if (userIdParam) {
+      returnParams.set('userId', userIdParam);
+      params.set('return', `/week?${returnParams.toString()}`);
+      params.set('userId', userIdParam);
+    }
+    return `/time-entry?${params.toString()}`;
+  };
 
   const getEntriesForDay = (day: Date) => {
     const dateStr = format(day, 'yyyy-MM-dd');
@@ -236,11 +249,21 @@ export default function WeekView() {
           const dayTotal = entries.reduce((sum, entry) => sum + entry.hours, 0);
           const isToday = format(new Date(), 'yyyy-MM-dd') === format(day, 'yyyy-MM-dd');
           const isWeekend = day.getDay() === 0 || day.getDay() === 6;
+          const dayReportUrl = getDayReportUrl(day);
 
           return (
             <motion.div
               key={day.toISOString()}
-              className={`card ${isToday ? 'border-2 border-primary-700' : ''} ${isWeekend ? 'bg-slate-50' : ''}`}
+              role="button"
+              tabIndex={0}
+              onClick={() => navigate(dayReportUrl)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  navigate(dayReportUrl);
+                }
+              }}
+              className={`card cursor-pointer transition hover:-translate-y-0.5 hover:border-primary-300 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 ${isToday ? 'border-2 border-primary-700' : ''} ${isWeekend ? 'bg-slate-50' : ''}`}
               variants={{
                 hidden: { opacity: 0, y: 10 },
                 visible: { opacity: 1, y: 0 },
@@ -251,7 +274,10 @@ export default function WeekView() {
                   <span className="font-medium">{format(day, 'EEEE', { locale: sv })}</span>
                   <span className="ml-2 text-slate-500">{format(day, 'd/M')}</span>
                 </div>
-                <span className="font-bold">{dayTotal.toFixed(1)}h</span>
+                <div className="flex items-center gap-2">
+                  <span className="hidden text-xs font-semibold text-primary-700 sm:inline">Öppna dag</span>
+                  <span className="font-bold">{dayTotal.toFixed(1)}h</span>
+                </div>
               </div>
 
               {entries.length === 0 ? (
@@ -260,7 +286,12 @@ export default function WeekView() {
                 <div className="space-y-2">
                   <AnimatePresence>
                     {entries.map((entry) => (
-                      <motion.div key={entry.id} exit={{ opacity: 0, x: -200, height: 0 }} transition={{ duration: 0.2 }}>
+                      <motion.div
+                        key={entry.id}
+                        onClick={(event) => event.stopPropagation()}
+                        exit={{ opacity: 0, x: -200, height: 0 }}
+                        transition={{ duration: 0.2 }}
+                      >
                         <SwipeableEntry
                           entry={entry}
                           onDelete={() => deleteMutation.mutate(entry.id)}

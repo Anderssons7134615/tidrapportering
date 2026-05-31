@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { format } from 'date-fns';
 import { sv } from 'date-fns/locale';
 import { Check, ChevronDown, Clock, Copy, Loader2, PencilLine, Save, Sparkles } from 'lucide-react';
@@ -55,6 +55,15 @@ export default function TimeEntry() {
     queryKey: ['timeEntry', entryId],
     queryFn: () => timeEntriesApi.get(entryId || ''),
     enabled: isEditMode,
+  });
+  const { data: dailyEntries } = useQuery({
+    queryKey: ['timeEntries', 'day', date, selectedUserId],
+    queryFn: () => timeEntriesApi.list({
+      from: date,
+      to: date,
+      userId: canReportForOthers ? selectedUserId || undefined : undefined,
+    }),
+    enabled: !isEditMode,
   });
 
   useEffect(() => {
@@ -159,6 +168,7 @@ export default function TimeEntry() {
     .sort((a, b) => recentProjectIds.indexOf(a.id) - recentProjectIds.indexOf(b.id));
   const commonActivities = activities?.slice(0, 4) || [];
   const selectedProject = projects?.find((project) => project.id === projectId);
+  const dailyTotal = dailyEntries?.reduce((sum, entry) => sum + entry.hours, 0) || 0;
 
   const adjustHours = (delta: number) => {
     const current = Number.isFinite(hoursNumber) ? hoursNumber : 0;
@@ -236,6 +246,49 @@ export default function TimeEntry() {
             </div>
           }
         />
+
+        {!isEditMode && (
+          <Card className="border-primary-100 bg-primary-50/60">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wide text-primary-700">Vald dag</p>
+                <h2 className="mt-1 text-lg font-black text-graphite-950">
+                  {format(new Date(date), 'EEEE d MMMM', { locale: sv })}
+                </h2>
+                <p className="text-sm font-semibold text-graphite-600">
+                  {dailyEntries?.length ? `${dailyTotal.toFixed(1)} h rapporterat på dagen` : 'Ingen tid rapporterad på dagen ännu'}
+                </p>
+              </div>
+              <Link to={returnTo || `/week?date=${date}`} className="btn-secondary shrink-0">
+                Tillbaka till veckan
+              </Link>
+            </div>
+
+            {!!dailyEntries?.length && (
+              <div className="mt-4 space-y-2">
+                {dailyEntries.map((entry) => (
+                  <Link
+                    key={entry.id}
+                    to={`/time-entry?id=${entry.id}&return=${encodeURIComponent(returnTo || `/time-entry?date=${date}`)}`}
+                    className="block rounded-xl border border-primary-100 bg-white px-3 py-2.5 transition hover:border-primary-300 hover:shadow-sm"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-bold text-graphite-950">
+                          {entry.project?.code ? `${entry.project.code} · ${entry.project.name}` : 'Intern tid'}
+                        </p>
+                        <p className="text-xs font-medium text-graphite-500">
+                          {entry.activity?.name}{entry.note ? ` · ${entry.note}` : ''}
+                        </p>
+                      </div>
+                      <span className="shrink-0 text-sm font-black text-primary-800">{entry.hours} h</span>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </Card>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-5 pb-16 lg:pb-0">
           {!isEditMode && (
