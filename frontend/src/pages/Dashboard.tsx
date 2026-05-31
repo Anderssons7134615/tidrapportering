@@ -19,6 +19,8 @@ export default function Dashboard() {
 
   if (isLoading) return <DashboardSkeleton />;
 
+  const visibleActionItems = (data?.actionItems || []).filter((item) => item.id !== 'projects-missing-budget');
+
   return (
     <AppShell>
       <PageHeader
@@ -135,11 +137,11 @@ export default function Dashboard() {
               <AlertTriangle className="h-5 w-5 text-primary-600" />
               <h2 className="section-title">Behöver åtgärd</h2>
             </div>
-            {!data?.actionItems?.length ? (
-              <EmptyState title="Inget akut just nu" description="Budgetar, attest och riskprojekt ser lugna ut." />
+            {!visibleActionItems.length ? (
+              <EmptyState title="Inget akut just nu" description="Attest och riskprojekt ser lugna ut." />
             ) : (
               <div className="space-y-2">
-                {data.actionItems.map((item) => (
+                {visibleActionItems.map((item) => (
                   <Link key={item.id} to={item.to} className="flex items-center justify-between rounded-lg border border-graphite-200 bg-graphite-50 px-4 py-3 transition hover:-translate-y-0.5 hover:border-primary-200 hover:bg-white hover:shadow-md">
                     <div>
                       <p className="font-semibold text-graphite-950">{item.title}</p>

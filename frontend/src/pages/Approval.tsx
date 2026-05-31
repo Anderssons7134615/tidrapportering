@@ -184,9 +184,14 @@ export default function Approval() {
                         )}
                       </td>
                       <td className="px-3 py-3 text-right">
-                        <button onClick={() => approveMutation.mutate(lock.id)} disabled={approveMutation.isPending} className="btn-success">
+                        <button
+                          onClick={() => approveMutation.mutate(lock.id)}
+                          disabled={approveMutation.isPending || lock.isCompleteForApproval === false}
+                          className="btn-success disabled:cursor-not-allowed disabled:opacity-50"
+                          title={lock.isCompleteForApproval === false ? 'Kan inte godkänna: veckan saknar tid måndag–fredag' : 'Godkänn vecka'}
+                        >
                           <CheckCircle className="h-4 w-4" />
-                          Godkänn
+                          {lock.isCompleteForApproval === false ? 'Ej komplett' : 'Godkänn'}
                         </button>
                       </td>
                     </tr>
@@ -332,6 +337,7 @@ function renderWeekDetails({
 
 function getLockDeviations(lock: WeekLock, entries: TimeEntry[], hasDetails: boolean) {
   const deviations: string[] = [];
+  if ((lock.missingRequiredWeekdays?.length || 0) > 0) deviations.push('Vecka ej komplett');
   if ((lock.totalHours || 0) === 0) deviations.push('Saknar tid');
   if ((lock.totalHours || 0) > 50) deviations.push('Hög vecka');
   if (!hasDetails) return deviations;

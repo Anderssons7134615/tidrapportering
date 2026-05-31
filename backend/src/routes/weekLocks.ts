@@ -11,6 +11,47 @@ const getWeekStart = (date: Date) => {
   return d;
 };
 
+const toDateKey = (date: Date) => date.toISOString().split('T')[0];
+
+const getRequiredWeekdayKeys = (weekStartDate: Date) => {
+  return Array.from({ length: 5 }, (_, index) => {
+    const date = new Date(weekStartDate);
+    date.setDate(weekStartDate.getDate() + index);
+    date.setHours(0, 0, 0, 0);
+    return toDateKey(date);
+  });
+};
+
+const getMissingRequiredWeekdays = (weekStartDate: Date, entries: Array<{ date: Date; hours: number }>) => {
+  const hoursByDate = new Map<string, number>();
+
+  for (const entry of entries) {
+    const key = toDateKey(entry.date);
+    hoursByDate.set(key, (hoursByDate.get(key) || 0) + entry.hours);
+  }
+
+  return getRequiredWeekdayKeys(weekStartDate).filter((key) => (hoursByDate.get(key) || 0) <= 0);
+};
+
+const getMissingRequiredWeekdaysForUser = async (userId: string, weekStartDate: Date) => {
+  const weekEnd = new Date(weekStartDate);
+  weekEnd.setDate(weekEnd.getDate() + 6);
+  weekEnd.setHours(23, 59, 59, 999);
+
+  const entries = await prisma.timeEntry.findMany({
+    where: {
+      userId,
+      date: {
+        gte: weekStartDate,
+        lte: weekEnd,
+      },
+    },
+    select: { date: true, hours: true },
+  });
+
+  return getMissingRequiredWeekdays(weekStartDate, entries);
+};
+
 const backfillDraftWeeksToSubmitted = async (companyId: string) => {
   const draftEntries = await prisma.timeEntry.findMany({
     where: {
@@ -139,35 +180,49 @@ const weekLockRoutes: FastifyPluginAsync = async (fastify) => {
         weekEnd.setDate(weekEnd.getDate() + 6);
         weekEnd.setHours(23, 59, 59, 999);
 
-        const stats = await prisma.timeEntry.aggregate({
-          where: {
-            userId: lock.userId,
-            date: {
-              gte: lock.weekStartDate,
-              lte: weekEnd,
+        const [stats, billableStats, weekEntries] = await Promise.all([
+          prisma.timeEntry.aggregate({
+            where: {
+              userId: lock.userId,
+              date: {
+                gte: lock.weekStartDate,
+                lte: weekEnd,
+              },
             },
-          },
-          _sum: { hours: true },
-          _count: true,
-        });
-
-        const billableStats = await prisma.timeEntry.aggregate({
-          where: {
-            userId: lock.userId,
-            date: {
-              gte: lock.weekStartDate,
-              lte: weekEnd,
+            _sum: { hours: true },
+            _count: true,
+          }),
+          prisma.timeEntry.aggregate({
+            where: {
+              userId: lock.userId,
+              date: {
+                gte: lock.weekStartDate,
+                lte: weekEnd,
+              },
+              billable: true,
             },
-            billable: true,
-          },
-          _sum: { hours: true },
-        });
+            _sum: { hours: true },
+          }),
+          prisma.timeEntry.findMany({
+            where: {
+              userId: lock.userId,
+              date: {
+                gte: lock.weekStartDate,
+                lte: weekEnd,
+              },
+            },
+            select: { date: true, hours: true },
+          }),
+        ]);
+        const missingRequiredWeekdays = getMissingRequiredWeekdays(lock.weekStartDate, weekEntries);
 
         return {
           ...lock,
           totalHours: stats._sum.hours || 0,
           billableHours: billableStats._sum.hours || 0,
           entryCount: stats._count,
+          missingRequiredWeekdays,
+          isCompleteForApproval: missingRequiredWeekdays.length === 0,
         };
       })
     );
@@ -329,6 +384,14 @@ const weekLockRoutes: FastifyPluginAsync = async (fastify) => {
 
     if (weekLock.status !== 'SUBMITTED') {
       return reply.status(400).send({ error: 'Veckan kan inte godkännas' });
+    }
+
+    const missingRequiredWeekdays = await getMissingRequiredWeekdaysForUser(weekLock.userId, weekLock.weekStartDate);
+    if (missingRequiredWeekdays.length > 0) {
+      return reply.status(400).send({
+        error: `Veckan kan inte låsas innan hela veckan är rapporterad. Saknar tid: ${missingRequiredWeekdays.join(', ')}`,
+        missingRequiredWeekdays,
+      });
     }
 
     // Uppdatera veckolås

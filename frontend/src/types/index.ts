@@ -210,6 +210,8 @@ export interface WeekLock {
   totalHours?: number;
   billableHours?: number;
   entryCount?: number;
+  missingRequiredWeekdays?: string[];
+  isCompleteForApproval?: boolean;
 }
 
 export interface Settings {
