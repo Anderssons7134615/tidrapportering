@@ -20,6 +20,8 @@ export default function Dashboard() {
   if (isLoading) return <DashboardSkeleton />;
 
   const visibleActionItems = (data?.actionItems || []).filter((item) => item.id !== 'projects-missing-budget');
+  const missingWeekdays = getMissingReportedWeekdays(data?.dailyHours, data?.period?.weekStart);
+  const hasMissingWeekdays = missingWeekdays.length > 0;
 
   return (
     <AppShell>
@@ -62,6 +64,27 @@ export default function Dashboard() {
           description={isManager ? 'Få koll på timmar, fakturerbart och utfall.' : 'Se direkt vilka dagar som saknar rapporterad tid.'}
         />
       </div>
+
+      {!isManager && (
+        <Card className="accent-line">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="section-title">Veckokoll</h2>
+            <Link to="/week" className="text-sm font-semibold text-primary-700 hover:text-primary-600">Öppna min vecka</Link>
+          </div>
+          {hasMissingWeekdays ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+              <p className="font-semibold text-amber-900">Du har dagar utan rapporterad tid</p>
+              <p className="mt-1 text-sm text-amber-800">Saknas: {missingWeekdays.join(', ')}</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Link to="/time-entry" className="btn-primary">Rapportera nu</Link>
+                <Link to="/week" className="btn-secondary">Visa veckan</Link>
+              </div>
+            </div>
+          ) : (
+            <EmptyState title="Veckan ser komplett ut" description="Bra jobbat — alla vardagar hittills har rapporterad tid." />
+          )}
+        </Card>
+      )}
 
       {isManager && (
         <div className="premium-panel overflow-hidden">
@@ -296,4 +319,30 @@ function DashboardPulse({
       <p className={`mt-2 text-3xl font-semibold tracking-tight ${toneClass}`}>{value}</p>
     </div>
   );
+}
+
+function getMissingReportedWeekdays(
+  dailyHours?: Record<string, number>,
+  weekStart?: string
+): string[] {
+  if (!dailyHours || !weekStart) return [];
+
+  const labels = ['Mån', 'Tis', 'Ons', 'Tor', 'Fre'];
+  const missing: string[] = [];
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  for (let i = 0; i < 5; i += 1) {
+    const date = new Date(weekStart);
+    date.setDate(date.getDate() + i);
+    date.setHours(0, 0, 0, 0);
+
+    if (date > today) continue;
+
+    const key = date.toISOString().slice(0, 10);
+    const hours = dailyHours[key] || 0;
+    if (hours <= 0) missing.push(labels[i]);
+  }
+
+  return missing;
 }
