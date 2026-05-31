@@ -5,16 +5,16 @@ export default {
     extend: {
       colors: {
         primary: {
-          50: '#fff7ed',
-          100: '#ffedd5',
-          200: '#fed7aa',
-          300: '#fdba74',
-          400: '#fb923c',
-          500: '#f97316',
-          600: '#ea580c',
-          700: '#c2410c',
-          800: '#9a3412',
-          900: '#7c2d12',
+          50: '#f4f5ff',
+          100: '#e9ebff',
+          200: '#d6daff',
+          300: '#b8c0ff',
+          400: '#8f99ff',
+          500: '#5e6ad2',
+          600: '#4f5bbc',
+          700: '#414a9a',
+          800: '#343b78',
+          900: '#252b5c',
         },
         graphite: {
           50: '#f7f7f5',
@@ -34,8 +34,8 @@ export default {
         sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
       },
       boxShadow: {
-        soft: '0 1px 2px rgba(15, 23, 42, 0.05), 0 14px 34px rgba(15, 23, 42, 0.08)',
-        premium: '0 18px 50px rgba(15, 23, 42, 0.12)',
+        soft: '0 1px 2px rgba(15, 23, 42, 0.04), 0 10px 24px rgba(15, 23, 42, 0.06)',
+        premium: '0 18px 44px rgba(8, 9, 10, 0.16)',
       },
       borderRadius: {
         xl: '0.5rem',

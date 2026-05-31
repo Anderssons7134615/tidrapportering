@@ -4,18 +4,18 @@ import { AlertCircle, Loader2 } from 'lucide-react';
 type Tone = 'blue' | 'green' | 'yellow' | 'red' | 'gray' | 'slate' | 'orange' | 'dark';
 
 const toneClasses: Record<Tone, string> = {
-  blue: 'border-sky-200 bg-sky-50 text-sky-800',
-  green: 'border-emerald-200 bg-emerald-50 text-emerald-800',
-  yellow: 'border-amber-200 bg-amber-50 text-amber-900',
-  red: 'border-rose-200 bg-rose-50 text-rose-800',
-  gray: 'border-graphite-200 bg-graphite-100 text-graphite-700',
-  slate: 'border-graphite-200 bg-white text-graphite-800',
-  orange: 'border-primary-200 bg-primary-50 text-primary-900',
+  blue: 'border-sky-200/80 bg-sky-50/80 text-sky-800',
+  green: 'border-emerald-200/80 bg-emerald-50/80 text-emerald-800',
+  yellow: 'border-amber-200/80 bg-amber-50/80 text-amber-900',
+  red: 'border-rose-200/80 bg-rose-50/80 text-rose-800',
+  gray: 'border-graphite-200/80 bg-graphite-100/80 text-graphite-700',
+  slate: 'border-graphite-200/80 bg-white/95 text-graphite-800',
+  orange: 'border-primary-200/80 bg-primary-50/90 text-primary-900',
   dark: 'border-graphite-800 bg-graphite-950 text-white',
 };
 
 export function AppShell({ children }: { children: ReactNode }) {
-  return <div className="space-y-5">{children}</div>;
+  return <div className="space-y-4 sm:space-y-5">{children}</div>;
 }
 
 export function PageHeader({
@@ -28,12 +28,12 @@ export function PageHeader({
   action?: ReactNode;
 }) {
   return (
-    <div className="relative overflow-hidden rounded-lg border border-white/80 bg-white/95 p-5 shadow-soft ring-1 ring-graphite-900/[0.03] backdrop-blur sm:p-6">
-      <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-primary-500 via-amber-300 to-emerald-400" />
-      <div className="relative flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+    <div className="relative overflow-hidden rounded-xl border border-graphite-200/70 bg-white/95 p-4 shadow-soft ring-1 ring-white/80 backdrop-blur sm:p-5">
+      <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary-400 to-transparent" />
+      <div className="relative flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="page-title">{title}</h1>
-          {description && <p className="mt-1 max-w-3xl text-sm leading-6 text-graphite-600">{description}</p>}
+          {description && <p className="mt-1 max-w-3xl text-sm leading-6 text-graphite-500">{description}</p>}
         </div>
         {action}
       </div>
@@ -57,9 +57,9 @@ export function KpiCard({
   tone?: Tone;
 }) {
   return (
-    <div className={`group relative overflow-hidden rounded-lg border p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-premium ${toneClasses[tone]}`}>
-      <div className="absolute inset-x-0 top-0 h-1 bg-current opacity-20" />
-      <p className="text-xs font-semibold uppercase tracking-wide opacity-70">{label}</p>
+    <div className={`group relative overflow-hidden rounded-xl border p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-soft ${toneClasses[tone]}`}>
+      <div className="absolute inset-x-0 top-0 h-px bg-current opacity-25" />
+      <p className="text-[11px] font-semibold uppercase tracking-wide opacity-70">{label}</p>
       <p className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">{value}</p>
       {hint && <p className="mt-1 text-xs font-medium opacity-75">{hint}</p>}
     </div>
@@ -103,12 +103,12 @@ export function StatusBadge({ label, tone = 'gray' }: { label: string; tone?: To
 }
 
 export function DataTable({ children }: { children: ReactNode }) {
-  return <div className="overflow-x-auto rounded-lg border border-graphite-200 bg-white shadow-sm">{children}</div>;
+  return <div className="overflow-x-auto rounded-xl border border-graphite-200 bg-white shadow-sm">{children}</div>;
 }
 
 export function EmptyState({ title, description }: { title: string; description?: string }) {
   return (
-    <div className="rounded-lg border border-dashed border-graphite-300 bg-graphite-50 px-4 py-8 text-center">
+    <div className="rounded-xl border border-dashed border-graphite-300 bg-graphite-50/80 px-4 py-8 text-center">
       <AlertCircle className="mx-auto h-5 w-5 text-primary-500" />
       <p className="mt-2 font-semibold text-graphite-950">{title}</p>
       {description && <p className="mt-1 text-sm text-graphite-500">{description}</p>}
@@ -144,7 +144,7 @@ export function Tabs({
   onChange: (id: string) => void;
 }) {
   return (
-    <div className="flex gap-1 overflow-x-auto rounded-lg border border-graphite-200 bg-graphite-100 p-1">
+    <div className="flex gap-1 overflow-x-auto rounded-xl border border-graphite-200 bg-graphite-100 p-1">
       {tabs.map((tab) => (
         <button
           key={tab.id}
@@ -162,7 +162,7 @@ export function Tabs({
 }
 
 export function FilterBar({ children }: { children: ReactNode }) {
-  return <div className="rounded-lg border border-graphite-200 bg-white/95 p-3 shadow-sm">{children}</div>;
+  return <div className="rounded-xl border border-graphite-200 bg-white/95 p-3 shadow-sm">{children}</div>;
 }
 
 export function ConfirmDialog() {

@@ -90,7 +90,7 @@ export default function Dashboard() {
         <div className="premium-panel overflow-hidden">
           <div className="grid gap-0 lg:grid-cols-[1.2fr_0.8fr]">
             <div className="p-5 sm:p-6">
-              <div className="inline-flex items-center gap-2 rounded-full border border-primary-300/25 bg-primary-500/15 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-primary-100">
+              <div className="inline-flex items-center gap-2 rounded-full border border-primary-300/25 bg-primary-500/15 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-primary-100">
                 <Sparkles className="h-3.5 w-3.5 text-primary-300" />
                 Dagens koll
               </div>
@@ -283,18 +283,18 @@ function NextStepCard({
   return (
     <Link
       to={to}
-      className={`group relative overflow-hidden rounded-lg border p-4 shadow-soft transition hover:-translate-y-0.5 hover:shadow-premium ${
+      className={`group relative overflow-hidden rounded-xl border p-4 shadow-soft transition hover:-translate-y-0.5 hover:shadow-premium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300 ${
         primary
-          ? 'border-primary-200 bg-primary-600 text-white'
-          : 'border-white/80 bg-white/95 text-graphite-950 ring-1 ring-graphite-900/[0.03]'
+          ? 'border-primary-400/60 bg-primary-600 text-white shadow-primary-950/20'
+          : 'border-graphite-200/70 bg-white/95 text-graphite-950 ring-1 ring-white/80'
       }`}
     >
-      <div className={`mb-4 inline-flex h-11 w-11 items-center justify-center rounded-xl ${primary ? 'bg-white/18 text-white' : 'bg-primary-50 text-primary-700'}`}>
+      <div className={`mb-4 inline-flex h-10 w-10 items-center justify-center rounded-lg ${primary ? 'bg-white/15 text-white ring-1 ring-white/15' : 'bg-primary-50 text-primary-700'}`}>
         {icon}
       </div>
-      <p className={`text-xs font-black uppercase tracking-wide ${primary ? 'text-primary-100' : 'text-primary-700'}`}>{eyebrow}</p>
+      <p className={`text-[11px] font-semibold uppercase tracking-wide ${primary ? 'text-primary-100' : 'text-primary-700'}`}>{eyebrow}</p>
       <div className="mt-1 flex items-start justify-between gap-3">
-        <h2 className="text-xl font-semibold tracking-tight">{title}</h2>
+        <h2 className="text-lg font-semibold tracking-tight sm:text-xl">{title}</h2>
         <ArrowRight className={`mt-1 h-5 w-5 shrink-0 transition group-hover:translate-x-0.5 ${primary ? 'text-primary-100' : 'text-primary-600'}`} />
       </div>
       <p className={`mt-2 text-sm leading-6 ${primary ? 'text-primary-50' : 'text-graphite-600'}`}>{description}</p>

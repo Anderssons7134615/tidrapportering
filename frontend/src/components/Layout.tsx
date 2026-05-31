@@ -76,12 +76,12 @@ export default function Layout() {
 
   return (
     <div className="min-h-screen text-graphite-900">
-      <header className="safe-top sticky top-0 z-50 border-b border-graphite-900/10 bg-white/90 shadow-sm backdrop-blur-xl lg:hidden">
+      <header className="safe-top sticky top-0 z-50 border-b border-graphite-900/10 bg-white/88 shadow-sm backdrop-blur-xl lg:hidden">
         <div className="mx-auto flex h-16 max-w-[90rem] items-center justify-between px-4">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setMenuOpen(!menuOpen)}
-              className="rounded-lg border border-graphite-200 bg-white p-2 text-graphite-700 transition hover:bg-primary-50 hover:text-primary-800"
+              className="rounded-md border border-graphite-200 bg-white p-2 text-graphite-700 transition hover:bg-primary-50 hover:text-primary-800"
               aria-label="Meny"
             >
               {menuOpen ? <X size={20} /> : <Menu size={20} />}
@@ -101,7 +101,7 @@ export default function Layout() {
       </header>
 
       <div className="mx-auto flex w-full max-w-[96rem]">
-        <aside className="sticky top-0 hidden h-screen w-72 shrink-0 border-r border-white/10 bg-graphite-950 px-4 py-5 text-white shadow-premium lg:block">
+        <aside className="sticky top-0 hidden h-screen w-72 shrink-0 border-r border-white/10 bg-[#08090a] px-4 py-5 text-white shadow-premium lg:block">
           <div className="mb-5 flex items-center gap-3 px-1">
             <BrandMark />
             <div className="min-w-0">
@@ -110,7 +110,7 @@ export default function Layout() {
             </div>
           </div>
 
-          <div className="mb-4 rounded-lg border border-white/10 bg-white/[0.06] p-4 shadow-sm">
+          <div className="mb-4 rounded-xl border border-white/10 bg-white/[0.045] p-4 shadow-sm">
             <div className="flex items-center gap-2 text-primary-300">
               <ShieldCheck className="h-4 w-4" />
               <p className="text-xs font-semibold uppercase tracking-wide">Företag</p>
@@ -125,14 +125,14 @@ export default function Layout() {
                 key={item.to}
                 to={item.to}
                 className={({ isActive }) =>
-                  `group flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-semibold transition ${
+                  `group flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-semibold transition ${
                     isActive
                       ? 'bg-primary-500 text-white shadow-lg shadow-primary-950/25'
                       : 'text-graphite-300 hover:bg-white/[0.08] hover:text-white'
                   }`
                 }
               >
-                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/[0.08] transition group-hover:bg-white/[0.12]">
+                <span className="flex h-8 w-8 items-center justify-center rounded-md bg-white/[0.08] transition group-hover:bg-white/[0.12]">
                   <item.icon size={17} />
                 </span>
                 <span>{item.label}</span>
@@ -143,13 +143,13 @@ export default function Layout() {
 
         {menuOpen && (
           <div
-            className="fixed inset-0 z-40 bg-graphite-950/65 lg:hidden"
+            className="fixed inset-0 z-40 bg-graphite-950/65 backdrop-blur-sm lg:hidden"
             onClick={() => setMenuOpen(false)}
           />
         )}
 
         <aside
-          className={`fixed left-0 top-0 z-50 h-full w-72 border-r border-white/10 bg-graphite-950 p-4 text-white shadow-premium transition-transform duration-200 lg:hidden ${
+          className={`fixed left-0 top-0 z-50 h-full w-72 border-r border-white/10 bg-[#08090a] p-4 text-white shadow-premium transition-transform duration-200 lg:hidden ${
             menuOpen ? 'translate-x-0' : '-translate-x-full'
           }`}
         >
@@ -193,14 +193,14 @@ export default function Layout() {
           </button>
         </aside>
 
-        <main className="w-full flex-1 px-4 pb-32 pt-4 sm:px-6 sm:pt-6 lg:px-8 lg:pb-10 lg:pt-7">
+        <main className="w-full flex-1 px-4 pb-32 pt-4 sm:px-6 sm:pt-6 lg:px-7 lg:pb-10 lg:pt-6">
           <div className="mx-auto w-full max-w-7xl">
             <Outlet />
           </div>
         </main>
       </div>
 
-      <nav className="safe-bottom fixed bottom-0 left-0 right-0 z-40 border-t border-white/10 bg-graphite-950/96 text-white shadow-premium backdrop-blur-xl lg:hidden">
+      <nav className="safe-bottom fixed bottom-0 left-0 right-0 z-40 border-t border-white/10 bg-[#08090a]/96 text-white shadow-premium backdrop-blur-xl lg:hidden">
         <div className="mx-auto grid max-w-md grid-cols-5 items-end gap-1 px-2 pb-2 pt-2">
           {filteredBottomTabs.slice(0, 5).map((item) => (
             <NavLink
@@ -230,7 +230,7 @@ export default function Layout() {
 
 function BrandMark() {
   return (
-    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary-500 text-sm font-black text-white shadow-lg shadow-primary-950/25">
+    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-500 text-sm font-black tracking-tight text-white shadow-lg shadow-primary-950/25 ring-1 ring-white/15">
       AI
     </div>
   );

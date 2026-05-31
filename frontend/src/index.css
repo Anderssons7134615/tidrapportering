@@ -6,13 +6,13 @@
   :root {
     color-scheme: light;
 
-    --color-bg: #f4f4f1;
-    --color-bg-soft: #e9e8e2;
+    --color-bg: #f6f7fb;
+    --color-bg-soft: #edf0f6;
     --color-surface: #ffffff;
     --color-text: #171b1a;
-    --color-text-muted: #65685f;
-    --color-border: #dedbd2;
-    --color-focus: #f97316;
+    --color-text-muted: #62666d;
+    --color-border: #e3e6ee;
+    --color-focus: #5e6ad2;
 
     --radius-sm: 0.5rem;
     --radius-md: 0.8rem;
@@ -28,9 +28,10 @@
 
   body {
     @apply bg-graphite-50 text-graphite-900 antialiased;
+    font-feature-settings: "cv01", "ss03";
     background:
-      linear-gradient(180deg, rgba(23, 27, 26, 0.07) 0%, rgba(23, 27, 26, 0) 15rem),
-      linear-gradient(135deg, #f7f5ef 0%, #eeece4 48%, #f8f8f5 100%);
+      radial-gradient(circle at top left, rgba(94, 106, 210, 0.12), transparent 24rem),
+      linear-gradient(180deg, #fbfcff 0%, #f1f3f8 52%, #f7f7f5 100%);
   }
 
   input,
@@ -42,7 +43,7 @@
 
 @layer components {
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex items-center justify-center gap-2 rounded-md px-3.5 py-2.5 text-sm font-semibold transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .btn-primary {
@@ -50,7 +51,7 @@
   }
 
   .btn-secondary {
-    @apply btn border border-graphite-200 bg-white text-graphite-800 shadow-sm hover:-translate-y-0.5 hover:border-primary-200 hover:bg-primary-50 hover:text-primary-800 focus:ring-primary-200;
+    @apply btn border border-graphite-200 bg-white/90 text-graphite-800 shadow-sm hover:-translate-y-0.5 hover:border-primary-200 hover:bg-white hover:text-primary-800 focus:ring-primary-200;
   }
 
   .btn-danger {
@@ -62,7 +63,7 @@
   }
 
   .input {
-    @apply w-full rounded-lg border border-graphite-200 bg-white px-3.5 py-2.5 text-sm text-graphite-950 placeholder:text-graphite-400 shadow-sm transition focus:border-primary-400 focus:ring-2 focus:ring-primary-100;
+    @apply w-full rounded-md border border-graphite-200 bg-white px-3.5 py-2.5 text-sm text-graphite-950 placeholder:text-graphite-400 shadow-sm transition focus:border-primary-400 focus:ring-2 focus:ring-primary-100;
   }
 
   .label {
@@ -70,15 +71,15 @@
   }
 
   .card {
-    @apply rounded-lg border border-white/80 bg-white/95 p-4 shadow-soft ring-1 ring-graphite-900/[0.03] backdrop-blur sm:p-5;
+    @apply rounded-xl border border-graphite-200/70 bg-white/95 p-4 shadow-soft ring-1 ring-white/80 backdrop-blur sm:p-5;
   }
 
   .hero-card {
-    @apply overflow-hidden rounded-lg border border-graphite-200/80 bg-white p-5 shadow-soft sm:p-6;
+    @apply overflow-hidden rounded-xl border border-graphite-200/70 bg-white p-5 shadow-soft sm:p-6;
   }
 
   .page-title {
-    @apply text-2xl font-semibold tracking-tight text-graphite-950 sm:text-3xl;
+    @apply text-2xl font-semibold tracking-[-0.03em] text-graphite-950 sm:text-3xl;
   }
 
   .badge {
@@ -106,19 +107,19 @@
   }
 
   .section-title {
-    @apply text-base font-semibold text-graphite-950;
+    @apply text-base font-semibold tracking-tight text-graphite-950;
   }
 
   .surface-muted {
-    @apply rounded-lg border border-graphite-200 bg-graphite-50/80;
+    @apply rounded-xl border border-graphite-200 bg-graphite-50/80;
   }
 
   .soft-panel {
-    @apply rounded-lg border border-white/70 bg-white/80 shadow-sm backdrop-blur;
+    @apply rounded-xl border border-white/70 bg-white/80 shadow-sm backdrop-blur;
   }
 
   .stat-card {
-    @apply rounded-lg border border-graphite-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-primary-200 hover:shadow-md;
+    @apply rounded-xl border border-graphite-200/80 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-primary-200 hover:shadow-md;
   }
 
   .chip {
@@ -126,7 +127,7 @@
   }
 
   .table-wrap {
-    @apply overflow-hidden rounded-lg border border-graphite-200 bg-white shadow-sm;
+    @apply overflow-hidden rounded-xl border border-graphite-200 bg-white shadow-sm;
   }
 
   .table-head {
@@ -138,8 +139,10 @@
   }
 
   .premium-panel {
-    @apply rounded-lg border border-graphite-800 bg-graphite-950 text-white shadow-premium;
-    background-image: linear-gradient(135deg, #171b1a 0%, #282d2b 55%, #3a2417 100%);
+    @apply rounded-xl border border-white/10 bg-graphite-950 text-white shadow-premium;
+    background-image:
+      radial-gradient(circle at top left, rgba(94, 106, 210, 0.34), transparent 21rem),
+      linear-gradient(135deg, #08090a 0%, #0f1011 55%, #191a1b 100%);
   }
 
   .accent-line {
@@ -148,7 +151,7 @@
 
   .accent-line::before {
     content: '';
-    @apply absolute left-0 top-0 h-full w-1 bg-primary-500;
+    @apply absolute left-0 top-0 h-full w-0.5 bg-primary-500;
   }
 
   .mobile-sticky-submit {
