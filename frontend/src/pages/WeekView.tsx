@@ -81,13 +81,15 @@ function SwipeableEntry({
               <>
                 <Link
                   to={`/time-entry?id=${entry.id}`}
+                  onClick={(event) => event.stopPropagation()}
                   className="rounded-lg p-1 text-slate-500 transition hover:bg-slate-100 hover:text-primary-700"
                   title="Redigera"
                 >
                   <PencilLine className="h-4 w-4" />
                 </Link>
                 <button
-                  onClick={() => {
+                  onClick={(event) => {
+                    event.stopPropagation();
                     haptic('medium');
                     onDelete();
                   }}
@@ -275,7 +277,7 @@ export default function WeekView() {
                   <span className="ml-2 text-slate-500">{format(day, 'd/M')}</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="hidden text-xs font-semibold text-primary-700 sm:inline">Öppna dag</span>
+                  <span className="text-xs font-semibold text-primary-700">Rapportera</span>
                   <span className="font-bold">{dayTotal.toFixed(1)}h</span>
                 </div>
               </div>
@@ -288,7 +290,6 @@ export default function WeekView() {
                     {entries.map((entry) => (
                       <motion.div
                         key={entry.id}
-                        onClick={(event) => event.stopPropagation()}
                         exit={{ opacity: 0, x: -200, height: 0 }}
                         transition={{ duration: 0.2 }}
                       >
