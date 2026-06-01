@@ -1,4 +1,4 @@
-CREATE TABLE "ObsidianSyncEvent" (
+CREATE TABLE IF NOT EXISTS "ObsidianSyncEvent" (
     "id" TEXT NOT NULL,
     "companyId" TEXT NOT NULL,
     "projectId" TEXT,
@@ -17,8 +17,20 @@ CREATE TABLE "ObsidianSyncEvent" (
     CONSTRAINT "ObsidianSyncEvent_pkey" PRIMARY KEY ("id")
 );
 
-CREATE INDEX "ObsidianSyncEvent_companyId_createdAt_idx" ON "ObsidianSyncEvent"("companyId", "createdAt");
-CREATE INDEX "ObsidianSyncEvent_companyId_ackedAt_createdAt_idx" ON "ObsidianSyncEvent"("companyId", "ackedAt", "createdAt");
-CREATE INDEX "ObsidianSyncEvent_projectId_idx" ON "ObsidianSyncEvent"("projectId");
+CREATE INDEX IF NOT EXISTS "ObsidianSyncEvent_companyId_createdAt_idx" ON "ObsidianSyncEvent"("companyId", "createdAt");
+CREATE INDEX IF NOT EXISTS "ObsidianSyncEvent_companyId_ackedAt_createdAt_idx" ON "ObsidianSyncEvent"("companyId", "ackedAt", "createdAt");
+CREATE INDEX IF NOT EXISTS "ObsidianSyncEvent_projectId_idx" ON "ObsidianSyncEvent"("projectId");
 
-ALTER TABLE "ObsidianSyncEvent" ADD CONSTRAINT "ObsidianSyncEvent_companyId_fkey" FOREIGN KEY ("companyId") REFERENCES "Company"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'ObsidianSyncEvent_companyId_fkey'
+    ) THEN
+        ALTER TABLE "ObsidianSyncEvent"
+        ADD CONSTRAINT "ObsidianSyncEvent_companyId_fkey"
+        FOREIGN KEY ("companyId") REFERENCES "Company"("id")
+        ON DELETE CASCADE ON UPDATE CASCADE;
+    END IF;
+END $$;
