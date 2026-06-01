@@ -19,8 +19,9 @@ model Company {
   customers  Customer[]
   projects   Project[]
   activities Activity[]
-  settings   Settings[]
-  materialArticles MaterialArticle[]
+  settings           Settings[]
+  materialArticles  MaterialArticle[]
+  obsidianSyncEvents ObsidianSyncEvent[]
 }
 
 model User {
@@ -239,6 +240,28 @@ model AuditLog {
   newValue   String?
   ipAddress  String?
   createdAt  DateTime @default(now())
+}
+
+model ObsidianSyncEvent {
+  id          String    @id @default(uuid())
+  companyId   String
+  company     Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  projectId   String?
+  entityType  String
+  entityId    String?
+  action      String
+  eventType   String
+  payload     Json?
+  ackedAt     DateTime?
+  ackedBy     String?
+  error       String?
+  attempts    Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([companyId, createdAt])
+  @@index([companyId, ackedAt, createdAt])
+  @@index([projectId])
 }
 
 model Settings {

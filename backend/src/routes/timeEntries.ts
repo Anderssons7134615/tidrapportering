@@ -5,6 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import { randomUUID } from 'crypto';
 import { pipeline } from 'stream/promises';
+import { enqueueTimeEntryChanged } from '../lib/obsidianSync.js';
 
 const timeEntrySchema = z.object({
   projectId: z.string().uuid().optional().nullable(),
@@ -460,6 +461,20 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
           },
         });
 
+        if (created.projectId) {
+          await enqueueTimeEntryChanged(tx, {
+            companyId: request.user.companyId,
+            projectId: created.projectId,
+            entityId: created.id,
+            action: 'CREATE',
+            payload: {
+              date: created.date.toISOString(),
+              hours: created.hours,
+              userId: created.userId,
+            },
+          });
+        }
+
         return created;
       });
 
@@ -530,6 +545,25 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
               });
 
               await upsertSubmittedWeekLock(tx, request.user.id, weekStart);
+
+              const affectedProjectIds = new Set<string>();
+              if (existing.projectId) affectedProjectIds.add(existing.projectId);
+              if (row.projectId) affectedProjectIds.add(row.projectId);
+
+              for (const projectId of affectedProjectIds) {
+                await enqueueTimeEntryChanged(tx, {
+                  companyId: request.user.companyId,
+                  projectId,
+                  entityId: row.id,
+                  action: 'SYNC',
+                  payload: {
+                    oldProjectId: existing.projectId,
+                    newProjectId: row.projectId,
+                    hours: row.hours,
+                  },
+                });
+              }
+
               return row;
             });
 
@@ -552,6 +586,20 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
             });
 
             await upsertSubmittedWeekLock(tx, request.user.id, weekStart);
+
+            if (row.projectId) {
+              await enqueueTimeEntryChanged(tx, {
+                companyId: request.user.companyId,
+                projectId: row.projectId,
+                entityId: row.id,
+                action: 'SYNC',
+                payload: {
+                  hours: row.hours,
+                  date: row.date.toISOString(),
+                },
+              });
+            }
+
             return row;
           });
 
@@ -645,6 +693,25 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
           },
         });
 
+        const affectedProjectIds = new Set<string>();
+        if (entry.projectId) affectedProjectIds.add(entry.projectId);
+        if (updated.projectId) affectedProjectIds.add(updated.projectId);
+
+        for (const projectId of affectedProjectIds) {
+          await enqueueTimeEntryChanged(tx, {
+            companyId: request.user.companyId,
+            projectId,
+            entityId: id,
+            action: 'UPDATE',
+            payload: {
+              oldProjectId: entry.projectId,
+              newProjectId: updated.projectId,
+              hours: updated.hours,
+              date: updated.date.toISOString(),
+            },
+          });
+        }
+
         return updated;
       });
 
@@ -732,6 +799,20 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
         oldValue: JSON.stringify({ date: entry.date, hours: entry.hours }),
       },
     });
+
+    if (entry.projectId) {
+      await enqueueTimeEntryChanged(prisma, {
+        companyId: request.user.companyId,
+        projectId: entry.projectId,
+        entityId: id,
+        action: 'DELETE',
+        payload: {
+          date: entry.date.toISOString(),
+          hours: entry.hours,
+          userId: entry.userId,
+        },
+      });
+    }
 
     return { message: 'Tidrad borttagen' };
   });

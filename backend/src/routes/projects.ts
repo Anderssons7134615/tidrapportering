@@ -3,6 +3,7 @@ import ExcelJS from 'exceljs';
 import { z } from 'zod';
 import { prisma } from '../index.js';
 import { getProjectMetrics } from '../lib/projectMetrics.js';
+import { enqueueMaterialChanged, enqueueProjectChanged, enqueueTimeEntryChanged } from '../lib/obsidianSync.js';
 
 const projectSchema = z.object({
   customerId: z.string().uuid().optional().nullable(),
@@ -521,6 +522,18 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
         },
       });
 
+      await enqueueMaterialChanged(prisma, {
+        companyId: request.user.companyId,
+        projectId: id,
+        entityId: material.id,
+        action: 'CREATE',
+        payload: {
+          articleName: material.articleName,
+          quantity: material.quantity,
+          unit: material.unit,
+        },
+      });
+
       return reply.status(201).send({
         ...material,
         lineTotal: material.unitPrice != null ? material.quantity * material.unitPrice : null,
@@ -575,6 +588,18 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
       },
     });
 
+    await enqueueMaterialChanged(prisma, {
+      companyId: request.user.companyId,
+      projectId: id,
+      entityId: material.id,
+      action: 'DELETE',
+      payload: {
+        articleName: material.articleName,
+        quantity: material.quantity,
+        unit: material.unit,
+      },
+    });
+
     return { message: 'Materialraden borttagen' };
   });
 
@@ -602,6 +627,19 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
           invoiceReference: body.invoiceReference || null,
         },
       });
+
+      if (result.count > 0) {
+        await enqueueMaterialChanged(prisma, {
+          companyId: request.user.companyId,
+          projectId: id,
+          entityId: id,
+          action: 'INVOICE',
+          payload: {
+            updated: result.count,
+            invoiceReference: body.invoiceReference || null,
+          },
+        });
+      }
 
       return { updated: result.count };
     } catch (error) {
@@ -671,6 +709,19 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
           invoiceReference: body.invoiceReference || null,
         },
       });
+
+      if (result.count > 0) {
+        await enqueueTimeEntryChanged(prisma, {
+          companyId: request.user.companyId,
+          projectId: id,
+          entityId: id,
+          action: 'INVOICE',
+          payload: {
+            updated: result.count,
+            invoiceReference: body.invoiceReference || null,
+          },
+        });
+      }
 
       return { updated: result.count };
     } catch (error) {
@@ -867,6 +918,18 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
         },
       });
 
+      await enqueueProjectChanged(prisma, {
+        companyId: request.user.companyId,
+        projectId: project.id,
+        entityId: project.id,
+        action: 'CREATE',
+        payload: {
+          code: project.code,
+          name: project.name,
+          customerId: project.customerId,
+        },
+      });
+
       return reply.status(201).send(project);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -928,6 +991,18 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
         },
       });
 
+      await enqueueProjectChanged(prisma, {
+        companyId: request.user.companyId,
+        projectId: id,
+        entityId: id,
+        action: 'UPDATE',
+        payload: {
+          code: updatedProject.code,
+          name: updatedProject.name,
+          changedFields: Object.keys(body),
+        },
+      });
+
       return updatedProject;
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -961,6 +1036,18 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
         entityType: 'Project',
         entityId: id,
         oldValue: JSON.stringify({ name: project.name, code: project.code }),
+      },
+    });
+
+    await enqueueProjectChanged(prisma, {
+      companyId: request.user.companyId,
+      projectId: id,
+      entityId: id,
+      action: 'DELETE',
+      payload: {
+        softDelete: true,
+        code: project.code,
+        name: project.name,
       },
     });
 

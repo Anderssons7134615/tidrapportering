@@ -22,6 +22,7 @@ import settingsRoutes from './routes/settings.js';
 import dashboardRoutes from './routes/dashboard.js';
 import pushSubscriptionRoutes from './routes/pushSubscriptions.js';
 import reminderRoutes from './routes/reminders.js';
+import obsidianSyncRoutes from './routes/obsidianSync.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -143,6 +144,7 @@ fastify.register(settingsRoutes, { prefix: '/api/settings' });
 fastify.register(dashboardRoutes, { prefix: '/api/dashboard' });
 fastify.register(pushSubscriptionRoutes, { prefix: '/api/push-subscriptions' });
 fastify.register(reminderRoutes, { prefix: '/api/reminders' });
+fastify.register(obsidianSyncRoutes, { prefix: '/api/obsidian-sync' });
 
 // Health check
 fastify.get('/api/health', async () => {
