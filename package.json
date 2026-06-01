@@ -1,0 +1,13 @@
+{
+  "name": "tidrapportering-railway-root",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Root package marker so Railway/Nixpacks detects Node.js for backend and frontend subdirectory builds.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "npm --prefix backend run build",
+    "start": "npm --prefix backend start"
+  }
+}
