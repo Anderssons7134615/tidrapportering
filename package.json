@@ -7,7 +7,8 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "npm --prefix backend run build",
+    "build": "npm --prefix backend ci && npm --prefix backend run build",
+    "db:push": "npm --prefix backend run db:push",
     "start": "npm --prefix backend start"
   }
 }
