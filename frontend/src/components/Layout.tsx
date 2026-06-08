@@ -86,7 +86,7 @@ export default function Layout() {
             >
               {menuOpen ? <X size={20} /> : <Menu size={20} />}
             </button>
-            <BrandMark />
+            <BrandMark compact />
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-base font-semibold text-graphite-950 sm:text-lg">Anderssons TidApp</h1>
@@ -127,13 +127,13 @@ export default function Layout() {
                 className={({ isActive }) =>
                   `group relative flex items-center gap-3 overflow-hidden rounded-md px-3 py-2.5 text-sm font-semibold transition duration-200 ${
                     isActive
-                      ? 'active bg-white text-graphite-950 shadow-lg shadow-black/25'
+                      ? 'active bg-primary-500 text-white shadow-lg shadow-primary-950/35 ring-1 ring-primary-300/35'
                       : 'text-graphite-300 hover:bg-white/[0.08] hover:text-white'
                   }`
                 }
               >
-                <span className="absolute inset-y-2 left-0 w-1 rounded-r-full bg-primary-400 opacity-0 transition group-[.active]:opacity-100" />
-                <span className="flex h-8 w-8 items-center justify-center rounded-md bg-white/[0.08] transition group-hover:bg-white/[0.12]">
+                <span className="absolute inset-y-2 left-0 w-1 rounded-r-full bg-white opacity-0 transition group-[.active]:opacity-100" />
+                <span className="flex h-8 w-8 items-center justify-center rounded-md bg-white/[0.08] transition group-hover:bg-white/[0.12] group-[.active]:bg-white/18">
                   <item.icon size={17} />
                 </span>
                 <span>{item.label}</span>
@@ -156,7 +156,7 @@ export default function Layout() {
         >
           <div className="mb-4 flex items-center justify-between border-b border-white/10 pb-3">
             <div className="flex items-center gap-3">
-              <BrandMark />
+              <BrandMark compact />
               <div>
                 <p className="font-semibold text-white">TidApp</p>
                 <p className="text-xs text-graphite-300">{user?.companyName || 'Navigation'}</p>
@@ -229,10 +229,14 @@ export default function Layout() {
   );
 }
 
-function BrandMark() {
+function BrandMark({ compact = false }: { compact?: boolean }) {
   return (
-    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-sm font-black tracking-tight text-graphite-950 shadow-lg shadow-black/25 ring-1 ring-primary-300/35">
-      AI
+    <div
+      className={`flex h-11 shrink-0 items-center justify-center rounded-xl bg-white px-2.5 shadow-lg shadow-primary-950/35 ring-1 ring-primary-300/35 ${
+        compact ? 'w-24' : 'w-32'
+      }`}
+    >
+      <img src="/anderssons-logo.svg" alt="Anderssons Isolering" className="h-8 w-full object-contain" />
     </div>
   );
 }
