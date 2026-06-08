@@ -81,9 +81,6 @@ export default function UsersPage() {
       name: formData.get('name') as string,
       email: formData.get('email') as string,
       role: formData.get('role') as User['role'],
-      hourlyCost: formData.get('hourlyCost')
-        ? parseFloat(formData.get('hourlyCost') as string)
-        : undefined,
     };
 
     if (!editingUser) {
@@ -140,11 +137,6 @@ export default function UsersPage() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              {user.hourlyCost && (
-                <span className="text-sm text-gray-400">
-                  {user.hourlyCost} kr/h
-                </span>
-              )}
               <button
                 onClick={() => {
                   setEditingUser(user);
@@ -229,30 +221,18 @@ export default function UsersPage() {
                   />
                 </div>
               )}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="label">Roll</label>
-                  <select
-                    name="role"
-                    defaultValue={editingUser?.role || 'EMPLOYEE'}
-                    className="input"
-                  >
-                    <option value="EMPLOYEE">Medarbetare</option>
-                    <option value="ACCOUNTANT">Revisor</option>
-                    <option value="SUPERVISOR">Arbetsledare</option>
-                    <option value="ADMIN">Admin</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="label">Timkostnad (kr/h)</label>
-                  <input
-                    name="hourlyCost"
-                    type="number"
-                    defaultValue={editingUser?.hourlyCost || ''}
-                    className="input"
-                    placeholder="350"
-                  />
-                </div>
+              <div>
+                <label className="label">Roll</label>
+                <select
+                  name="role"
+                  defaultValue={editingUser?.role || 'EMPLOYEE'}
+                  className="input"
+                >
+                  <option value="EMPLOYEE">Medarbetare</option>
+                  <option value="ACCOUNTANT">Revisor</option>
+                  <option value="SUPERVISOR">Arbetsledare</option>
+                  <option value="ADMIN">Admin</option>
+                </select>
               </div>
               <div className="flex gap-3 pt-4">
                 <button type="button" onClick={closeModal} className="btn-secondary flex-1">

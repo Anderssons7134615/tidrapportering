@@ -162,9 +162,6 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
       { header: 'Artikelnummer', key: 'articleNumber', width: 18 },
       { header: 'Kategori', key: 'category', width: 18 },
       { header: 'Enhet', key: 'unit', width: 12 },
-      { header: 'Inköpspris', key: 'purchasePrice', width: 14 },
-      { header: 'Försäljningspris', key: 'defaultUnitPrice', width: 18 },
-      { header: 'Påslag %', key: 'markupPercent', width: 12 },
       { header: 'Aktiv', key: 'active', width: 10 },
     ];
 
@@ -174,16 +171,10 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
         articleNumber: article.articleNumber || '',
         category: article.category || 'Övrigt',
         unit: article.unit,
-        purchasePrice: article.purchasePrice ?? '',
-        defaultUnitPrice: article.defaultUnitPrice ?? '',
-        markupPercent: article.markupPercent ?? '',
         active: article.active ? 'Ja' : 'Nej',
       });
     }
 
-    worksheet.getColumn('purchasePrice').numFmt = '#,##0.00';
-    worksheet.getColumn('defaultUnitPrice').numFmt = '#,##0.00';
-    worksheet.getColumn('markupPercent').numFmt = '0.00';
     styleMaterialWorksheet(worksheet);
 
     await prisma.auditLog.create({
@@ -210,27 +201,21 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
       { header: 'Artikelnummer', key: 'articleNumber', width: 18 },
       { header: 'Kategori', key: 'category', width: 18 },
       { header: 'Enhet', key: 'unit', width: 12 },
-      { header: 'Inköpspris', key: 'purchasePrice', width: 14 },
-      { header: 'Försäljningspris', key: 'defaultUnitPrice', width: 18 },
-      { header: 'Påslag %', key: 'markupPercent', width: 12 },
       { header: 'Aktiv', key: 'active', width: 10 },
     ];
 
     [
-      ['Rörskål 42 mm', 'RS-42', 'Rörskål', 'm', 0, 0, 0, 'Ja'],
-      ['Lamellmatta 50 mm', 'LM-50', 'Lamellmatta', 'm2', 0, 0, 0, 'Ja'],
-      ['Plåt aluminium', 'PL-ALU', 'Plåt', 'm2', 0, 0, 0, 'Ja'],
-      ['Tejp aluminium', 'TEJP-ALU', 'Tejp', 'st', 0, 0, 0, 'Ja'],
-      ['Brandtätningsmassa', 'BT-MASSA', 'Brandtätning', 'st', 0, 0, 0, 'Ja'],
-      ['Skruv/nit', 'SKRUV-NIT', 'Skruv/nit', 'st', 0, 0, 0, 'Ja'],
-      ['Övrigt material', '', 'Övrigt', 'st', 0, 0, 0, 'Ja'],
-    ].forEach(([name, articleNumber, category, unit, purchasePrice, defaultUnitPrice, markupPercent, active]) => {
-      worksheet.addRow({ name, articleNumber, category, unit, purchasePrice, defaultUnitPrice, markupPercent, active });
+      ['Rörskål 42 mm', 'RS-42', 'Rörskål', 'm', 'Ja'],
+      ['Lamellmatta 50 mm', 'LM-50', 'Lamellmatta', 'm2', 'Ja'],
+      ['Plåt aluminium', 'PL-ALU', 'Plåt', 'm2', 'Ja'],
+      ['Tejp aluminium', 'TEJP-ALU', 'Tejp', 'st', 'Ja'],
+      ['Brandtätningsmassa', 'BT-MASSA', 'Brandtätning', 'st', 'Ja'],
+      ['Skruv/nit', 'SKRUV-NIT', 'Skruv/nit', 'st', 'Ja'],
+      ['Övrigt material', '', 'Övrigt', 'st', 'Ja'],
+    ].forEach(([name, articleNumber, category, unit, active]) => {
+      worksheet.addRow({ name, articleNumber, category, unit, active });
     });
 
-    worksheet.getColumn('purchasePrice').numFmt = '#,##0.00';
-    worksheet.getColumn('defaultUnitPrice').numFmt = '#,##0.00';
-    worksheet.getColumn('markupPercent').numFmt = '0.00';
     styleMaterialWorksheet(worksheet);
 
     const info = workbook.addWorksheet('Instruktion');
@@ -238,9 +223,6 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
     info.addRows([
       { field: 'Artikel', description: 'Namnet som montörer och projektledare ser i materialregistret.' },
       { field: 'Kategori', description: 'Använd en av kategorierna i mallen: Rörskål, Lamellmatta, Plåt, Tejp, Brandtätning, Skruv/nit eller Övrigt.' },
-      { field: 'Inköpspris', description: 'Din kostnad per enhet, till exempel per meter, styck eller kvadratmeter.' },
-      { field: 'Försäljningspris', description: 'Pris per enhet som används på projektets materialöversikt.' },
-      { field: 'Påslag %', description: 'Valfritt påslag om du vill räkna försäljningspris från inköpspris.' },
       { field: 'Aktiv', description: 'Skriv Ja för aktiva artiklar och Nej för sådant som inte ska användas framåt.' },
     ]);
     styleMaterialWorksheet(info);

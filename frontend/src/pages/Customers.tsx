@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { customersApi } from '../services/api';
-import type { Customer } from '../types';
 import { ArrowRight, Building2, Edit2, Loader2, Mail, Phone, Plus, Search, Trash2, X } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { customersApi } from '../services/api';
+import type { Customer } from '../types';
 import { ListSkeleton } from '../components/ui/Skeleton';
 import { AppShell, Card, EmptyState, FilterBar, KpiCard, PageHeader, StatusBadge } from '../components/ui/design';
 
@@ -72,10 +72,6 @@ export default function Customers() {
 
   const activeCount = customers?.filter((customer) => customer.active).length || 0;
   const projectCount = customers?.reduce((sum, customer) => sum + (customer._count?.projects || 0), 0) || 0;
-  const customersWithRate = customers?.filter((customer) => Boolean(customer.defaultRate)) || [];
-  const averageRate = customersWithRate.length
-    ? Math.round(customersWithRate.reduce((sum, customer) => sum + (customer.defaultRate || 0), 0) / customersWithRate.length)
-    : 0;
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -87,7 +83,6 @@ export default function Customers() {
       contactPerson: (formData.get('contactPerson') as string) || undefined,
       email: (formData.get('email') as string) || undefined,
       phone: (formData.get('phone') as string) || undefined,
-      defaultRate: formData.get('defaultRate') ? parseFloat(formData.get('defaultRate') as string) : undefined,
     };
 
     if (editingCustomer) updateMutation.mutate({ id: editingCustomer.id, data });
@@ -100,7 +95,7 @@ export default function Customers() {
     <AppShell>
       <PageHeader
         title="Kunder"
-        description="Sök, filtrera och öppna kundens projekt direkt. Korten visar status, kontakt och pris på ett sätt som fungerar bättre i mobil."
+        description="Sök, filtrera och öppna kundens projekt direkt. Korten visar status, kontakt och kopplade jobb."
         action={
           <button onClick={() => setIsModalOpen(true)} className="btn-primary">
             <Plus className="h-4 w-4" />
@@ -109,11 +104,10 @@ export default function Customers() {
         }
       />
 
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <KpiCard label="Kunder totalt" value={customers?.length || 0} tone="slate" />
         <KpiCard label="Aktiva kunder" value={activeCount} tone="green" />
         <KpiCard label="Projekt kopplade" value={projectCount} tone="orange" />
-        <KpiCard label="Snittpris" value={averageRate ? `${averageRate} kr/h` : '—'} tone="blue" />
       </div>
 
       <FilterBar>
@@ -171,7 +165,6 @@ export default function Customers() {
                         {customer.contactPerson || 'Ingen kontaktperson'} · {customer._count?.projects || 0} projekt
                       </p>
                       <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold text-graphite-600">
-                        {customer.defaultRate && <span className="chip">{customer.defaultRate} kr/h</span>}
                         {customer.email && <span className="inline-flex items-center gap-1 rounded-full bg-graphite-100 px-2.5 py-1"><Mail className="h-3.5 w-3.5" /> E-post</span>}
                         {customer.phone && <span className="inline-flex items-center gap-1 rounded-full bg-graphite-100 px-2.5 py-1"><Phone className="h-3.5 w-3.5" /> Telefon</span>}
                       </div>
@@ -249,10 +242,6 @@ export default function Customers() {
                   <label className="label">Telefon</label>
                   <input name="phone" defaultValue={editingCustomer?.phone || ''} className="input" />
                 </div>
-              </div>
-              <div>
-                <label className="label">Standard timpris (kr/h)</label>
-                <input name="defaultRate" type="number" defaultValue={editingCustomer?.defaultRate || ''} className="input" placeholder="750" />
               </div>
               <div className="grid grid-cols-2 gap-3 pt-2">
                 <button type="button" onClick={closeModal} className="btn-secondary">

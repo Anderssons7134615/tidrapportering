@@ -5,7 +5,6 @@ import toast from 'react-hot-toast';
 import { projectsApi } from '../services/api';
 import type { MaterialArticle, MaterialCategory } from '../types';
 import { AppShell, Button, Card, DataTable, EmptyState, FormField, PageHeader, StatusBadge } from '../components/ui/design';
-import { formatCurrency, parseSwedishNumber } from '../utils/format';
 
 const categories: MaterialCategory[] = ['Rörskål', 'Lamellmatta', 'Plåt', 'Tejp', 'Brandtätning', 'Skruv/nit', 'Övrigt'];
 
@@ -14,9 +13,6 @@ type MaterialForm = {
   articleNumber: string;
   category: MaterialCategory;
   unit: string;
-  purchasePrice: string;
-  defaultUnitPrice: string;
-  markupPercent: string;
 };
 
 const emptyForm: MaterialForm = {
@@ -24,9 +20,6 @@ const emptyForm: MaterialForm = {
   articleNumber: '',
   category: 'Övrigt',
   unit: 'st',
-  purchasePrice: '',
-  defaultUnitPrice: '',
-  markupPercent: '',
 };
 
 export default function Materials() {
@@ -47,9 +40,6 @@ export default function Materials() {
     articleNumber: form.articleNumber.trim() || undefined,
     category: form.category,
     unit: form.unit.trim() || 'st',
-    purchasePrice: form.purchasePrice ? parseSwedishNumber(form.purchasePrice) : undefined,
-    defaultUnitPrice: form.defaultUnitPrice ? parseSwedishNumber(form.defaultUnitPrice) : undefined,
-    markupPercent: form.markupPercent ? parseSwedishNumber(form.markupPercent) : undefined,
   });
 
   const resetForm = () => {
@@ -93,9 +83,6 @@ export default function Materials() {
       articleNumber: article.articleNumber || '',
       category: article.category || 'Övrigt',
       unit: article.unit || 'st',
-      purchasePrice: article.purchasePrice != null ? String(article.purchasePrice).replace('.', ',') : '',
-      defaultUnitPrice: article.defaultUnitPrice != null ? String(article.defaultUnitPrice).replace('.', ',') : '',
-      markupPercent: article.markupPercent != null ? String(article.markupPercent).replace('.', ',') : '',
     });
   };
 
@@ -146,7 +133,7 @@ export default function Materials() {
     <AppShell>
       <PageHeader
         title="Materialregister"
-        description="Hantera artiklar, kategorier, inköpspris och försäljningspris som sedan används på projekten."
+        description="Hantera artiklar, kategorier och enheter som sedan används på projekten."
         action={
           <div className="flex flex-wrap gap-2">
             <button className="btn-secondary" onClick={downloadTemplate} disabled={isDownloadingTemplate}>
@@ -180,15 +167,6 @@ export default function Materials() {
           <FormField label="Enhet">
             <input className="input" value={form.unit} onChange={(event) => setForm((current) => ({ ...current, unit: event.target.value }))} required />
           </FormField>
-          <FormField label="Inköpspris">
-            <input className="input" inputMode="decimal" value={form.purchasePrice} onChange={(event) => setForm((current) => ({ ...current, purchasePrice: event.target.value }))} />
-          </FormField>
-          <FormField label="Försäljningspris">
-            <input className="input" inputMode="decimal" value={form.defaultUnitPrice} onChange={(event) => setForm((current) => ({ ...current, defaultUnitPrice: event.target.value }))} />
-          </FormField>
-          <FormField label="Påslag %">
-            <input className="input" inputMode="decimal" value={form.markupPercent} onChange={(event) => setForm((current) => ({ ...current, markupPercent: event.target.value }))} />
-          </FormField>
           <div className="flex items-end gap-2">
             <Button type="submit" isLoading={createMutation.isPending || updateMutation.isPending} disabledReason={!form.name.trim() ? 'Ange artikel' : null}>
               {editingId ? <Edit2 className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
@@ -216,9 +194,6 @@ export default function Materials() {
                   <th className="px-3 py-2">Artikel</th>
                   <th className="px-3 py-2">Kategori</th>
                   <th className="px-3 py-2">Enhet</th>
-                  <th className="px-3 py-2">Inköp</th>
-                  <th className="px-3 py-2">Försäljning</th>
-                  <th className="px-3 py-2">Påslag</th>
                   <th className="px-3 py-2">Status</th>
                   <th className="px-3 py-2 text-right">Åtgärd</th>
                 </tr>
@@ -232,9 +207,6 @@ export default function Materials() {
                     </td>
                     <td className="px-3 py-2">{article.category}</td>
                     <td className="px-3 py-2">{article.unit}</td>
-                    <td className="px-3 py-2">{formatCurrency(article.purchasePrice)}</td>
-                    <td className="px-3 py-2">{formatCurrency(article.defaultUnitPrice)}</td>
-                    <td className="px-3 py-2">{article.markupPercent != null ? `${article.markupPercent.toLocaleString('sv-SE')} %` : '-'}</td>
                     <td className="px-3 py-2"><StatusBadge label={article.active ? 'Aktiv' : 'Inaktiv'} tone={article.active ? 'green' : 'gray'} /></td>
                     <td className="px-3 py-2 text-right">
                       <div className="inline-flex gap-1">

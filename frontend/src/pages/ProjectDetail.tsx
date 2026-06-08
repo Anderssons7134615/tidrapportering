@@ -7,7 +7,7 @@ import { projectsApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
 import type { MaterialArticle, Project, ProjectMaterial, TimeEntry } from '../types';
 import { AppShell, Button, Card, DataTable, EmptyState, FormField, KpiCard, PageHeader, StatusBadge, Tabs } from '../components/ui/design';
-import { formatCurrency, formatDate, formatHours, formatPercent, parseSwedishNumber } from '../utils/format';
+import { formatDate, formatHours, formatPercent, parseSwedishNumber } from '../utils/format';
 
 const tabs = [
   { id: 'overview', label: 'Översikt' },
@@ -63,7 +63,6 @@ export default function ProjectDetail() {
   const metrics = p?.metrics;
   const entries = (timeEntries || []) as TimeEntry[];
   const materials = materialsResponse?.items || [];
-  const canViewMoney = isManager || Boolean(p?.employeeCanSeeResults);
 
   const createMaterialMutation = useMutation({
     mutationFn: () => projectsApi.createMaterial(id, {
@@ -125,10 +124,8 @@ export default function ProjectDetail() {
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label="Totala timmar" value={formatHours(metrics?.totalHours)} tone="blue" />
         <KpiCard label="Denna vecka" value={formatHours(metrics?.weekHours)} tone="blue" />
-        <KpiCard label="Arbetskostnad" value={canViewMoney ? formatCurrency(metrics?.laborCost) : 'Doljt'} />
-        <KpiCard label="Materialkostnad" value={canViewMoney ? formatCurrency(metrics?.materialCost) : 'Doljt'} />
         <KpiCard label="Budgetförbrukning" value={p.budgetHours ? formatPercent(metrics?.budgetUsagePercent) : 'Löpande jobb'} tone={(metrics?.budgetUsagePercent || 0) >= 80 ? 'red' : 'green'} />
-        <KpiCard label="Resultat / marginal" value={canViewMoney && metrics?.projectResult != null ? formatCurrency(metrics.projectResult) : '-'} hint={canViewMoney ? formatPercent(metrics?.marginPercent) : undefined} />
+        <KpiCard label="Budget timmar" value={p.budgetHours ? formatHours(p.budgetHours) : 'Löpande jobb'} tone="slate" />
       </div>
 
       <Tabs tabs={tabs} active={activeTab} onChange={setActiveTab} />
@@ -142,7 +139,7 @@ export default function ProjectDetail() {
                 {metrics.warnings.map((warning) => <StatusBadge key={warning} label={warning} tone={warning.includes('budget') ? 'yellow' : 'red'} />)}
               </div>
             ) : (
-              <EmptyState title="Inga varningar" description={p.budgetHours ? 'Projektets budget och priser ser kompletta ut.' : 'Projektet är markerat som löpande eftersom ingen budget är angiven.'} />
+              <EmptyState title="Inga varningar" description={p.budgetHours ? 'Projektets timmar ligger inom plan.' : 'Projektet är markerat som löpande eftersom ingen budget är angiven.'} />
             )}
           </Card>
           <Card>
@@ -150,8 +147,8 @@ export default function ProjectDetail() {
             <div className="space-y-2 text-sm">
               <Line label="Timmar totalt" value={formatHours(metrics?.totalHours)} />
               <Line label="Timmar denna vecka" value={formatHours(metrics?.weekHours)} />
-              <Line label="Kostnad hittills" value={formatCurrency((metrics?.laborCost || 0) + (metrics?.materialCost || 0))} />
               <Line label="Budgetförbrukning" value={p.budgetHours ? formatPercent(metrics?.budgetUsagePercent) : 'Löpande jobb'} />
+              <Line label="Budget timmar" value={p.budgetHours ? formatHours(p.budgetHours) : 'Ej angivet'} />
             </div>
           </Card>
           <Card>
@@ -236,14 +233,13 @@ function SimpleMaterials({ materials, onDelete }: { materials: ProjectMaterial[]
   return (
     <DataTable>
       <table className="min-w-full text-sm">
-        <thead className="table-head"><tr><th className="px-3 py-2">Datum</th><th className="px-3 py-2">Artikel</th><th className="px-3 py-2">Antal</th><th className="px-3 py-2">Belopp</th>{onDelete && <th className="px-3 py-2" />}</tr></thead>
+        <thead className="table-head"><tr><th className="px-3 py-2">Datum</th><th className="px-3 py-2">Artikel</th><th className="px-3 py-2">Antal</th>{onDelete && <th className="px-3 py-2" />}</tr></thead>
         <tbody>
           {materials.map((item) => (
             <tr key={item.id} className="border-b border-slate-100">
               <td className="px-3 py-2">{formatDate(item.date)}</td>
               <td className="px-3 py-2">{item.articleName}</td>
               <td className="px-3 py-2">{item.quantity.toLocaleString('sv-SE')} {item.unit}</td>
-              <td className="px-3 py-2">{formatCurrency(item.lineTotal)}</td>
               {onDelete && <td className="px-3 py-2 text-right"><button className="rounded-lg p-2 text-rose-600 hover:bg-rose-50" onClick={() => onDelete(item)}><Trash2 className="h-4 w-4" /></button></td>}
             </tr>
           ))}
