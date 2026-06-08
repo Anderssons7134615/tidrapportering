@@ -10,7 +10,7 @@ const projectSchema = z.object({
   name: z.string().min(2),
   code: z.string().min(1),
   site: z.string().optional().nullable(),
-  status: z.enum(['PLANNED', 'ONGOING', 'COMPLETED', 'INVOICED']).optional(),
+  status: z.enum(['PLANNED', 'ONGOING', 'COMPLETED']).optional(),
   budgetHours: z.number().optional().nullable(),
   fixedPrice: z.number().optional().nullable(),
   billingModel: z.enum(['HOURLY', 'FIXED']).optional(),
@@ -36,11 +36,6 @@ const projectMaterialSchema = z.object({
   note: z.string().trim().max(500).optional().nullable(),
 });
 
-const invoiceMarkSchema = z.object({
-  ids: z.array(z.string().uuid()).optional(),
-  invoiceReference: z.string().trim().max(100).optional().nullable(),
-  invoicedAt: z.string().optional(),
-});
 
 const requireAdminOrSupervisor = async (request: any, reply: any) => {
   await request.jwtVerify();
@@ -244,7 +239,7 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
       { field: 'Artikel', description: 'Namnet som montörer och projektledare ser i materialregistret.' },
       { field: 'Kategori', description: 'Använd en av kategorierna i mallen: Rörskål, Lamellmatta, Plåt, Tejp, Brandtätning, Skruv/nit eller Övrigt.' },
       { field: 'Inköpspris', description: 'Din kostnad per enhet, till exempel per meter, styck eller kvadratmeter.' },
-      { field: 'Försäljningspris', description: 'Pris per enhet som används på projekt och faktureringsunderlag.' },
+      { field: 'Försäljningspris', description: 'Pris per enhet som används på projektets materialöversikt.' },
       { field: 'Påslag %', description: 'Valfritt påslag om du vill räkna försäljningspris från inköpspris.' },
       { field: 'Aktiv', description: 'Skriv Ja för aktiva artiklar och Nej för sådant som inte ska användas framåt.' },
     ]);
@@ -603,53 +598,6 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
     return { message: 'Materialraden borttagen' };
   });
 
-  fastify.post('/:id/materials/mark-invoiced', {
-    preHandler: [requireAdminOrSupervisor],
-  }, async (request, reply) => {
-    try {
-      const { id } = request.params as { id: string };
-      const body = invoiceMarkSchema.parse(request.body);
-
-      const project = await prisma.project.findUnique({ where: { id } });
-      if (!project || project.companyId !== request.user.companyId) {
-        return reply.status(404).send({ error: 'Projekt hittades inte' });
-      }
-
-      const result = await prisma.projectMaterial.updateMany({
-        where: {
-          projectId: id,
-          invoiceStatus: { not: 'INVOICED' },
-          ...(body.ids?.length ? { id: { in: body.ids } } : {}),
-        },
-        data: {
-          invoiceStatus: 'INVOICED',
-          invoicedAt: body.invoicedAt ? new Date(body.invoicedAt) : new Date(),
-          invoiceReference: body.invoiceReference || null,
-        },
-      });
-
-      if (result.count > 0) {
-        await enqueueMaterialChanged(prisma, {
-          companyId: request.user.companyId,
-          projectId: id,
-          entityId: id,
-          action: 'INVOICE',
-          payload: {
-            updated: result.count,
-            invoiceReference: body.invoiceReference || null,
-          },
-        });
-      }
-
-      return { updated: result.count };
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        return reply.status(400).send({ error: 'Ogiltig data', details: error.errors });
-      }
-      throw error;
-    }
-  });
-
   // Get project time entries
   fastify.get('/:id/time-entries', {
     preHandler: [fastify.authenticate],
@@ -681,55 +629,6 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     return entries;
-  });
-
-  fastify.post('/:id/time-entries/mark-invoiced', {
-    preHandler: [requireAdminOrSupervisor],
-  }, async (request, reply) => {
-    try {
-      const { id } = request.params as { id: string };
-      const body = invoiceMarkSchema.parse(request.body);
-
-      const project = await prisma.project.findUnique({ where: { id } });
-      if (!project || project.companyId !== request.user.companyId) {
-        return reply.status(404).send({ error: 'Projekt hittades inte' });
-      }
-
-      const result = await prisma.timeEntry.updateMany({
-        where: {
-          projectId: id,
-          user: { companyId: request.user.companyId },
-          invoiceStatus: { not: 'INVOICED' },
-          billable: true,
-          ...(body.ids?.length ? { id: { in: body.ids } } : {}),
-        },
-        data: {
-          invoiceStatus: 'INVOICED',
-          invoicedAt: body.invoicedAt ? new Date(body.invoicedAt) : new Date(),
-          invoiceReference: body.invoiceReference || null,
-        },
-      });
-
-      if (result.count > 0) {
-        await enqueueTimeEntryChanged(prisma, {
-          companyId: request.user.companyId,
-          projectId: id,
-          entityId: id,
-          action: 'INVOICE',
-          payload: {
-            updated: result.count,
-            invoiceReference: body.invoiceReference || null,
-          },
-        });
-      }
-
-      return { updated: result.count };
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        return reply.status(400).send({ error: 'Ogiltig data', details: error.errors });
-      }
-      throw error;
-    }
   });
 
   // Manager summary by employee for project

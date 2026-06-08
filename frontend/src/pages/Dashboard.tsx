@@ -6,7 +6,7 @@ import { dashboardApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
 import { DashboardSkeleton } from '../components/ui/Skeleton';
 import { AppShell, Card, EmptyState, KpiCard, PageHeader, StatusBadge } from '../components/ui/design';
-import { formatCurrency, formatDate, formatHours } from '../utils/format';
+import { formatDate, formatHours } from '../utils/format';
 
 export default function Dashboard() {
   const { user } = useAuthStore();
@@ -29,7 +29,7 @@ export default function Dashboard() {
         title={isManager ? 'Översikt för chef' : 'Min översikt'}
         description={
           isManager
-            ? 'Följ timmar, attestläge och fakturerbart värde på ett ställe.'
+            ? 'Följ timmar, attestläge och projektstatus på ett ställe.'
             : 'Rapportera tid snabbt och håll koll på veckan.'
         }
         action={
@@ -54,14 +54,14 @@ export default function Dashboard() {
           icon={isManager ? <CheckCircle2 className="h-5 w-5" /> : <CalendarDays className="h-5 w-5" />}
           eyebrow={isManager ? 'Attest' : 'Vecka'}
           title={isManager ? `${data?.summary.pendingApprovalCount || 0} veckor att hantera` : 'Öppna min vecka'}
-          description={isManager ? 'Granska och attestera veckor innan rapport/fakturering.' : 'Se om veckan är komplett innan du skickar in.'}
+          description={isManager ? 'Granska och attestera veckor innan rapporterna tas ut.' : 'Se om veckan är komplett innan du skickar in.'}
         />
         <NextStepCard
           to={isManager ? '/reports' : '/week'}
           icon={isManager ? <FileText className="h-5 w-5" /> : <CalendarDays className="h-5 w-5" />}
-          eyebrow={isManager ? 'Ekonomi' : 'Uppföljning'}
+          eyebrow={isManager ? 'Rapporter' : 'Uppföljning'}
           title={isManager ? 'Ta fram rapport' : 'Kolla veckoläge'}
-          description={isManager ? 'Få koll på timmar, fakturerbart och utfall.' : 'Se direkt vilka dagar som saknar rapporterad tid.'}
+          description={isManager ? 'Ta fram löne- och kontrollunderlag för timmar.' : 'Se direkt vilka dagar som saknar rapporterad tid.'}
         />
       </div>
 
@@ -104,7 +104,7 @@ export default function Dashboard() {
                       : 'Allt ser lugnt ut just nu'}
               </h2>
               <p className="mt-3 max-w-2xl text-sm leading-6 text-graphite-200">
-                Här får du snabbaste vägen till det som påverkar lön, fakturering och projektkontroll mest.
+                Här får du snabbaste vägen till det som påverkar lön, tidrapportering och projektkontroll mest.
               </p>
               <div className="mt-5 flex flex-wrap gap-2">
                 <Link
@@ -140,15 +140,12 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label="Timmar denna vecka" value={formatHours(data?.summary.weeklyHours)} tone="orange" />
-        <KpiCard label="Fakturerbara timmar" value={formatHours(data?.summary.weeklyBillableHours)} tone="green" />
-        <KpiCard label="Fakturerbart värde" value={formatCurrency(data?.summary.weeklyBillableValue)} tone="green" />
         <KpiCard label="Timmar denna månad" value={formatHours(data?.summary.monthlyHours)} tone="slate" />
         {isManager && (
           <>
             <KpiCard label="Väntar attest" value={data?.summary.pendingApprovalCount || 0} tone="yellow" />
             <KpiCard label="Projekt i risk" value={data?.summary.riskProjectCount || 0} tone="red" />
             <KpiCard label="Löpande projekt" value={data?.summary.projectsWithoutBudgetCount || 0} tone="green" />
-            <KpiCard label="Fakturerbart månaden" value={formatHours(data?.summary.monthlyBillableHours)} tone="green" />
           </>
         )}
       </div>

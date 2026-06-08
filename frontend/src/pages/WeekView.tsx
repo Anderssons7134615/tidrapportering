@@ -55,11 +55,6 @@ function SwipeableEntry({
               <span className="truncate text-sm font-semibold text-slate-900">
                 {entry.project?.code ? `${entry.project.code} • ${entry.project.name}` : 'Intern tid'}
               </span>
-              {entry.billable ? (
-                <span className="h-2 w-2 rounded-full bg-green-500" title="Fakturerbar" />
-              ) : (
-                <span className="h-2 w-2 rounded-full bg-slate-400" title="Ej fakturerbar" />
-              )}
             </div>
 
             <p className="mt-1 text-xs text-slate-500">
@@ -221,14 +216,10 @@ export default function WeekView() {
           <span className="text-sm text-slate-500">Summering</span>
           {getStatusBadge()}
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4">
           <div>
             <p className="text-2xl font-bold">{data?.summary.totalHours.toFixed(1)}h</p>
             <p className="text-sm text-slate-500">Total tid</p>
-          </div>
-          <div>
-            <p className="text-2xl font-bold text-green-600">{data?.summary.billableHours.toFixed(1)}h</p>
-            <p className="text-sm text-slate-500">Fakturerbar</p>
           </div>
         </div>
 

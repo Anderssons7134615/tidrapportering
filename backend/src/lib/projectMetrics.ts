@@ -5,7 +5,6 @@ export type ProjectComputedStatus =
   | 'ONGOING'
   | 'MISSING_BUDGET'
   | 'RISK'
-  | 'READY_TO_INVOICE'
   | 'COMPLETED'
   | 'INACTIVE';
 
@@ -27,7 +26,6 @@ export type ProjectMetrics = {
   projectResult: number | null;
   marginPercent: number | null;
   budgetUsagePercent: number | null;
-  uninvoicedValue: number;
   lastActivityAt: Date | null;
   status: ProjectStatusInfo;
   warnings: string[];
@@ -38,7 +36,6 @@ const STATUS: Record<ProjectComputedStatus, ProjectStatusInfo> = {
   ONGOING: { code: 'ONGOING', label: 'Pågående', tone: 'green', priority: 20 },
   MISSING_BUDGET: { code: 'MISSING_BUDGET', label: 'Löpande jobb', tone: 'green', priority: 20 },
   RISK: { code: 'RISK', label: 'Risk', tone: 'red', priority: 60 },
-  READY_TO_INVOICE: { code: 'READY_TO_INVOICE', label: 'Klar för fakturering', tone: 'yellow', priority: 50 },
   COMPLETED: { code: 'COMPLETED', label: 'Avslutad', tone: 'gray', priority: 5 },
   INACTIVE: { code: 'INACTIVE', label: 'Inaktiv', tone: 'gray', priority: 0 },
 };
@@ -105,12 +102,6 @@ export async function getProjectMetrics(
   const projectResult = revenueBase > 0 ? revenueBase - laborCost - materialCost : null;
   const marginPercent = projectResult != null && revenueBase > 0 ? (projectResult / revenueBase) * 100 : null;
   const budgetUsagePercent = project.budgetHours ? (totalHours / project.budgetHours) * 100 : null;
-  const uninvoicedTimeValue = billableEntries
-    .filter((entry) => entry.invoiceStatus !== 'INVOICED')
-    .reduce((sum, entry) => sum + entry.hours * getRate(entry), 0);
-  const uninvoicedMaterialValue = materials
-    .filter((item) => item.invoiceStatus !== 'INVOICED')
-    .reduce((sum, item) => sum + item.quantity * (item.unitPrice ?? 0), 0);
   const lastActivityAt = entries.reduce<Date | null>((latest, entry) => {
     const candidate = entry.createdAt > entry.date ? entry.createdAt : entry.date;
     return !latest || candidate > latest ? candidate : latest;
@@ -119,8 +110,6 @@ export async function getProjectMetrics(
 
   if (budgetUsagePercent != null && budgetUsagePercent >= 100) warnings.push('Över budget');
   else if (budgetUsagePercent != null && budgetUsagePercent >= 80) warnings.push('Nära budget');
-  if (billableHours > 0 && billableValue === 0) warnings.push('Saknar timpris');
-
   return {
     totalHours,
     weekHours,
@@ -132,7 +121,6 @@ export async function getProjectMetrics(
     projectResult,
     marginPercent,
     budgetUsagePercent,
-    uninvoicedValue: uninvoicedTimeValue + uninvoicedMaterialValue,
     lastActivityAt,
     status: getProjectStatus({
       active: project.active,
@@ -141,7 +129,6 @@ export async function getProjectMetrics(
       budgetHours: project.budgetHours,
       budgetUsagePercent,
       lastActivityAt,
-      uninvoicedValue: uninvoicedTimeValue + uninvoicedMaterialValue,
       referenceDate,
       nowMinus30Days,
     }),
@@ -156,15 +143,13 @@ export function getProjectStatus(input: {
   budgetHours?: number | null;
   budgetUsagePercent: number | null;
   lastActivityAt: Date | null;
-  uninvoicedValue: number;
   referenceDate?: Date;
   nowMinus30Days?: Date;
 }): ProjectStatusInfo {
   if (!input.active) return STATUS.INACTIVE;
-  if (['COMPLETED', 'INVOICED'].includes(input.manualStatus)) return STATUS.COMPLETED;
+  if (input.manualStatus === 'COMPLETED') return STATUS.COMPLETED;
   if (input.totalHours === 0) return STATUS.PLANNED;
   if (input.budgetUsagePercent != null && input.budgetUsagePercent >= 80) return STATUS.RISK;
-  if (input.uninvoicedValue > 0) return STATUS.READY_TO_INVOICE;
   if (input.lastActivityAt && input.nowMinus30Days && input.lastActivityAt >= input.nowMinus30Days) {
     return STATUS.ONGOING;
   }

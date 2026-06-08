@@ -386,218 +386,6 @@ const reportRoutes: FastifyPluginAsync = async (fastify) => {
     };
   });
 
-  // Fakturaunderlag
-  fastify.get('/invoice', {
-    preHandler: [requireReportViewer],
-  }, async (request, reply) => {
-    const { from, to, customerId, projectId, format } = request.query as {
-      from: string;
-      to: string;
-      customerId?: string;
-      projectId?: string;
-      format?: string;
-    };
-
-    if (!from || !to) {
-      return reply.status(400).send({ error: 'from och to krävs' });
-    }
-
-    const where: any = {
-      date: {
-        gte: new Date(from),
-        lte: getDayEnd(to),
-      },
-      billable: true, // Endast fakturerbar tid
-      status: 'APPROVED', // Endast attesterad
-      projectId: { not: null }, // Inte intern tid
-      user: { companyId: request.user.companyId },
-    };
-
-    if (projectId) {
-      where.projectId = projectId;
-    } else if (customerId) {
-      where.project = { customerId };
-    }
-
-    const entries = await prisma.timeEntry.findMany({
-      where,
-      include: {
-        user: { select: { id: true, name: true } },
-        project: {
-          select: {
-            id: true,
-            name: true,
-            code: true,
-            defaultRate: true,
-            customer: { select: { id: true, name: true, defaultRate: true } },
-          },
-        },
-        activity: { select: { id: true, name: true, code: true, rateOverride: true } },
-      },
-      orderBy: [{ project: { code: 'asc' } }, { date: 'asc' }],
-    });
-
-    // Beräkna priser och belopp
-    const entriesWithAmount = entries.map((entry) => {
-      // Prisordning: Aktivitet > Projekt > Kund > 0
-      const rate =
-        entry.activity.rateOverride ||
-        entry.project?.defaultRate ||
-        entry.project?.customer?.defaultRate ||
-        0;
-
-      return {
-        ...entry,
-        rate,
-        amount: entry.hours * rate,
-      };
-    });
-
-    if (format === 'xlsx') {
-      const settings = await prisma.settings.findUnique({ where: { companyId: request.user.companyId } });
-      const vatRate = settings?.vatRate || 25;
-      const workbook = new ExcelJS.Workbook();
-      workbook.creator = 'TidApp';
-      workbook.created = new Date();
-      const worksheet = workbook.addWorksheet('Fakturaunderlag');
-      worksheet.columns = [
-        { header: 'Kund', key: 'customer', width: 28 },
-        { header: 'Projekt', key: 'project', width: 28 },
-        { header: 'Projektkod', key: 'code', width: 14 },
-        { header: 'Datum', key: 'date', width: 14 },
-        { header: 'Aktivitet', key: 'activity', width: 24 },
-        { header: 'Person', key: 'person', width: 22 },
-        { header: 'Timmar', key: 'hours', width: 12 },
-        { header: 'A-pris', key: 'rate', width: 12 },
-        { header: 'Belopp', key: 'amount', width: 14 },
-        { header: 'Kommentar', key: 'note', width: 36 },
-      ];
-      styleHeader(worksheet);
-      for (const entry of entriesWithAmount) {
-        worksheet.addRow({
-          customer: entry.project?.customer?.name || '',
-          project: entry.project?.name || '',
-          code: entry.project?.code || '',
-          date: entry.date.toISOString().split('T')[0],
-          activity: entry.activity.name,
-          person: entry.user.name,
-          hours: entry.hours,
-          rate: entry.rate,
-          amount: entry.amount,
-          note: entry.note || '',
-        });
-      }
-      const totalAmount = entriesWithAmount.reduce((sum, entry) => sum + entry.amount, 0);
-      const totalHours = entriesWithAmount.reduce((sum, entry) => sum + entry.hours, 0);
-      worksheet.addRow({ person: 'SUMMA', hours: totalHours, amount: totalAmount });
-      worksheet.addRow({ person: `Moms ${vatRate}%`, amount: totalAmount * vatRate / 100 });
-      worksheet.addRow({ person: 'ATT BETALA', amount: totalAmount * (1 + vatRate / 100) });
-      worksheet.getColumn('hours').numFmt = '0.00';
-      worksheet.getColumn('rate').numFmt = '#,##0.00';
-      worksheet.getColumn('amount').numFmt = '#,##0.00';
-      worksheet.views = [{ state: 'frozen', ySplit: 1 }];
-      worksheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: Math.max(entriesWithAmount.length + 1, 1), column: 10 } };
-
-      await prisma.auditLog.create({
-        data: {
-          userId: request.user.id,
-          action: 'EXPORT',
-          entityType: 'InvoiceReportExcel',
-          newValue: JSON.stringify({ from, to, customerId, projectId, rowCount: entries.length }),
-        },
-      });
-
-      const buffer = await workbook.xlsx.writeBuffer();
-      reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      reply.header('Content-Disposition', `attachment; filename="fakturaunderlag_${from}_${to}.xlsx"`);
-      return reply.send(Buffer.from(buffer));
-    }
-
-    // Om CSV-format
-    if (format === 'csv') {
-      const settings = await prisma.settings.findUnique({ where: { companyId: request.user.companyId } });
-      const delimiter = settings?.csvDelimiter || ';';
-      const vatRate = settings?.vatRate || 25;
-
-      // BOM för UTF-8
-      const BOM = '\uFEFF';
-      const headers = [
-        'Kund', 'Projekt', 'Projektkod', 'Datum', 'Aktivitet',
-        'Person', 'Timmar', 'A-pris', 'Belopp', 'Kommentar'
-      ];
-
-      const rows = entriesWithAmount.map((e) => [
-        e.project?.customer?.name || '',
-        e.project?.name || '',
-        e.project?.code || '',
-        e.date.toISOString().split('T')[0],
-        e.activity.name,
-        e.user.name,
-        e.hours.toString().replace('.', ','),
-        e.rate.toString().replace('.', ','),
-        e.amount.toString().replace('.', ','),
-        (e.note || '').replace(/"/g, '""'),
-      ]);
-
-      // Lägg till summeringsrad
-      const totalAmount = entriesWithAmount.reduce((sum, e) => sum + e.amount, 0);
-      const totalHours = entriesWithAmount.reduce((sum, e) => sum + e.hours, 0);
-      rows.push(['', '', '', '', '', 'SUMMA', totalHours.toString().replace('.', ','), '', totalAmount.toString().replace('.', ','), '']);
-      rows.push(['', '', '', '', '', `Moms ${vatRate}%`, '', '', (totalAmount * vatRate / 100).toString().replace('.', ','), '']);
-      rows.push(['', '', '', '', '', 'ATT BETALA', '', '', (totalAmount * (1 + vatRate / 100)).toString().replace('.', ','), '']);
-
-      const csv = BOM + headers.join(delimiter) + '\n' +
-        rows.map((row) => row.map((cell) => `"${cell}"`).join(delimiter)).join('\n');
-
-      // Audit log
-      await prisma.auditLog.create({
-        data: {
-          userId: request.user.id,
-          action: 'EXPORT',
-          entityType: 'InvoiceReport',
-          newValue: JSON.stringify({ from, to, customerId, projectId, rowCount: entries.length }),
-        },
-      });
-
-      reply.header('Content-Type', 'text/csv; charset=utf-8');
-      reply.header('Content-Disposition', `attachment; filename="fakturaunderlag_${from}_${to}.csv"`);
-      return csv;
-    }
-
-    // Gruppera per projekt
-    const byProject: Record<string, {
-      project: typeof entriesWithAmount[0]['project'];
-      entries: typeof entriesWithAmount;
-      totalHours: number;
-      totalAmount: number;
-    }> = {};
-
-    entriesWithAmount.forEach((entry) => {
-      const projectId = entry.projectId || 'INTERN';
-      if (!byProject[projectId]) {
-        byProject[projectId] = {
-          project: entry.project,
-          entries: [],
-          totalHours: 0,
-          totalAmount: 0,
-        };
-      }
-      byProject[projectId].entries.push(entry);
-      byProject[projectId].totalHours += entry.hours;
-      byProject[projectId].totalAmount += entry.amount;
-    });
-
-    return {
-      period: { from, to },
-      entries: entriesWithAmount,
-      byProject,
-      totals: {
-        totalHours: entriesWithAmount.reduce((sum, e) => sum + e.hours, 0),
-        totalAmount: entriesWithAmount.reduce((sum, e) => sum + e.amount, 0),
-      },
-    };
-  });
-
   // Projektrapport
   fastify.get('/project/:id', {
     preHandler: [fastify.authenticate],
@@ -694,7 +482,6 @@ function addBackupWorksheet(workbook: ExcelJS.Workbook, name: string, entries: a
     { header: 'Projekt', key: 'project', width: 28 },
     { header: 'Aktivitet', key: 'activity', width: 24 },
     { header: 'Timmar', key: 'hours', width: 12 },
-    { header: 'Fakturerbar', key: 'billable', width: 14 },
     { header: 'Status', key: 'status', width: 14 },
     { header: 'Notering', key: 'note', width: 36 },
   ];
@@ -714,7 +501,6 @@ function addBackupWorksheet(workbook: ExcelJS.Workbook, name: string, entries: a
       project: entry.project?.name || 'Intern',
       activity: entry.activity?.name || '',
       hours: entry.hours,
-      billable: entry.billable ? 'Ja' : 'Nej',
       status: entry.status,
       note: entry.note || '',
     });
@@ -724,7 +510,7 @@ function addBackupWorksheet(workbook: ExcelJS.Workbook, name: string, entries: a
   worksheet.views = [{ state: 'frozen', ySplit: 1 }];
   worksheet.autoFilter = {
     from: { row: 1, column: 1 },
-    to: { row: Math.max(entries.length + 1, 1), column: 9 },
+    to: { row: Math.max(entries.length + 1, 1), column: 8 },
   };
 }
 
