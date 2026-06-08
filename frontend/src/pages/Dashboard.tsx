@@ -280,13 +280,14 @@ function NextStepCard({
   return (
     <Link
       to={to}
-      className={`group relative overflow-hidden rounded-xl border p-4 shadow-soft transition hover:-translate-y-0.5 hover:shadow-premium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300 ${
+      className={`group relative overflow-hidden rounded-xl border p-4 shadow-soft ring-1 transition duration-200 hover:-translate-y-0.5 hover:shadow-premium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300 ${
         primary
-          ? 'border-primary-400/60 bg-primary-600 text-white shadow-primary-950/20'
-          : 'border-graphite-200/70 bg-white/95 text-graphite-950 ring-1 ring-white/80'
+          ? 'border-graphite-900 bg-graphite-950 text-white shadow-primary-950/20 ring-primary-300/20'
+          : 'border-white/70 bg-white/90 text-graphite-950 ring-graphite-200/45 hover:border-primary-200'
       }`}
     >
-      <div className={`mb-4 inline-flex h-10 w-10 items-center justify-center rounded-lg ${primary ? 'bg-white/15 text-white ring-1 ring-white/15' : 'bg-primary-50 text-primary-700'}`}>
+      <div className={`absolute inset-x-0 top-0 h-px ${primary ? 'bg-primary-300/70' : 'bg-gradient-to-r from-primary-400/0 via-primary-400/50 to-emerald-400/0'}`} />
+      <div className={`mb-4 inline-flex h-10 w-10 items-center justify-center rounded-lg shadow-sm ${primary ? 'bg-white text-graphite-950 ring-1 ring-white/20' : 'bg-graphite-950 text-white'}`}>
         {icon}
       </div>
       <p className={`text-[11px] font-semibold uppercase tracking-wide ${primary ? 'text-primary-100' : 'text-primary-700'}`}>{eyebrow}</p>
@@ -311,7 +312,7 @@ function DashboardPulse({
   const toneClass = tone === 'amber' ? 'text-amber-300' : tone === 'rose' ? 'text-rose-300' : 'text-sky-300';
 
   return (
-    <div className="bg-graphite-950/70 p-4 sm:p-5">
+    <div className="bg-white/[0.055] p-4 ring-1 ring-white/5 sm:p-5">
       <p className="text-xs font-semibold uppercase tracking-wide text-graphite-400">{label}</p>
       <p className={`mt-2 text-3xl font-semibold tracking-tight ${toneClass}`}>{value}</p>
     </div>

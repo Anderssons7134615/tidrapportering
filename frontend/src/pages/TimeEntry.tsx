@@ -248,7 +248,7 @@ export default function TimeEntry() {
         />
 
         {!isEditMode && (
-          <Card className="border-primary-100 bg-primary-50/60">
+            <Card className="border-primary-100 bg-white/90">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <p className="text-xs font-bold uppercase tracking-wide text-primary-700">Vald dag</p>
@@ -292,7 +292,7 @@ export default function TimeEntry() {
 
         <form onSubmit={handleSubmit} className="space-y-5 pb-16 lg:pb-0">
           {!isEditMode && (
-            <Card className="bg-graphite-950 text-white">
+            <Card className="premium-panel">
               <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
                 <div>
                   <div className="flex items-center gap-2 text-primary-300">
@@ -304,16 +304,16 @@ export default function TimeEntry() {
                 </div>
                 <div className="space-y-3">
                   <div className="grid grid-cols-3 gap-2">
-                    <button type="button" onClick={() => setDate(format(new Date(), 'yyyy-MM-dd'))} className="rounded-xl border border-white/15 bg-white/10 px-3 py-3 text-sm font-bold text-white transition hover:bg-white/15">Idag</button>
-                    <button type="button" onClick={() => setDate(yesterday)} className="rounded-xl border border-white/15 bg-white/10 px-3 py-3 text-sm font-bold text-white transition hover:bg-white/15">Igår</button>
-                    <button type="button" onClick={copyYesterday} className="rounded-xl border border-primary-300/30 bg-primary-500/20 px-3 py-3 text-sm font-bold text-primary-100 transition hover:bg-primary-500/30">
+                    <button type="button" onClick={() => setDate(format(new Date(), 'yyyy-MM-dd'))} className="rounded-xl border border-white/15 bg-white/10 px-3 py-3 text-sm font-bold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-white/15">Idag</button>
+                    <button type="button" onClick={() => setDate(yesterday)} className="rounded-xl border border-white/15 bg-white/10 px-3 py-3 text-sm font-bold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-white/15">Igår</button>
+                    <button type="button" onClick={copyYesterday} className="rounded-xl border border-primary-300/30 bg-white px-3 py-3 text-sm font-bold text-graphite-950 shadow-md transition hover:-translate-y-0.5 hover:bg-primary-50">
                       <Copy className="mx-auto mb-1 h-4 w-4" />
                       Kopiera
                     </button>
                   </div>
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                     {[7.5, 8, 4, 2].map((preset) => (
-                      <button key={preset} type="button" onClick={() => setHours(String(preset).replace('.', ','))} className="rounded-xl border border-white/15 bg-white/10 px-3 py-3 text-base font-black text-white transition hover:bg-white/15">{String(preset).replace('.', ',')} h</button>
+                      <button key={preset} type="button" onClick={() => setHours(String(preset).replace('.', ','))} className="rounded-xl border border-white/15 bg-white/10 px-3 py-3 text-base font-black text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-white/15">{String(preset).replace('.', ',')} h</button>
                     ))}
                   </div>
                   {!!recentProjects?.length && (
@@ -324,7 +324,7 @@ export default function TimeEntry() {
                           type="button"
                           onClick={() => setProjectId(project.id)}
                           className={`rounded-xl border px-3 py-3 text-left transition ${
-                            projectId === project.id ? 'border-primary-300 bg-primary-500/25 text-white' : 'border-white/15 bg-white/10 text-graphite-100 hover:bg-white/15'
+                            projectId === project.id ? 'border-primary-300 bg-white text-graphite-950 shadow-md' : 'border-white/15 bg-white/10 text-graphite-100 hover:-translate-y-0.5 hover:bg-white/15'
                           }`}
                         >
                           <span className="block text-sm font-black">{project.code}</span>
@@ -397,7 +397,7 @@ export default function TimeEntry() {
               </div>
               <div className="mt-3 grid grid-cols-4 gap-2">
                 {[2, 4, 6, 8].map((preset) => (
-                  <button key={preset} type="button" onClick={() => setHours(String(preset))} className="rounded-lg border border-graphite-200 bg-graphite-50 px-3 py-2 text-sm font-semibold text-graphite-800 transition hover:border-primary-200 hover:bg-primary-50 hover:text-primary-800">{preset} h</button>
+                  <button key={preset} type="button" onClick={() => setHours(String(preset))} className="rounded-lg border border-graphite-200 bg-white px-3 py-2 text-sm font-semibold text-graphite-800 shadow-sm transition hover:-translate-y-0.5 hover:border-primary-200 hover:bg-primary-50 hover:text-primary-800">{preset} h</button>
                 ))}
               </div>
             </FormField>
