@@ -30,8 +30,8 @@
     @apply bg-graphite-50 text-graphite-900 antialiased;
     font-feature-settings: "cv01", "ss03";
     background:
-      radial-gradient(circle at top left, rgba(94, 106, 210, 0.12), transparent 24rem),
-      linear-gradient(180deg, #fbfcff 0%, #f1f3f8 52%, #f7f7f5 100%);
+      linear-gradient(135deg, rgba(94, 106, 210, 0.08) 0%, rgba(255, 255, 255, 0) 34%),
+      linear-gradient(180deg, #fbfcff 0%, #eef2f6 48%, #f7f7f5 100%);
   }
 
   input,
@@ -43,15 +43,15 @@
 
 @layer components {
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-md px-3.5 py-2.5 text-sm font-semibold transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex items-center justify-center gap-2 rounded-md px-3.5 py-2.5 text-sm font-semibold transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .btn-primary {
-    @apply btn bg-primary-600 text-white shadow-sm shadow-primary-900/15 hover:-translate-y-0.5 hover:bg-primary-500 hover:shadow-md hover:shadow-primary-900/20 focus:ring-primary-300;
+    @apply btn bg-graphite-950 text-white shadow-md shadow-graphite-950/15 hover:-translate-y-0.5 hover:bg-primary-600 hover:shadow-lg hover:shadow-primary-900/20 focus:ring-primary-300;
   }
 
   .btn-secondary {
-    @apply btn border border-graphite-200 bg-white/90 text-graphite-800 shadow-sm hover:-translate-y-0.5 hover:border-primary-200 hover:bg-white hover:text-primary-800 focus:ring-primary-200;
+    @apply btn border border-graphite-200/80 bg-white/90 text-graphite-800 shadow-sm hover:-translate-y-0.5 hover:border-primary-300 hover:bg-white hover:text-primary-800 hover:shadow-md focus:ring-primary-200;
   }
 
   .btn-danger {
@@ -63,7 +63,7 @@
   }
 
   .input {
-    @apply w-full rounded-md border border-graphite-200 bg-white px-3.5 py-2.5 text-sm text-graphite-950 placeholder:text-graphite-400 shadow-sm transition focus:border-primary-400 focus:ring-2 focus:ring-primary-100;
+    @apply w-full rounded-md border border-graphite-200 bg-white/95 px-3.5 py-2.5 text-sm text-graphite-950 placeholder:text-graphite-400 shadow-sm transition duration-200 hover:border-graphite-300 focus:border-primary-400 focus:bg-white focus:ring-2 focus:ring-primary-100;
   }
 
   .label {
@@ -71,11 +71,11 @@
   }
 
   .card {
-    @apply rounded-xl border border-graphite-200/70 bg-white/95 p-4 shadow-soft ring-1 ring-white/80 backdrop-blur sm:p-5;
+    @apply rounded-xl border border-white/70 bg-white/90 p-4 shadow-soft ring-1 ring-graphite-200/45 backdrop-blur sm:p-5;
   }
 
   .hero-card {
-    @apply overflow-hidden rounded-xl border border-graphite-200/70 bg-white p-5 shadow-soft sm:p-6;
+    @apply overflow-hidden rounded-xl border border-white/70 bg-white/95 p-5 shadow-soft ring-1 ring-graphite-200/45 sm:p-6;
   }
 
   .page-title {
@@ -119,7 +119,7 @@
   }
 
   .stat-card {
-    @apply rounded-xl border border-graphite-200/80 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-primary-200 hover:shadow-md;
+    @apply rounded-xl border border-white/70 bg-white/95 p-4 shadow-sm ring-1 ring-graphite-200/45 transition hover:-translate-y-0.5 hover:border-primary-200 hover:shadow-md;
   }
 
   .chip {
@@ -127,11 +127,11 @@
   }
 
   .table-wrap {
-    @apply overflow-hidden rounded-xl border border-graphite-200 bg-white shadow-sm;
+    @apply overflow-hidden rounded-xl border border-graphite-200 bg-white shadow-soft;
   }
 
   .table-head {
-    @apply bg-graphite-900 text-left text-[11px] uppercase tracking-wide text-white;
+    @apply bg-graphite-950 text-left text-[11px] uppercase tracking-wide text-white;
   }
 
   .table-wrap tbody tr {
@@ -139,10 +139,25 @@
   }
 
   .premium-panel {
-    @apply rounded-xl border border-white/10 bg-graphite-950 text-white shadow-premium;
+    @apply rounded-xl border border-white/10 bg-graphite-950 text-white shadow-premium ring-1 ring-primary-300/15;
     background-image:
-      radial-gradient(circle at top left, rgba(94, 106, 210, 0.34), transparent 21rem),
-      linear-gradient(135deg, #08090a 0%, #0f1011 55%, #191a1b 100%);
+      linear-gradient(125deg, rgba(94, 106, 210, 0.28) 0%, rgba(94, 106, 210, 0.04) 38%, transparent 39%),
+      linear-gradient(135deg, #07090a 0%, #101312 55%, #18201e 100%);
+  }
+
+  .dashboard-command {
+    @apply overflow-hidden rounded-xl border border-white/10 bg-graphite-950 text-white shadow-premium ring-1 ring-primary-300/15;
+    background-image:
+      linear-gradient(120deg, rgba(94, 106, 210, 0.34) 0%, rgba(94, 106, 210, 0.12) 34%, transparent 35%),
+      linear-gradient(150deg, #07090a 0%, #101312 48%, #18201e 100%);
+  }
+
+  .dashboard-primary-action {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-graphite-950 shadow-lg shadow-black/20 transition hover:-translate-y-0.5 hover:bg-primary-50;
+  }
+
+  .dashboard-secondary-action {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-white/15 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-white/15;
   }
 
   .accent-line {

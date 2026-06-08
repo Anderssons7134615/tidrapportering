@@ -76,7 +76,7 @@ export default function Layout() {
 
   return (
     <div className="min-h-screen text-graphite-900">
-      <header className="safe-top sticky top-0 z-50 border-b border-graphite-900/10 bg-white/88 shadow-sm backdrop-blur-xl lg:hidden">
+      <header className="safe-top sticky top-0 z-50 border-b border-white/70 bg-white/90 shadow-sm ring-1 ring-graphite-200/40 backdrop-blur-xl lg:hidden">
         <div className="mx-auto flex h-16 max-w-[90rem] items-center justify-between px-4">
           <div className="flex items-center gap-3">
             <button
@@ -86,7 +86,7 @@ export default function Layout() {
             >
               {menuOpen ? <X size={20} /> : <Menu size={20} />}
             </button>
-            <BrandMark />
+            <BrandMark compact />
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-base font-semibold text-graphite-950 sm:text-lg">Anderssons TidApp</h1>
@@ -101,7 +101,7 @@ export default function Layout() {
       </header>
 
       <div className="mx-auto flex w-full max-w-[96rem]">
-        <aside className="sticky top-0 hidden h-screen w-72 shrink-0 border-r border-white/10 bg-[#08090a] px-4 py-5 text-white shadow-premium lg:block">
+        <aside className="sticky top-0 hidden h-screen w-72 shrink-0 border-r border-white/10 bg-[#08090a] px-4 py-5 text-white shadow-premium ring-1 ring-white/5 lg:block">
           <div className="mb-5 flex items-center gap-3 px-1">
             <BrandMark />
             <div className="min-w-0">
@@ -110,7 +110,7 @@ export default function Layout() {
             </div>
           </div>
 
-          <div className="mb-4 rounded-xl border border-white/10 bg-white/[0.045] p-4 shadow-sm">
+          <div className="mb-4 rounded-xl border border-white/10 bg-white/[0.06] p-4 shadow-sm ring-1 ring-primary-300/10">
             <div className="flex items-center gap-2 text-primary-300">
               <ShieldCheck className="h-4 w-4" />
               <p className="text-xs font-semibold uppercase tracking-wide">Företag</p>
@@ -125,14 +125,15 @@ export default function Layout() {
                 key={item.to}
                 to={item.to}
                 className={({ isActive }) =>
-                  `group flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-semibold transition ${
+                  `group relative flex items-center gap-3 overflow-hidden rounded-md px-3 py-2.5 text-sm font-semibold transition duration-200 ${
                     isActive
-                      ? 'bg-primary-500 text-white shadow-lg shadow-primary-950/25'
+                      ? 'active bg-primary-500 text-white shadow-lg shadow-primary-950/35 ring-1 ring-primary-300/35'
                       : 'text-graphite-300 hover:bg-white/[0.08] hover:text-white'
                   }`
                 }
               >
-                <span className="flex h-8 w-8 items-center justify-center rounded-md bg-white/[0.08] transition group-hover:bg-white/[0.12]">
+                <span className="absolute inset-y-2 left-0 w-1 rounded-r-full bg-white opacity-0 transition group-[.active]:opacity-100" />
+                <span className="flex h-8 w-8 items-center justify-center rounded-md bg-white/[0.08] transition group-hover:bg-white/[0.12] group-[.active]:bg-white/18">
                   <item.icon size={17} />
                 </span>
                 <span>{item.label}</span>
@@ -155,7 +156,7 @@ export default function Layout() {
         >
           <div className="mb-4 flex items-center justify-between border-b border-white/10 pb-3">
             <div className="flex items-center gap-3">
-              <BrandMark />
+              <BrandMark compact />
               <div>
                 <p className="font-semibold text-white">TidApp</p>
                 <p className="text-xs text-graphite-300">{user?.companyName || 'Navigation'}</p>
@@ -193,14 +194,14 @@ export default function Layout() {
           </button>
         </aside>
 
-        <main className="w-full flex-1 px-4 pb-32 pt-4 sm:px-6 sm:pt-6 lg:px-7 lg:pb-10 lg:pt-6">
+        <main className="w-full flex-1 px-4 pb-32 pt-4 sm:px-6 sm:pt-6 lg:px-8 lg:pb-10 lg:pt-7">
           <div className="mx-auto w-full max-w-7xl">
             <Outlet />
           </div>
         </main>
       </div>
 
-      <nav className="safe-bottom fixed bottom-0 left-0 right-0 z-40 border-t border-white/10 bg-[#08090a]/96 text-white shadow-premium backdrop-blur-xl lg:hidden">
+      <nav className="safe-bottom fixed bottom-0 left-0 right-0 z-40 border-t border-white/10 bg-[#08090a]/96 text-white shadow-premium ring-1 ring-white/10 backdrop-blur-xl lg:hidden">
         <div className="mx-auto grid max-w-md grid-cols-5 items-end gap-1 px-2 pb-2 pt-2">
           {filteredBottomTabs.slice(0, 5).map((item) => (
             <NavLink
@@ -228,10 +229,14 @@ export default function Layout() {
   );
 }
 
-function BrandMark() {
+function BrandMark({ compact = false }: { compact?: boolean }) {
   return (
-    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-500 text-sm font-black tracking-tight text-white shadow-lg shadow-primary-950/25 ring-1 ring-white/15">
-      AI
+    <div
+      className={`flex h-11 shrink-0 items-center justify-center rounded-xl bg-white px-2.5 shadow-lg shadow-primary-950/35 ring-1 ring-primary-300/35 ${
+        compact ? 'w-24' : 'w-32'
+      }`}
+    >
+      <img src="/anderssons-logo.svg" alt="Anderssons Isolering" className="h-8 w-full object-contain" />
     </div>
   );
 }

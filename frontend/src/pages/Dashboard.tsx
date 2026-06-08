@@ -5,7 +5,7 @@ import { AlertTriangle, ArrowRight, CalendarDays, CheckCircle2, Clock, FileText,
 import { dashboardApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
 import { DashboardSkeleton } from '../components/ui/Skeleton';
-import { AppShell, Card, EmptyState, KpiCard, PageHeader, StatusBadge } from '../components/ui/design';
+import { Card, EmptyState, StatusBadge } from '../components/ui/design';
 import { formatDate, formatHours } from '../utils/format';
 
 export default function Dashboard() {
@@ -22,48 +22,111 @@ export default function Dashboard() {
   const visibleActionItems = (data?.actionItems || []).filter((item) => item.id !== 'projects-missing-budget');
   const missingWeekdays = getMissingReportedWeekdays(data?.dailyHours, data?.period?.weekStart);
   const hasMissingWeekdays = missingWeekdays.length > 0;
+  const pendingCount = data?.summary.pendingApprovalCount || 0;
+  const riskCount = data?.summary.riskProjectCount || 0;
+  const runningCount = data?.summary.projectsWithoutBudgetCount || 0;
+  const primaryTarget = pendingCount ? '/approval' : runningCount || riskCount ? '/projects' : isManager ? '/team-week' : '/time-entry';
+  const primaryLabel = pendingCount ? 'Öppna attest' : runningCount || riskCount ? 'Granska projekt' : isManager ? 'Öppna teamvecka' : 'Rapportera tid';
 
   return (
-    <AppShell>
-      <PageHeader
-        title={isManager ? 'Översikt för chef' : 'Min översikt'}
-        description={
-          isManager
-            ? 'Följ timmar, attestläge och projektstatus på ett ställe.'
-            : 'Rapportera tid snabbt och håll koll på veckan.'
-        }
-        action={
-          <Link to="/time-entry" className="btn-primary">
-            <Clock className="h-4 w-4" />
-            Rapportera tid
-          </Link>
-        }
-      />
+    <div className="space-y-5 lg:space-y-6">
+      <section className="dashboard-command">
+        <div className="grid gap-0 xl:grid-cols-[1.3fr_0.7fr]">
+          <div className="p-5 sm:p-6 lg:p-7">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="inline-flex rounded-xl bg-white px-4 py-3 shadow-lg shadow-black/20 ring-1 ring-primary-300/20">
+                <img src="/anderssons-logo.svg" alt="Anderssons Isolering" className="h-10 w-64 max-w-full object-contain" />
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-primary-100">
+                  <Sparkles className="h-3.5 w-3.5 text-primary-200" />
+                  Driftläge
+                </div>
+                <span className="rounded-full border border-emerald-300/20 bg-emerald-400/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-100">
+                  {isManager ? 'Chefsvy' : 'Min vy'}
+                </span>
+              </div>
+            </div>
 
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-        <NextStepCard
-          to="/time-entry"
-          icon={<Clock className="h-5 w-5" />}
-          eyebrow="Snabbast nu"
-          title="Rapportera dagens tid"
-          description="Stor knapp, färre klick och snabbval för timmar/projekt."
-          primary
-        />
-        <NextStepCard
-          to={isManager ? '/approval' : '/week'}
-          icon={isManager ? <CheckCircle2 className="h-5 w-5" /> : <CalendarDays className="h-5 w-5" />}
-          eyebrow={isManager ? 'Attest' : 'Vecka'}
-          title={isManager ? `${data?.summary.pendingApprovalCount || 0} veckor att hantera` : 'Öppna min vecka'}
-          description={isManager ? 'Granska och attestera veckor innan rapporterna tas ut.' : 'Se om veckan är komplett innan du skickar in.'}
-        />
-        <NextStepCard
-          to={isManager ? '/reports' : '/week'}
-          icon={isManager ? <FileText className="h-5 w-5" /> : <CalendarDays className="h-5 w-5" />}
-          eyebrow={isManager ? 'Rapporter' : 'Uppföljning'}
-          title={isManager ? 'Ta fram rapport' : 'Kolla veckoläge'}
-          description={isManager ? 'Ta fram löne- och kontrollunderlag för timmar.' : 'Se direkt vilka dagar som saknar rapporterad tid.'}
-        />
-      </div>
+            <h1 className="mt-5 max-w-4xl text-3xl font-semibold tracking-tight text-white sm:text-5xl">
+              {isManager
+                ? pendingCount
+                  ? `${pendingCount} ${pendingCount === 1 ? 'vecka väntar' : 'veckor väntar'} på attest`
+                  : riskCount
+                    ? `${riskCount} projekt behöver granskas`
+                    : runningCount
+                      ? `${runningCount} löpande projekt är aktiva`
+                      : 'Allt ser stabilt ut'
+                : hasMissingWeekdays
+                  ? 'Veckan behöver kompletteras'
+                  : 'Veckan är under kontroll'}
+            </h1>
+
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-graphite-200">
+              {isManager
+                ? 'Fokusera på attest, timmar och projektläge. Det som kräver åtgärd ligger först.'
+                : 'Rapportera snabbare, kontrollera veckan och gå vidare utan extra steg.'}
+            </p>
+
+            <div className="mt-6 flex flex-wrap gap-2">
+              <Link to={primaryTarget} className="dashboard-primary-action">
+                {primaryLabel}
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+              <Link to="/time-entry" className="dashboard-secondary-action">
+                <Clock className="h-4 w-4" />
+                Rapportera tid
+              </Link>
+              {isManager && (
+                <Link to="/team-week" className="dashboard-secondary-action">
+                  <CalendarDays className="h-4 w-4" />
+                  Teamvecka
+                </Link>
+              )}
+            </div>
+
+            <div className="mt-7 grid gap-3 sm:grid-cols-3">
+              <HeroMetric label="Vecka" value={formatHours(data?.summary.weeklyHours)} tone="blue" />
+              <HeroMetric label="Månad" value={formatHours(data?.summary.monthlyHours)} tone="green" />
+              <HeroMetric label={isManager ? 'Löpande' : 'Saknas'} value={isManager ? runningCount : missingWeekdays.length} tone={isManager ? 'sky' : hasMissingWeekdays ? 'amber' : 'green'} />
+            </div>
+          </div>
+
+          <div className="border-t border-white/10 bg-white/[0.055] p-5 sm:p-6 xl:border-l xl:border-t-0">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-graphite-300">Nästa åtgärd</p>
+                <p className="mt-1 text-lg font-semibold text-white">{primaryLabel}</p>
+              </div>
+              <StatusBadge label={pendingCount || riskCount ? 'Aktivt' : 'OK'} tone={pendingCount || riskCount ? 'yellow' : 'green'} />
+            </div>
+
+            <div className="mt-5 grid gap-3">
+              <CommandCard
+                to={isManager ? '/approval' : '/week'}
+                icon={isManager ? <CheckCircle2 className="h-4 w-4" /> : <CalendarDays className="h-4 w-4" />}
+                label={isManager ? 'Attest' : 'Vecka'}
+                value={isManager ? `${pendingCount} väntar` : hasMissingWeekdays ? `${missingWeekdays.length} dagar saknas` : 'Komplett'}
+                tone={pendingCount || hasMissingWeekdays ? 'amber' : 'green'}
+              />
+              <CommandCard
+                to={isManager ? '/projects' : '/time-entry'}
+                icon={<TrendingUp className="h-4 w-4" />}
+                label={isManager ? 'Projektläge' : 'Rapportering'}
+                value={isManager ? `${riskCount} risk / ${runningCount} löpande` : formatHours(data?.summary.weeklyHours)}
+                tone={riskCount ? 'rose' : 'sky'}
+              />
+              <CommandCard
+                to="/reports"
+                icon={<FileText className="h-4 w-4" />}
+                label="Rapporter"
+                value="Löne- och kontrollunderlag"
+                tone="slate"
+              />
+            </div>
+          </div>
+        </div>
+      </section>
 
       {!isManager && (
         <Card className="accent-line">
@@ -81,74 +144,10 @@ export default function Dashboard() {
               </div>
             </div>
           ) : (
-            <EmptyState title="Veckan ser komplett ut" description="Bra jobbat — alla vardagar hittills har rapporterad tid." />
+            <EmptyState title="Veckan ser komplett ut" description="Alla vardagar hittills har rapporterad tid." />
           )}
         </Card>
       )}
-
-      {isManager && (
-        <div className="premium-panel overflow-hidden">
-          <div className="grid gap-0 lg:grid-cols-[1.2fr_0.8fr]">
-            <div className="p-5 sm:p-6">
-              <div className="inline-flex items-center gap-2 rounded-full border border-primary-300/25 bg-primary-500/15 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-primary-100">
-                <Sparkles className="h-3.5 w-3.5 text-primary-300" />
-                Dagens koll
-              </div>
-              <h2 className="mt-4 max-w-3xl text-2xl font-semibold tracking-tight sm:text-4xl">
-                {data?.summary.pendingApprovalCount
-                  ? `${data.summary.pendingApprovalCount} veckor väntar på attest`
-                  : data?.summary.projectsWithoutBudgetCount
-                    ? `${data.summary.projectsWithoutBudgetCount} löpande projekt`
-                    : data?.summary.riskProjectCount
-                      ? `${data.summary.riskProjectCount} projekt behöver granskas`
-                      : 'Allt ser lugnt ut just nu'}
-              </h2>
-              <p className="mt-3 max-w-2xl text-sm leading-6 text-graphite-200">
-                Här får du snabbaste vägen till det som påverkar lön, tidrapportering och projektkontroll mest.
-              </p>
-              <div className="mt-5 flex flex-wrap gap-2">
-                <Link
-                  to={
-                    data?.summary.pendingApprovalCount
-                      ? '/approval'
-                      : data?.summary.projectsWithoutBudgetCount || data?.summary.riskProjectCount
-                        ? '/projects'
-                        : '/team-week'
-                  }
-                  className="inline-flex items-center gap-2 rounded-lg bg-primary-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-primary-950/25 transition hover:-translate-y-0.5 hover:bg-primary-400"
-                >
-                  Öppna åtgärder
-                  <ArrowRight className="h-4 w-4" />
-                </Link>
-                <Link
-                  to="/team-week"
-                  className="inline-flex items-center gap-2 rounded-lg border border-white/15 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:bg-white/15"
-                >
-                  Teamvecka
-                </Link>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-px bg-white/10 lg:grid-cols-1">
-              <DashboardPulse label="Ej attesterade" value={data?.summary.pendingApprovalCount || 0} tone="amber" />
-              <DashboardPulse label="Projekt i risk" value={data?.summary.riskProjectCount || 0} tone="rose" />
-              <DashboardPulse label="Löpande jobb" value={data?.summary.projectsWithoutBudgetCount || 0} tone="sky" />
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label="Timmar denna vecka" value={formatHours(data?.summary.weeklyHours)} tone="orange" />
-        <KpiCard label="Timmar denna månad" value={formatHours(data?.summary.monthlyHours)} tone="slate" />
-        {isManager && (
-          <>
-            <KpiCard label="Väntar attest" value={data?.summary.pendingApprovalCount || 0} tone="yellow" />
-            <KpiCard label="Projekt i risk" value={data?.summary.riskProjectCount || 0} tone="red" />
-            <KpiCard label="Löpande projekt" value={data?.summary.projectsWithoutBudgetCount || 0} tone="green" />
-          </>
-        )}
-      </div>
 
       {isManager && (
         <div className="grid grid-cols-1 gap-5 xl:grid-cols-[1fr_1fr]">
@@ -162,7 +161,7 @@ export default function Dashboard() {
             ) : (
               <div className="space-y-2">
                 {visibleActionItems.map((item) => (
-                  <Link key={item.id} to={item.to} className="flex items-center justify-between rounded-lg border border-graphite-200 bg-graphite-50 px-4 py-3 transition hover:-translate-y-0.5 hover:border-primary-200 hover:bg-white hover:shadow-md">
+                  <Link key={item.id} to={item.to} className="group flex items-center justify-between rounded-lg border border-graphite-200 bg-white px-4 py-3 shadow-sm transition hover:-translate-y-0.5 hover:border-primary-200 hover:shadow-md">
                     <div>
                       <p className="font-semibold text-graphite-950">{item.title}</p>
                       <p className="text-sm text-graphite-500">{item.description}</p>
@@ -258,63 +257,63 @@ export default function Dashboard() {
           )}
         </Card>
       </div>
-    </AppShell>
+    </div>
   );
 }
 
-function NextStepCard({
+function HeroMetric({ label, value, tone }: { label: string; value: ReactNode; tone: 'blue' | 'green' | 'sky' | 'amber' }) {
+  const toneClass =
+    tone === 'blue'
+      ? 'text-sky-200'
+      : tone === 'green'
+        ? 'text-emerald-200'
+        : tone === 'amber'
+          ? 'text-amber-200'
+          : 'text-cyan-200';
+
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/[0.075] p-4 shadow-sm ring-1 ring-white/5">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-graphite-300">{label}</p>
+      <p className={`mt-1 text-2xl font-semibold tracking-tight ${toneClass}`}>{value}</p>
+    </div>
+  );
+}
+
+function CommandCard({
   to,
   icon,
-  eyebrow,
-  title,
-  description,
-  primary = false,
-}: {
-  to: string;
-  icon: ReactNode;
-  eyebrow: string;
-  title: string;
-  description: string;
-  primary?: boolean;
-}) {
-  return (
-    <Link
-      to={to}
-      className={`group relative overflow-hidden rounded-xl border p-4 shadow-soft transition hover:-translate-y-0.5 hover:shadow-premium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300 ${
-        primary
-          ? 'border-primary-400/60 bg-primary-600 text-white shadow-primary-950/20'
-          : 'border-graphite-200/70 bg-white/95 text-graphite-950 ring-1 ring-white/80'
-      }`}
-    >
-      <div className={`mb-4 inline-flex h-10 w-10 items-center justify-center rounded-lg ${primary ? 'bg-white/15 text-white ring-1 ring-white/15' : 'bg-primary-50 text-primary-700'}`}>
-        {icon}
-      </div>
-      <p className={`text-[11px] font-semibold uppercase tracking-wide ${primary ? 'text-primary-100' : 'text-primary-700'}`}>{eyebrow}</p>
-      <div className="mt-1 flex items-start justify-between gap-3">
-        <h2 className="text-lg font-semibold tracking-tight sm:text-xl">{title}</h2>
-        <ArrowRight className={`mt-1 h-5 w-5 shrink-0 transition group-hover:translate-x-0.5 ${primary ? 'text-primary-100' : 'text-primary-600'}`} />
-      </div>
-      <p className={`mt-2 text-sm leading-6 ${primary ? 'text-primary-50' : 'text-graphite-600'}`}>{description}</p>
-    </Link>
-  );
-}
-
-function DashboardPulse({
   label,
   value,
   tone,
 }: {
+  to: string;
+  icon: ReactNode;
   label: string;
-  value: number;
-  tone: 'amber' | 'rose' | 'sky';
+  value: ReactNode;
+  tone: 'amber' | 'green' | 'rose' | 'sky' | 'slate';
 }) {
-  const toneClass = tone === 'amber' ? 'text-amber-300' : tone === 'rose' ? 'text-rose-300' : 'text-sky-300';
+  const toneClass =
+    tone === 'amber'
+      ? 'bg-amber-300 text-amber-950'
+      : tone === 'green'
+        ? 'bg-emerald-300 text-emerald-950'
+        : tone === 'rose'
+          ? 'bg-rose-300 text-rose-950'
+          : tone === 'sky'
+            ? 'bg-sky-300 text-sky-950'
+            : 'bg-white text-graphite-950';
 
   return (
-    <div className="bg-graphite-950/70 p-4 sm:p-5">
-      <p className="text-xs font-semibold uppercase tracking-wide text-graphite-400">{label}</p>
-      <p className={`mt-2 text-3xl font-semibold tracking-tight ${toneClass}`}>{value}</p>
-    </div>
+    <Link to={to} className="group grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-xl border border-white/10 bg-white/[0.075] p-3 text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-white/[0.11]">
+      <span className={`flex h-9 w-9 items-center justify-center rounded-lg ${toneClass}`}>
+        {icon}
+      </span>
+      <span className="min-w-0">
+        <span className="block text-xs font-semibold uppercase tracking-wide text-graphite-300">{label}</span>
+        <span className="block truncate text-sm font-semibold text-white">{value}</span>
+      </span>
+      <ArrowRight className="h-4 w-4 text-graphite-300 transition group-hover:translate-x-0.5 group-hover:text-white" />
+    </Link>
   );
 }
 
