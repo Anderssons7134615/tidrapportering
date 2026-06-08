@@ -31,7 +31,7 @@ export interface Project {
   name: string;
   code: string;
   site?: string;
-  status: 'PLANNED' | 'ONGOING' | 'COMPLETED' | 'INVOICED';
+  status: 'PLANNED' | 'ONGOING' | 'COMPLETED';
   budgetHours?: number;
   fixedPrice?: number | null;
   billingModel: 'HOURLY' | 'FIXED';
@@ -49,11 +49,9 @@ export type ProjectComputedStatus =
   | 'ONGOING'
   | 'MISSING_BUDGET'
   | 'RISK'
-  | 'READY_TO_INVOICE'
   | 'COMPLETED'
   | 'INACTIVE';
 
-export type InvoiceStatus = 'UNINVOICED' | 'INVOICED';
 export type MaterialCategory = 'Rörskål' | 'Lamellmatta' | 'Plåt' | 'Tejp' | 'Brandtätning' | 'Skruv/nit' | 'Övrigt';
 
 export interface ProjectStatusInfo {
@@ -74,7 +72,6 @@ export interface ProjectMetrics {
   projectResult: number | null;
   marginPercent: number | null;
   budgetUsagePercent: number | null;
-  uninvoicedValue: number;
   lastActivityAt: string | null;
   status: ProjectStatusInfo;
   warnings: string[];
@@ -111,9 +108,6 @@ export interface ProjectMaterial {
   quantity: number;
   date: string;
   note?: string | null;
-  invoiceStatus: InvoiceStatus;
-  invoicedAt?: string | null;
-  invoiceReference?: string | null;
   createdAt: string;
   updatedAt: string;
   lineTotal?: number | null;
@@ -178,9 +172,6 @@ export interface TimeEntry {
   approverId?: string;
   approver?: { id: string; name: string };
   rejectNote?: string;
-  invoiceStatus?: InvoiceStatus;
-  invoicedAt?: string | null;
-  invoiceReference?: string | null;
   gpsLat?: number;
   gpsLng?: number;
   attachments?: Attachment[];
@@ -272,7 +263,6 @@ export interface DashboardActionItem {
 export type DashboardMetric =
   | 'weekly-hours'
   | 'monthly-hours'
-  | 'billable-hours'
   | 'pending-approval';
 
 export interface DashboardTimeEntryDrilldown {

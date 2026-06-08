@@ -84,7 +84,6 @@ export default function Approval() {
   const pendingLocks = weekLocks?.filter((lock) => lock.status === 'SUBMITTED') || [];
   const processedLocks = weekLocks?.filter((lock) => lock.status !== 'SUBMITTED') || [];
   const pendingHours = pendingLocks.reduce((sum, lock) => sum + (lock.totalHours || 0), 0);
-  const pendingBillable = pendingLocks.reduce((sum, lock) => sum + (lock.billableHours || 0), 0);
 
   const rows = useMemo(() => {
     return pendingLocks.map((lock) => {
@@ -122,7 +121,6 @@ export default function Approval() {
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <KpiCard label="Väntande veckor" value={pendingLocks.length} tone={pendingLocks.length ? 'yellow' : 'green'} />
         <KpiCard label="Timmar att attestera" value={formatHours(pendingHours)} tone="blue" />
-        <KpiCard label="Fakturerbara timmar" value={formatHours(pendingBillable)} tone="green" />
       </div>
 
       <Card>
@@ -291,7 +289,6 @@ function renderWeekDetails({
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-semibold text-slate-900">{format(new Date(entry.date), 'EEE d/M', { locale: sv })}</span>
-                  <StatusBadge label={entry.billable ? 'Fakturerbar' : 'Ej fakturerbar'} tone={entry.billable ? 'green' : 'gray'} />
                   {!entry.projectId && <StatusBadge label="Saknar projekt" tone="yellow" />}
                   {!entry.activityId && <StatusBadge label="Saknar aktivitet" tone="red" />}
                 </div>

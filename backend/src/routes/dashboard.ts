@@ -4,7 +4,7 @@ import { prisma } from '../index.js';
 import { getCompanyProjectMetrics, getRate } from '../lib/projectMetrics.js';
 
 const drilldownQuerySchema = z.object({
-  metric: z.enum(['weekly-hours', 'monthly-hours', 'billable-hours', 'pending-approval']),
+  metric: z.enum(['weekly-hours', 'monthly-hours', 'pending-approval']),
   date: z.string().optional(),
 });
 
@@ -102,7 +102,7 @@ const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
           ? [{
               id: 'risk-projects',
               title: `${riskProjects.length} projekt är i risk`,
-              description: 'Kontrollera budget, timmar och fakturering.',
+              description: 'Kontrollera budget och timmar.',
               tone: 'red',
               to: '/projects?risk=true',
             }]
@@ -212,10 +212,9 @@ const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
             ? {
                 date: { gte: period.monthStart, lte: period.monthEnd },
               }
-            : {
-                date: { gte: period.monthStart, lte: period.monthEnd },
-                billable: true,
-              };
+          : {
+              date: { gte: period.monthStart, lte: period.monthEnd },
+            };
 
       const entries = await prisma.timeEntry.findMany({
         where: {
@@ -331,8 +330,6 @@ function getMetricTitle(metric: z.infer<typeof drilldownQuerySchema>['metric']) 
       return 'Denna vecka';
     case 'monthly-hours':
       return 'Denna månad';
-    case 'billable-hours':
-      return 'Fakturerbara timmar';
     default:
       return 'Översikt';
   }
@@ -348,10 +345,6 @@ function getMetricDescription(metric: z.infer<typeof drilldownQuerySchema>['metr
       return isAdminOrSupervisor
         ? 'Alla rapporterade timmar för företaget den här månaden.'
         : 'Dina rapporterade timmar den här månaden.';
-    case 'billable-hours':
-      return isAdminOrSupervisor
-        ? 'Fakturerbara timmar för företaget den här månaden.'
-        : 'Dina fakturerbara timmar den här månaden.';
     default:
       return '';
   }

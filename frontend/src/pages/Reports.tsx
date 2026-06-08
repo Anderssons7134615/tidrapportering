@@ -1,15 +1,15 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { addMonths, endOfMonth, format, startOfMonth, subMonths } from 'date-fns';
-import { Download, FileSpreadsheet, ReceiptText, Sparkles, Users } from 'lucide-react';
+import { Download, FileSpreadsheet, Sparkles, Users } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { customersApi, projectsApi, reportsApi, usersApi } from '../services/api';
+import { reportsApi, usersApi } from '../services/api';
 import { ReportsSkeleton } from '../components/ui/Skeleton';
 import { AppShell, Button, Card, DataTable, EmptyState, FilterBar, KpiCard, PageHeader, Tabs } from '../components/ui/design';
-import { formatCurrency, formatHours } from '../utils/format';
+import { formatHours } from '../utils/format';
 import { useAuthStore } from '../stores/authStore';
 
-type ReportType = 'accountant' | 'salary' | 'invoice';
+type ReportType = 'accountant' | 'salary';
 
 function toDateInput(date: Date) {
   return format(date, 'yyyy-MM-dd');
@@ -42,29 +42,19 @@ export default function Reports() {
   const [fromDate, setFromDate] = useState(defaultPayrollPeriod.from);
   const [toDate, setToDate] = useState(defaultPayrollPeriod.to);
   const [selectedUserId, setSelectedUserId] = useState('');
-  const [selectedCustomerId, setSelectedCustomerId] = useState('');
-  const [selectedProjectId, setSelectedProjectId] = useState('');
   const [isExporting, setIsExporting] = useState(false);
   const [isExportingBackup, setIsExportingBackup] = useState(false);
   const [backupFromDate, setBackupFromDate] = useState(format(new Date(new Date().getFullYear(), 0, 1), 'yyyy-MM-dd'));
   const [backupToDate, setBackupToDate] = useState(format(new Date(new Date().getFullYear(), 11, 31), 'yyyy-MM-dd'));
 
   const { data: users } = useQuery({ queryKey: ['users'], queryFn: usersApi.list });
-  const { data: customers } = useQuery({ queryKey: ['customers'], queryFn: () => customersApi.list(), enabled: !isAccountant });
-  const { data: projects } = useQuery({ queryKey: ['projects'], queryFn: () => projectsApi.list(), enabled: !isAccountant });
   const { data: reportData, isLoading } = useQuery<any>({
-    queryKey: ['report', reportType, fromDate, toDate, selectedUserId, selectedCustomerId, selectedProjectId],
+    queryKey: ['report', reportType, fromDate, toDate, selectedUserId],
     queryFn: () => {
       if (reportType === 'accountant') return reportsApi.accountant(fromDate, toDate, selectedUserId || undefined);
-      if (reportType === 'salary') return reportsApi.salary(fromDate, toDate, selectedUserId || undefined);
-      return reportsApi.invoice(fromDate, toDate, selectedCustomerId || undefined, selectedProjectId || undefined);
+      return reportsApi.salary(fromDate, toDate, selectedUserId || undefined);
     },
   });
-
-  const visibleProjects = useMemo(
-    () => projects?.filter((project) => !selectedCustomerId || project.customerId === selectedCustomerId) || [],
-    [projects, selectedCustomerId]
-  );
 
   const setQuickPeriod = (period: 'closedPayroll' | 'currentPayroll' | 'thisMonth' | 'lastMonth' | 'thisYear') => {
     const now = new Date();
@@ -110,10 +100,8 @@ export default function Reports() {
       const blob =
         reportType === 'accountant'
           ? await reportsApi.accountantExcel(fromDate, toDate, selectedUserId || undefined)
-          : reportType === 'salary'
-            ? await reportsApi.salaryExcel(fromDate, toDate, selectedUserId || undefined)
-            : await reportsApi.invoiceExcel(fromDate, toDate, selectedCustomerId || undefined, selectedProjectId || undefined);
-      const prefix = reportType === 'accountant' ? 'revisorsunderlag' : reportType === 'salary' ? 'loneunderlag' : 'fakturaunderlag';
+          : await reportsApi.salaryExcel(fromDate, toDate, selectedUserId || undefined);
+      const prefix = reportType === 'accountant' ? 'revisorsunderlag' : 'loneunderlag';
       downloadBlob(blob, `${prefix}_${fromDate}_${toDate}.xlsx`);
       toast.success('Excel-export klar');
     } catch (error: any) {
@@ -138,9 +126,8 @@ export default function Reports() {
 
   const tabs = [
     { id: 'accountant', label: 'Revisorsunderlag' },
-    ...(!isAccountant ? [{ id: 'salary', label: 'Löneunderlag' }, { id: 'invoice', label: 'Fakturering' }] : []),
+    ...(!isAccountant ? [{ id: 'salary', label: 'Löneunderlag' }] : []),
   ];
-  const projectRows = reportData?.byProject ? Object.values(reportData.byProject) as any[] : [];
   const salaryRows = reportData?.summary ? Object.entries(reportData.summary) as Array<[string, any]> : [];
   const accountantRows = reportData?.byUser || [];
   const activityRows = reportData?.byActivity || [];
@@ -149,7 +136,7 @@ export default function Reports() {
     <AppShell>
       <PageHeader
         title="Rapporter"
-        description={reportType === 'accountant' ? 'Exportera ett rent löne- och revisionsunderlag från den 21:a till den 20:e.' : 'Ta fram löneunderlag, fakturaunderlag och Excel-backup utan att leta.'}
+        description={reportType === 'accountant' ? 'Exportera ett rent löne- och revisionsunderlag från den 21:a till den 20:e.' : 'Ta fram löneunderlag och Excel-backup utan att leta.'}
         action={
           <Button type="button" onClick={handleExport} isLoading={isExporting}>
             <Download className="h-4 w-4" />
@@ -197,32 +184,13 @@ export default function Reports() {
             <span className="label">Till</span>
             <input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} className="input" />
           </label>
-          {reportType === 'invoice' ? (
-            <>
-              <label>
-                <span className="label">Kund</span>
-                <select value={selectedCustomerId} onChange={(event) => { setSelectedCustomerId(event.target.value); setSelectedProjectId(''); }} className="input">
-                  <option value="">Alla kunder</option>
-                  {customers?.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}
-                </select>
-              </label>
-              <label>
-                <span className="label">Projekt</span>
-                <select value={selectedProjectId} onChange={(event) => setSelectedProjectId(event.target.value)} className="input">
-                  <option value="">Alla projekt</option>
-                  {visibleProjects.map((project) => <option key={project.id} value={project.id}>{project.code} - {project.name}</option>)}
-                </select>
-              </label>
-            </>
-          ) : (
-            <label className="xl:col-span-2">
-              <span className="label">Anställd</span>
-              <select value={selectedUserId} onChange={(event) => setSelectedUserId(event.target.value)} className="input">
-                <option value="">Alla anställda</option>
-                {users?.filter((user) => user.role !== 'ACCOUNTANT').map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}
-              </select>
-            </label>
-          )}
+          <label className="xl:col-span-2">
+            <span className="label">Anställd</span>
+            <select value={selectedUserId} onChange={(event) => setSelectedUserId(event.target.value)} className="input">
+              <option value="">Alla anställda</option>
+              {users?.filter((user) => user.role !== 'ACCOUNTANT').map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}
+            </select>
+          </label>
         </div>
       </FilterBar>
 
@@ -233,8 +201,8 @@ export default function Reports() {
           <div className="space-y-5">
             <Card>
               <div className="mb-4 flex items-center gap-2">
-                {reportType === 'invoice' ? <ReceiptText className="h-5 w-5 text-slate-500" /> : <Users className="h-5 w-5 text-slate-500" />}
-                <h2 className="section-title">{reportType === 'invoice' ? 'Per projekt' : reportType === 'accountant' ? 'Summering per anställd' : 'Per person och kod'}</h2>
+                <Users className="h-5 w-5 text-slate-500" />
+                <h2 className="section-title">{reportType === 'accountant' ? 'Summering per anställd' : 'Per person och kod'}</h2>
               </div>
 
               {reportType === 'accountant' ? (
@@ -259,7 +227,7 @@ export default function Reports() {
                     </table>
                   </DataTable>
                 )
-              ) : reportType === 'salary' ? (
+              ) : (
                 !salaryRows.length ? (
                   <EmptyState title="Ingen rapportdata" description="Det finns inga attesterade tidrader för perioden." />
                 ) : (
@@ -279,26 +247,6 @@ export default function Reports() {
                     ))}
                   </div>
                 )
-              ) : !projectRows.length ? (
-                <EmptyState title="Inget fakturaunderlag" description="Det finns inga attesterade fakturerbara timmar i urvalet." />
-              ) : (
-                <DataTable>
-                  <table className="min-w-full text-sm">
-                    <thead className="table-head">
-                      <tr><th className="px-3 py-2">Projekt</th><th className="px-3 py-2">Kund</th><th className="px-3 py-2">Timmar</th><th className="px-3 py-2">Belopp</th></tr>
-                    </thead>
-                    <tbody>
-                      {projectRows.map((row) => (
-                        <tr key={row.project?.id || row.project?.code || row.project?.name} className="border-b border-slate-100">
-                          <td className="px-3 py-2 font-semibold text-slate-900">{row.project?.name || 'Okänt projekt'}</td>
-                          <td className="px-3 py-2">{row.project?.customer?.name || '-'}</td>
-                          <td className="px-3 py-2">{formatHours(row.totalHours)}</td>
-                          <td className="px-3 py-2 font-semibold text-emerald-700">{formatCurrency(row.totalAmount)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </DataTable>
               )}
             </Card>
           </div>

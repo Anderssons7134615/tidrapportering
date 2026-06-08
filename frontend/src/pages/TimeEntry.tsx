@@ -414,10 +414,6 @@ export default function TimeEntry() {
               <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
                 <FormField label="Starttid"><input type="time" value={startTime} onChange={(event) => setStartTime(event.target.value)} className="input" /></FormField>
                 <FormField label="Sluttid"><input type="time" value={endTime} onChange={(event) => setEndTime(event.target.value)} className="input" /></FormField>
-                <label className="flex items-center gap-3 rounded-lg border border-graphite-200 bg-white p-3 text-graphite-800 md:col-span-2">
-                  <input type="checkbox" checked={billable} onChange={(event) => setBillable(event.target.checked)} className="h-4 w-4 rounded border-graphite-300 text-primary-600" />
-                  <span className="text-sm font-semibold">Fakturerbar tid</span>
-                </label>
               </div>
             </details>
 

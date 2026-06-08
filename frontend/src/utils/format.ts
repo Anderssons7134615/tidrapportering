@@ -2,10 +2,6 @@ export function formatHours(value?: number | null) {
   return `${(value || 0).toLocaleString('sv-SE', { maximumFractionDigits: 1 })} h`;
 }
 
-export function formatCurrency(value?: number | null) {
-  return `${(value || 0).toLocaleString('sv-SE', { maximumFractionDigits: 0 })} kr`;
-}
-
 export function formatPercent(value?: number | null) {
   if (value == null) return '-';
   return `${value.toLocaleString('sv-SE', { maximumFractionDigits: 0 })} %`;

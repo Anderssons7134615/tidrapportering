@@ -67,10 +67,7 @@ export default function Activities() {
       name: formData.get('name') as string,
       code: formData.get('code') as string,
       category: formData.get('category') as Activity['category'],
-      billableDefault: formData.get('billableDefault') === 'true',
-      rateOverride: formData.get('rateOverride')
-        ? parseFloat(formData.get('rateOverride') as string)
-        : undefined,
+      billableDefault: editingActivity?.billableDefault ?? true,
       sortOrder: formData.get('sortOrder')
         ? parseInt(formData.get('sortOrder') as string)
         : 0,
@@ -130,16 +127,10 @@ export default function Activities() {
                     <p className="font-medium">{activity.name}</p>
                     <p className="text-sm text-gray-400">
                       Kod: {activity.code}
-                      {activity.rateOverride && ` · ${activity.rateOverride} kr/h`}
                     </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  {activity.billableDefault ? (
-                    <span className="badge-green">Fakturerbar</span>
-                  ) : (
-                    <span className="badge-gray">Ej fakt.</span>
-                  )}
                   <button
                     onClick={() => {
                       setEditingActivity(activity);
@@ -215,36 +206,13 @@ export default function Activities() {
                 </div>
               </div>
               <div>
-                <label className="label">Fakturerbar som standard</label>
-                <select
-                  name="billableDefault"
-                  defaultValue={editingActivity?.billableDefault ? 'true' : 'false'}
+                <label className="label">Sorteringsordning</label>
+                <input
+                  name="sortOrder"
+                  type="number"
+                  defaultValue={editingActivity?.sortOrder || 0}
                   className="input"
-                >
-                  <option value="true">Ja</option>
-                  <option value="false">Nej</option>
-                </select>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="label">Timpris (override)</label>
-                  <input
-                    name="rateOverride"
-                    type="number"
-                    defaultValue={editingActivity?.rateOverride || ''}
-                    className="input"
-                    placeholder="Lämna tomt för standard"
-                  />
-                </div>
-                <div>
-                  <label className="label">Sorteringsordning</label>
-                  <input
-                    name="sortOrder"
-                    type="number"
-                    defaultValue={editingActivity?.sortOrder || 0}
-                    className="input"
-                  />
-                </div>
+                />
               </div>
               <div className="flex gap-3 pt-4">
                 <button type="button" onClick={closeModal} className="btn-secondary flex-1">

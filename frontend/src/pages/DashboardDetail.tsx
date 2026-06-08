@@ -7,7 +7,7 @@ import { dashboardApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
 import type { DashboardMetric } from '../types';
 
-const validMetrics: DashboardMetric[] = ['weekly-hours', 'monthly-hours', 'billable-hours', 'pending-approval'];
+const validMetrics: DashboardMetric[] = ['weekly-hours', 'monthly-hours', 'pending-approval'];
 
 export default function DashboardDetail() {
   const { metric } = useParams<{ metric: DashboardMetric }>();
@@ -152,9 +152,6 @@ export default function DashboardDetail() {
                         <span className="chip">
                           <CalendarClock className="h-3.5 w-3.5" />
                           {format(new Date(entry.date), 'EEEE d MMM', { locale: sv })}
-                        </span>
-                        <span className={entry.billable ? 'badge-green' : 'badge-gray'}>
-                          {entry.billable ? 'Fakturerbar' : 'Ej fakturerbar'}
                         </span>
                       </div>
                       <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-slate-600">

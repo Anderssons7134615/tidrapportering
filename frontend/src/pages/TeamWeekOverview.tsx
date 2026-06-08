@@ -124,7 +124,6 @@ export default function TeamWeekOverview() {
       approvedUsers: data?.totals.approvedUsers ?? users.filter((u) => u.attentionStatus === 'APPROVED').length,
       needsActionUsers: data?.totals.needsActionUsers ?? users.filter((u) => u.needsAction).length,
       totalHours: data?.totals.totalHours ?? 0,
-      billableHours: data?.totals.billableHours ?? 0,
     };
   }, [data]);
 
@@ -162,7 +161,7 @@ export default function TeamWeekOverview() {
         <KpiCard label="Ej rapporterat" value={totals.missingUsers} hint="Saknar vardagar" tone={totals.missingUsers ? 'red' : 'green'} />
         <KpiCard label="Väntar attest" value={totals.pendingUsers} hint="Inskickade veckor" tone={totals.pendingUsers ? 'blue' : 'slate'} />
         <KpiCard label="Avvikelser" value={totals.deviationUsers} hint="Över 10 h eller nekad" tone={totals.deviationUsers ? 'yellow' : 'green'} />
-        <KpiCard label="Totalt" value={formatHours(totals.totalHours)} hint={`${formatHours(totals.billableHours)} fakturerbart`} tone="slate" />
+        <KpiCard label="Totalt" value={formatHours(totals.totalHours)} hint="Rapporterade timmar" tone="slate" />
       </div>
 
       <Card className="space-y-4">
@@ -266,7 +265,6 @@ function TeamWeekUserRow({
           <div className="flex items-center justify-between gap-3 text-sm xl:justify-end">
             <div className="flex items-center gap-2">
               <span className="rounded-lg bg-slate-100 px-2 py-1 font-semibold text-slate-900">{formatHours(user.totalHours)}</span>
-              <span className="hidden text-slate-500 sm:inline">{formatHours(user.billableHours)} fakt.</span>
             </div>
             <ChevronDown className={`h-4 w-4 text-slate-500 transition-transform ${expanded ? 'rotate-180' : ''}`} />
           </div>
@@ -285,13 +283,12 @@ function TeamWeekUserRow({
                     <th className="px-3 py-2">Projekt</th>
                     <th className="px-3 py-2">Kod</th>
                     <th className="px-3 py-2 text-right">Timmar</th>
-                    <th className="px-3 py-2 text-right">Fakt.</th>
                   </tr>
                 </thead>
                 <tbody>
                   {(user.projects || []).length === 0 ? (
                     <tr>
-                      <td colSpan={4} className="px-3 py-3 text-slate-500">Ingen projektrad för veckan.</td>
+                      <td colSpan={3} className="px-3 py-3 text-slate-500">Ingen projektrad för veckan.</td>
                     </tr>
                   ) : (
                     user.projects.map((project) => (
@@ -299,7 +296,6 @@ function TeamWeekUserRow({
                         <td className="px-3 py-2 font-medium text-slate-900">{project.projectName}</td>
                         <td className="px-3 py-2 text-slate-600">{project.projectCode}</td>
                         <td className="px-3 py-2 text-right text-slate-800">{formatHours(project.hours)}</td>
-                        <td className="px-3 py-2 text-right text-slate-800">{formatHours(project.billableHours)}</td>
                       </tr>
                     ))
                   )}
