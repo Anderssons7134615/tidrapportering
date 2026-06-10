@@ -9,6 +9,10 @@
   "scripts": {
     "build": "npm --prefix backend ci && npm --prefix backend run build",
     "db:push": "npm --prefix backend run db:push",
+    "design:lint": "designmd lint DESIGN.md",
     "start": "npm --prefix backend start"
+  },
+  "devDependencies": {
+    "@google/design.md": "^0.2.0"
   }
 }
