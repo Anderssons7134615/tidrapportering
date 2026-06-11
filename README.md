@@ -99,40 +99,6 @@ VITE_API_URL=https://din-railway-backend.up.railway.app/api
 
 `frontend/public/_redirects` gör att SPA-routes fungerar vid refresh.
 
-## Pushnotiser
-
-Appen har webbpush för tidpåminnelser. Backend använder VAPID-nycklar och sparar varje användares webbläsar-/mobilsubscription.
-
-Skapa VAPID-nycklar lokalt:
-
-```bash
-cd backend
-npx web-push generate-vapid-keys
-```
-
-Lägg dessa variabler i Railway:
-
-```env
-WEB_PUSH_PUBLIC_KEY=...
-WEB_PUSH_PRIVATE_KEY=...
-WEB_PUSH_CONTACT=mailto:din-epost@anderssonsisolering.se
-REMINDER_JOB_TOKEN=långt-slumpat-jobbtoken
-```
-
-Anställda aktiverar notiser i `Inställningar` i TidApp. Därefter kan ett schemalagt jobb anropa:
-
-```bash
-curl -X POST "https://din-railway-backend.up.railway.app/api/reminders/daily-time" \
-  -H "Authorization: Bearer $REMINDER_JOB_TOKEN"
-```
-
-`/api/reminders/daily-time` skickar bara till aktiva medarbetare som saknar tid idag och hoppar över helger. Veckopåminnelsen finns kvar:
-
-```bash
-curl -X POST "https://din-railway-backend.up.railway.app/api/reminders/weekly-attestation" \
-  -H "Authorization: Bearer $REMINDER_JOB_TOKEN"
-```
-
 ## Testkonton efter seed
 
 Seed-skripten skapar lokala testkonton för utveckling. Kör inte seed i produktion utan att först byta standarddata och lösenord. I produktion blockeras seed om `NODE_ENV=production`, om inte `ALLOW_PRODUCTION_SEED=true` uttryckligen sätts.
