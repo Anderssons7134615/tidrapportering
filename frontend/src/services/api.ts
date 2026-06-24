@@ -333,6 +333,11 @@ export const reportsApi = {
     if (userId) params.set('userId', userId);
     return fetchBlob(`/reports/salary?${params.toString()}`);
   },
+  salaryCsv: (from: string, to: string, userId?: string) => {
+    const params = new URLSearchParams({ from, to, format: 'csv' });
+    if (userId) params.set('userId', userId);
+    return fetchBlob(`/reports/salary?${params.toString()}`);
+  },
   project: (id: string, from?: string, to?: string) => {
     const params = new URLSearchParams();
     if (from) params.set('from', from);
