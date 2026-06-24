@@ -149,6 +149,14 @@ export const projectsApi = {
     fetchApi<MaterialArticle[]>(`/projects/materials/articles${active !== undefined ? `?active=${active}` : ''}`),
   exportMaterialArticlesExcel: () => fetchBlob('/projects/materials/articles.xlsx'),
   downloadMaterialTemplate: () => fetchBlob('/projects/materials/template.xlsx'),
+  importMaterialArticlesExcel: (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return fetchApi<MaterialImportResult>('/projects/materials/articles/import.xlsx', {
+      method: 'POST',
+      body: formData,
+    });
+  },
   createMaterialArticle: (data: {
     name: string;
     articleNumber?: string;

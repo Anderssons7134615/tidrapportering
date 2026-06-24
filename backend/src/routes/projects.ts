@@ -129,6 +129,11 @@ function parseImportDate(value: unknown): Date {
   return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
 }
 
+function parseActive(value: unknown): boolean {
+  const text = normalizeText(value).toLowerCase();
+  return !['nej', 'no', 'false', '0', 'inaktiv'].includes(text);
+}
+
 function getDayEnd(date: string): Date {
   const d = new Date(date);
   d.setHours(23, 59, 59, 999);
@@ -331,6 +336,144 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
     styleMaterialWorksheet(info);
 
     return sendMaterialWorkbook(reply, workbook, 'materialmall.xlsx');
+  });
+
+  fastify.post('/materials/articles/import.xlsx', {
+    preHandler: [requireAdminOrSupervisor],
+  }, async (request, reply) => {
+    const file = await (request as any).file();
+    if (!file) return reply.status(400).send({ error: 'Excel-fil saknas' });
+
+    const buffer = await file.toBuffer();
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(buffer);
+    const worksheet = workbook.getWorksheet('Materialmall') || workbook.getWorksheet('Materialregister') || workbook.worksheets[0];
+    if (!worksheet) return reply.status(400).send({ error: 'Excel-filen saknar blad' });
+
+    const headers = new Map<string, number>();
+    worksheet.getRow(1).eachCell((cell, colNumber) => headers.set(normalizeHeader(cell.value), colNumber));
+    const col = (name: string) => headers.get(normalizeHeader(name));
+    const articleCol = col('Artikel');
+    if (!articleCol) {
+      return reply.status(400).send({ error: 'Excel-filen måste innehålla kolumnen Artikel' });
+    }
+
+    const rows: Array<{
+      row: number;
+      name: string;
+      articleNumber: string | null;
+      category: string;
+      unit: string;
+      purchasePrice: number | null;
+      defaultUnitPrice: number | null;
+      markupPercent: number | null;
+      active: boolean;
+    }> = [];
+    const errors: Array<{ row: number; message: string }> = [];
+
+    worksheet.eachRow((row, rowNumber) => {
+      if (rowNumber === 1) return;
+      const values = row.values as unknown[];
+      const hasAnyValue = values.some((value) => normalizeText(value));
+      if (!hasAnyValue) return;
+
+      const name = normalizeText(row.getCell(articleCol).value);
+      const unit = col('Enhet') ? normalizeText(row.getCell(col('Enhet')!).value) || 'st' : 'st';
+      const category = col('Kategori') ? normalizeText(row.getCell(col('Kategori')!).value) || 'Övrigt' : 'Övrigt';
+      const purchasePrice = col('Inköpspris') ? parseOptionalNumber(row.getCell(col('Inköpspris')!).value) : null;
+      const defaultUnitPrice = col('Försäljningspris') ? parseOptionalNumber(row.getCell(col('Försäljningspris')!).value) : null;
+      const markupPercent = col('Påslag %') ? parseOptionalNumber(row.getCell(col('Påslag %')!).value) : null;
+
+      if (!name) errors.push({ row: rowNumber, message: 'Artikel saknas' });
+      if (!unit) errors.push({ row: rowNumber, message: 'Enhet saknas' });
+      if (purchasePrice != null && purchasePrice < 0) errors.push({ row: rowNumber, message: 'Inköpspris får inte vara negativt' });
+      if (defaultUnitPrice != null && defaultUnitPrice < 0) errors.push({ row: rowNumber, message: 'Försäljningspris får inte vara negativt' });
+      if (markupPercent != null && markupPercent < 0) errors.push({ row: rowNumber, message: 'Påslag får inte vara negativt' });
+      if (!name || !unit) return;
+
+      rows.push({
+        row: rowNumber,
+        name,
+        articleNumber: col('Artikelnummer') ? normalizeText(row.getCell(col('Artikelnummer')!).value) || null : null,
+        category,
+        unit,
+        purchasePrice,
+        defaultUnitPrice,
+        markupPercent,
+        active: col('Aktiv') ? parseActive(row.getCell(col('Aktiv')!).value) : true,
+      });
+    });
+
+    if (errors.length) return reply.status(400).send({ error: 'Importen innehåller fel', errors });
+    if (!rows.length) return reply.status(400).send({ error: 'Inga materialartiklar att importera' });
+
+    const result = await prisma.$transaction(async (tx) => {
+      let created = 0;
+      let updated = 0;
+
+      for (const row of rows) {
+        const existing = await tx.materialArticle.findFirst({
+          where: {
+            companyId: request.user.companyId,
+            OR: [
+              ...(row.articleNumber ? [{ articleNumber: row.articleNumber }] : []),
+              { name: row.name, unit: row.unit },
+            ],
+          },
+        });
+
+        if (existing) {
+          await tx.materialArticle.update({
+            where: { id: existing.id },
+            data: {
+              name: row.name,
+              articleNumber: row.articleNumber,
+              category: row.category,
+              unit: row.unit,
+              purchasePrice: row.purchasePrice,
+              defaultUnitPrice: row.defaultUnitPrice,
+              markupPercent: row.markupPercent,
+              active: row.active,
+            },
+          });
+          updated += 1;
+        } else {
+          await tx.materialArticle.create({
+            data: {
+              companyId: request.user.companyId,
+              name: row.name,
+              articleNumber: row.articleNumber,
+              category: row.category,
+              unit: row.unit,
+              purchasePrice: row.purchasePrice,
+              defaultUnitPrice: row.defaultUnitPrice,
+              markupPercent: row.markupPercent,
+              active: row.active,
+            },
+          });
+          created += 1;
+        }
+      }
+
+      await tx.auditLog.create({
+        data: {
+          userId: request.user.id,
+          action: 'IMPORT',
+          entityType: 'MaterialArticleExcel',
+          newValue: JSON.stringify({ rowCount: rows.length, created, updated }),
+        },
+      });
+
+      return { created, updated };
+    });
+
+    return {
+      imported: rows.length,
+      created: result.created,
+      updated: result.updated,
+      skipped: 0,
+      errors: [],
+    };
   });
 
   fastify.post('/materials/articles', {

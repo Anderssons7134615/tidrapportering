@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Download, Edit2, FileSpreadsheet, Plus, Power, X } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -31,11 +31,13 @@ const emptyForm: MaterialForm = {
 
 export default function Materials() {
   const queryClient = useQueryClient();
+  const importInputRef = useRef<HTMLInputElement | null>(null);
   const [form, setForm] = useState<MaterialForm>(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showInactive, setShowInactive] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isDownloadingTemplate, setIsDownloadingTemplate] = useState(false);
+  const [importErrors, setImportErrors] = useState<Array<{ row: number; message: string }>>([]);
 
   const { data: articles, isLoading } = useQuery({
     queryKey: ['material-articles', showInactive],
@@ -84,6 +86,21 @@ export default function Materials() {
       queryClient.invalidateQueries({ queryKey: ['material-articles'] });
     },
     onError: (error: Error) => toast.error(error.message),
+  });
+
+  const importMutation = useMutation({
+    mutationFn: (file: File) => projectsApi.importMaterialArticlesExcel(file),
+    onSuccess: (result) => {
+      setImportErrors([]);
+      toast.success(`Importerade ${result.imported} artiklar (${result.created} nya, ${result.updated} uppdaterade)`);
+      queryClient.invalidateQueries({ queryKey: ['material-articles'] });
+      if (importInputRef.current) importInputRef.current.value = '';
+    },
+    onError: (error: Error & { errors?: Array<{ row: number; message: string }> }) => {
+      setImportErrors(error.errors || []);
+      toast.error(error.message || 'Import misslyckades');
+      if (importInputRef.current) importInputRef.current.value = '';
+    },
   });
 
   const startEdit = (article: MaterialArticle) => {
@@ -153,6 +170,20 @@ export default function Materials() {
               <FileSpreadsheet className="h-4 w-4" />
               {isDownloadingTemplate ? 'Hämtar mall...' : 'Ladda ner mall'}
             </button>
+            <input
+              ref={importInputRef}
+              type="file"
+              accept=".xlsx"
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) importMutation.mutate(file);
+              }}
+            />
+            <button className="btn-secondary" onClick={() => importInputRef.current?.click()} disabled={importMutation.isPending}>
+              <FileSpreadsheet className="h-4 w-4" />
+              {importMutation.isPending ? 'Importerar...' : 'Importera Excel'}
+            </button>
             <button className="btn-secondary" onClick={exportMaterials} disabled={isExporting}>
               <Download className="h-4 w-4" />
               {isExporting ? 'Exporterar...' : 'Exportera Excel'}
@@ -163,6 +194,15 @@ export default function Materials() {
           </div>
         }
       />
+
+      {importErrors.length > 0 && (
+        <Card className="border-rose-200 bg-rose-50">
+          <h2 className="section-title text-rose-900">Importen innehåller fel</h2>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-rose-800">
+            {importErrors.map((error) => <li key={`${error.row}-${error.message}`}>Rad {error.row}: {error.message}</li>)}
+          </ul>
+        </Card>
+      )}
 
       <Card>
         <form onSubmit={save} className="grid grid-cols-1 gap-3 md:grid-cols-4 xl:grid-cols-7">
