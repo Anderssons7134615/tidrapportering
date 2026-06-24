@@ -128,7 +128,16 @@ export default function Reports() {
     { id: 'accountant', label: 'Revisorsunderlag' },
     ...(!isAccountant ? [{ id: 'salary', label: 'Löneunderlag' }] : []),
   ];
-  const salaryRows = reportData?.summary ? Object.entries(reportData.summary) as Array<[string, any]> : [];
+  const salaryRows = reportData?.summaryRows || (reportData?.summary
+    ? Object.entries(reportData.summary).map(([userName, codes]: [string, any]) => ({
+      userName,
+      activities: Object.entries(codes).map(([code, data]: [string, any]) => ({
+        ...data,
+        activityName: data.activityName || data.entries?.[0]?.activity?.name || code,
+        activityCode: data.activityCode || code,
+      })),
+    }))
+    : []);
   const accountantRows = reportData?.byUser || [];
   const activityRows = reportData?.byActivity || [];
 
@@ -155,13 +164,13 @@ export default function Reports() {
             </div>
             <h2 className="text-xl font-semibold text-slate-950">Period {fromDate} till {toDate}</h2>
             <p className="mt-1 max-w-2xl text-sm text-slate-600">
-              Revisorsunderlaget använder endast attesterade tidrader och summerar per anställd och lönekod.
+              Revisorsunderlaget använder endast attesterade tidrader och summerar per anställd och arbetsmoment.
             </p>
           </div>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             <KpiCard label="Timmar" value={formatHours(reportData?.totals?.totalHours)} tone="blue" />
             <KpiCard label="Personer" value={reportData?.totals?.uniqueUsers || 0} tone="green" />
-            <KpiCard label="Lönekoder" value={reportData?.totals?.activityCount || (reportType === 'salary' ? salaryRows.length : 0)} tone="yellow" />
+            <KpiCard label="Arbetsmoment" value={reportData?.totals?.activityCount || (reportType === 'salary' ? salaryRows.length : 0)} tone="yellow" />
           </div>
         </div>
       </Card>
@@ -202,7 +211,7 @@ export default function Reports() {
             <Card>
               <div className="mb-4 flex items-center gap-2">
                 <Users className="h-5 w-5 text-slate-500" />
-                <h2 className="section-title">{reportType === 'accountant' ? 'Summering per anställd' : 'Per person och kod'}</h2>
+                <h2 className="section-title">{reportType === 'accountant' ? 'Summering per anställd' : 'Per person och arbetsmoment'}</h2>
               </div>
 
               {reportType === 'accountant' ? (
@@ -232,14 +241,15 @@ export default function Reports() {
                   <EmptyState title="Ingen rapportdata" description="Det finns inga attesterade tidrader för perioden." />
                 ) : (
                   <div className="space-y-3">
-                    {salaryRows.map(([userName, codes]) => (
-                      <div key={userName} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                        <p className="font-semibold text-slate-900">{userName}</p>
+                    {salaryRows.map((row: any) => (
+                      <div key={row.userName} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                        <p className="font-semibold text-slate-900">{row.userName}</p>
                         <div className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-4">
-                          {Object.entries(codes).map(([code, data]: [string, any]) => (
-                            <div key={code} className="rounded-lg bg-white px-3 py-2">
-                              <p className="text-xs text-slate-500">{code}</p>
-                              <p className="font-semibold text-slate-900">{formatHours(data.hours)}</p>
+                          {row.activities.map((activity: any) => (
+                            <div key={`${row.userName}-${activity.activityCode || activity.activityName}`} className="rounded-lg bg-white px-3 py-2">
+                              <p className="font-semibold text-slate-900">{activity.activityName}</p>
+                              <p className="text-xs text-slate-500">{activity.activityCode}</p>
+                              <p className="mt-1 font-semibold text-slate-900">{formatHours(activity.hours)}</p>
                             </div>
                           ))}
                         </div>
@@ -256,17 +266,17 @@ export default function Reports() {
               <Card>
                 <div className="mb-4 flex items-center gap-2">
                   <FileSpreadsheet className="h-5 w-5 text-emerald-600" />
-                  <h2 className="section-title">Lönekoder</h2>
+                  <h2 className="section-title">Arbetsmoment</h2>
                 </div>
                 {!activityRows.length ? (
-                  <EmptyState title="Inga lönekoder" description="När tid finns i perioden summeras lönekoderna här." />
+                  <EmptyState title="Inga arbetsmoment" description="När tid finns i perioden summeras arbetsmomenten här." />
                 ) : (
                   <div className="space-y-2">
                     {activityRows.map((row: any) => (
-                      <div key={row.code} className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2">
+                      <div key={row.activityCode || row.code} className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2">
                         <div>
-                          <p className="font-semibold text-slate-900">{row.code}</p>
-                          <p className="text-xs text-slate-500">{row.activity}</p>
+                          <p className="font-semibold text-slate-900">{row.activityName || row.activity}</p>
+                          <p className="text-xs text-slate-500">{row.activityCode || row.code}</p>
                         </div>
                         <p className="font-semibold text-slate-900">{formatHours(row.hours)}</p>
                       </div>

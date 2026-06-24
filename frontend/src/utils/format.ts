@@ -7,6 +7,15 @@ export function formatPercent(value?: number | null) {
   return `${value.toLocaleString('sv-SE', { maximumFractionDigits: 0 })} %`;
 }
 
+export function formatCurrency(value?: number | null) {
+  if (value == null) return '-';
+  return value.toLocaleString('sv-SE', {
+    style: 'currency',
+    currency: 'SEK',
+    maximumFractionDigits: 0,
+  });
+}
+
 export function parseSwedishNumber(value: string) {
   const parsed = Number(value.replace(',', '.'));
   return Number.isFinite(parsed) ? parsed : NaN;

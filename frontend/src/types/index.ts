@@ -38,6 +38,7 @@ export interface Project {
   defaultRate?: number;
   notes?: string | null;
   employeeCanSeeResults?: boolean;
+  resultsVisibleToCurrentUser?: boolean;
   active: boolean;
   totalHours?: number;
   billableHours?: number;
@@ -120,6 +121,40 @@ export interface ProjectMaterialsResponse {
     quantity: number;
     amount?: number | null;
   };
+}
+
+export interface ProjectSummary {
+  project: Project;
+  period: { from: string | null; to: string | null };
+  resultsVisibleToCurrentUser: boolean;
+  metrics: Partial<ProjectMetrics> | null;
+  totals: {
+    totalHours: number | null;
+    billableHours: number | null;
+    laborCost: number | null;
+    materialCost: number | null;
+    materialSalesValue: number | null;
+    revenue: number | null;
+    result: number | null;
+    marginPercent: number | null;
+    entryCount: number | null;
+    materialRowCount: number | null;
+  };
+  warnings: string[];
+  byActivity: Array<{ activityId: string; activityName: string; activityCode: string; hours: number }>;
+  byUser: Array<{ userId: string; userName: string; hours: number; billableHours: number }>;
+  recentEntries: TimeEntry[];
+  recentMaterials: ProjectMaterial[];
+}
+
+export interface MaterialImportResult {
+  imported: number;
+  created: number;
+  updated: number;
+  createdArticles?: number;
+  skipped: number;
+  errors: Array<{ row: number; message: string }>;
+  items?: ProjectMaterial[];
 }
 
 export interface ProjectEmployeeSummary {

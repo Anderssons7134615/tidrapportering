@@ -17,6 +17,8 @@ import type {
   ProjectManagerSummary,
   TeamWeekSummary,
   PushSubscriptionInfo,
+  ProjectSummary,
+  MaterialImportResult,
 } from '../types';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
@@ -27,8 +29,9 @@ async function fetchApi<T>(
 ): Promise<T> {
   const token = useAuthStore.getState().token;
 
+  const isFormData = options.body instanceof FormData;
   const headers: HeadersInit = {
-    ...(options.body && { 'Content-Type': 'application/json' }),
+    ...(!isFormData && options.body && { 'Content-Type': 'application/json' }),
     ...(token && { Authorization: `Bearer ${token}` }),
     ...options.headers,
   };
@@ -46,7 +49,10 @@ async function fetchApi<T>(
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: 'Ett fel uppstod' }));
-    throw new Error(error.error || 'Ett fel uppstod');
+    const thrown = new Error(error.error || 'Ett fel uppstod');
+    (thrown as any).errors = error.errors;
+    (thrown as any).details = error.details;
+    throw thrown;
   }
 
   // Hantera CSV-svar
@@ -163,6 +169,13 @@ export const projectsApi = {
   deleteMaterialArticle: (id: string) =>
     fetchApi<{ message: string }>(`/projects/materials/articles/${id}`, { method: 'DELETE' }),
   listMaterials: (id: string) => fetchApi<ProjectMaterialsResponse>(`/projects/${id}/materials`),
+  getSummary: (id: string, params?: { from?: string; to?: string }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.from) searchParams.set('from', params.from);
+    if (params?.to) searchParams.set('to', params.to);
+    const query = searchParams.toString();
+    return fetchApi<ProjectSummary>(`/projects/${id}/summary${query ? `?${query}` : ''}`);
+  },
   listTimeEntries: (id: string) => fetchApi<TimeEntry[]>(`/projects/${id}/time-entries`),
   createMaterial: (id: string, data: {
     articleId: string;
@@ -173,6 +186,19 @@ export const projectsApi = {
     method: 'POST',
     body: JSON.stringify(data),
   }),
+  updateMaterial: (id: string, materialId: string, data: Partial<ProjectMaterial> & { date?: string }) =>
+    fetchApi<ProjectMaterial>(`/projects/${id}/materials/${materialId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+  importProjectMaterialsExcel: (id: string, file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return fetchApi<MaterialImportResult>(`/projects/${id}/materials/import.xlsx`, {
+      method: 'POST',
+      body: formData,
+    });
+  },
   deleteMaterial: (id: string, materialId: string) =>
     fetchApi<{ message: string }>(`/projects/${id}/materials/${materialId}`, { method: 'DELETE' }),
   getManagerSummary: async (id: string) => {

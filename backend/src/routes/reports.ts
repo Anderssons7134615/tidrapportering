@@ -119,12 +119,14 @@ const reportRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     const byUser = new Map<string, { userName: string; email: string; hours: number; days: Set<string> }>();
-    const byActivity = new Map<string, { code: string; activity: string; hours: number }>();
+    const byActivity = new Map<string, { code: string; activity: string; activityCode: string; activityName: string; hours: number }>();
 
     for (const entry of entries) {
       const userSummary = byUser.get(entry.userId) || {
         userName: entry.user.name,
         email: entry.user.email,
+        activityCode: entry.activity.code,
+        activityName: entry.activity.name,
         hours: 0,
         days: new Set<string>(),
       };
@@ -136,6 +138,8 @@ const reportRoutes: FastifyPluginAsync = async (fastify) => {
       const activitySummary = byActivity.get(activityKey) || {
         code: entry.activity.code,
         activity: entry.activity.name,
+        activityCode: entry.activity.code,
+        activityName: entry.activity.name,
         hours: 0,
       };
       activitySummary.hours += entry.hours;
@@ -151,8 +155,8 @@ const reportRoutes: FastifyPluginAsync = async (fastify) => {
       importSheet.columns = [
         { header: 'Anställd', key: 'employee', width: 26 },
         { header: 'E-post', key: 'email', width: 30 },
-        { header: 'Lönekod', key: 'code', width: 12 },
-        { header: 'Aktivitet', key: 'activity', width: 24 },
+        { header: 'Arbetsmoment', key: 'activity', width: 24 },
+        { header: 'Intern kod', key: 'code', width: 12 },
         { header: 'Datum', key: 'date', width: 14 },
         { header: 'Timmar', key: 'hours', width: 12 },
         { header: 'Projekt', key: 'project', width: 28 },
@@ -191,14 +195,14 @@ const reportRoutes: FastifyPluginAsync = async (fastify) => {
       }
       userSheet.getColumn('hours').numFmt = '0.00';
 
-      const activitySheet = workbook.addWorksheet('Summering lönekod');
+      const activitySheet = workbook.addWorksheet('Summering arbetsmoment');
       activitySheet.columns = [
-        { header: 'Lönekod', key: 'code', width: 12 },
-        { header: 'Aktivitet', key: 'activity', width: 28 },
+        { header: 'Arbetsmoment', key: 'activity', width: 28 },
+        { header: 'Intern kod', key: 'code', width: 12 },
         { header: 'Timmar', key: 'hours', width: 12 },
       ];
       styleHeader(activitySheet);
-      for (const item of Array.from(byActivity.values()).sort((a, b) => a.code.localeCompare(b.code, 'sv'))) {
+      for (const item of Array.from(byActivity.values()).sort((a, b) => a.activity.localeCompare(b.activity, 'sv'))) {
         activitySheet.addRow({ code: item.code, activity: item.activity, hours: item.hours });
       }
       activitySheet.getColumn('hours').numFmt = '0.00';
@@ -270,7 +274,7 @@ const reportRoutes: FastifyPluginAsync = async (fastify) => {
     const entries = await prisma.timeEntry.findMany({
       where,
       include: {
-        user: { select: { id: true, name: true, email: true, hourlyCost: true } },
+        user: { select: { id: true, name: true, email: true } },
         project: { select: { id: true, name: true, code: true } },
         activity: { select: { id: true, name: true, code: true, category: true } },
       },
@@ -278,7 +282,7 @@ const reportRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     // Gruppera per användare och aktivitetskod
-    const grouped: Record<string, Record<string, { hours: number; entries: typeof entries }>> = {};
+    const grouped: Record<string, Record<string, { hours: number; activityName: string; activityCode: string; category: string; entries: typeof entries }>> = {};
 
     entries.forEach((entry) => {
       const userName = entry.user.name;
@@ -286,7 +290,13 @@ const reportRoutes: FastifyPluginAsync = async (fastify) => {
 
       if (!grouped[userName]) grouped[userName] = {};
       if (!grouped[userName][activityCode]) {
-        grouped[userName][activityCode] = { hours: 0, entries: [] };
+        grouped[userName][activityCode] = {
+          hours: 0,
+          activityName: entry.activity.name,
+          activityCode: entry.activity.code,
+          category: entry.activity.category,
+          entries: [],
+        };
       }
 
       grouped[userName][activityCode].hours += entry.hours;
@@ -301,8 +311,8 @@ const reportRoutes: FastifyPluginAsync = async (fastify) => {
       worksheet.columns = [
         { header: 'Person', key: 'person', width: 24 },
         { header: 'Datum', key: 'date', width: 14 },
-        { header: 'Kod', key: 'code', width: 12 },
-        { header: 'Aktivitet', key: 'activity', width: 24 },
+        { header: 'Arbetsmoment', key: 'activity', width: 24 },
+        { header: 'Intern kod', key: 'code', width: 12 },
         { header: 'Timmar', key: 'hours', width: 12 },
         { header: 'Projekt', key: 'project', width: 18 },
         { header: 'Kommentar', key: 'note', width: 36 },
@@ -345,12 +355,12 @@ const reportRoutes: FastifyPluginAsync = async (fastify) => {
 
       // BOM för UTF-8
       const BOM = '\uFEFF';
-      const headers = ['Person', 'Datum', 'Kod', 'Aktivitet', 'Timmar', 'Projekt', 'Kommentar'];
+      const headers = ['Person', 'Datum', 'Arbetsmoment', 'Intern kod', 'Timmar', 'Projekt', 'Kommentar'];
       const rows = entries.map((e) => [
         e.user.name,
         e.date.toISOString().split('T')[0],
-        e.activity.code,
         e.activity.name,
+        e.activity.code,
         e.hours.toString().replace('.', ','),
         e.project?.code || 'Intern',
         (e.note || '').replace(/"/g, '""'),
@@ -375,10 +385,16 @@ const reportRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     // JSON-format
+    const summaryRows = Object.entries(grouped).map(([userName, activities]) => ({
+      userName,
+      activities: Object.values(activities).sort((a, b) => a.activityName.localeCompare(b.activityName, 'sv')),
+    }));
+
     return {
       period: { from, to },
       entries,
       summary: grouped,
+      summaryRows,
       totals: {
         totalHours: entries.reduce((sum, e) => sum + e.hours, 0),
         uniqueUsers: new Set(entries.map((e) => e.userId)).size,

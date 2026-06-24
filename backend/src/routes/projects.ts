@@ -2,7 +2,7 @@ import { FastifyPluginAsync } from 'fastify';
 import ExcelJS from 'exceljs';
 import { z } from 'zod';
 import { prisma } from '../index.js';
-import { getProjectMetrics } from '../lib/projectMetrics.js';
+import { getProjectMetrics, getRate } from '../lib/projectMetrics.js';
 import { enqueueMaterialChanged, enqueueProjectChanged, enqueueTimeEntryChanged } from '../lib/obsidianSync.js';
 
 const projectSchema = z.object({
@@ -36,6 +36,17 @@ const projectMaterialSchema = z.object({
   note: z.string().trim().max(500).optional().nullable(),
 });
 
+const projectMaterialPatchSchema = z.object({
+  articleId: z.string().uuid().optional(),
+  quantity: z.number().positive().optional(),
+  date: z.string().datetime().optional(),
+  note: z.string().trim().max(500).optional().nullable(),
+  purchasePrice: z.number().nonnegative().optional().nullable(),
+  unitPrice: z.number().nonnegative().optional().nullable(),
+  invoiceStatus: z.enum(['UNINVOICED', 'INVOICED']).optional(),
+  invoiceReference: z.string().trim().max(100).optional().nullable(),
+}).refine((value) => Object.keys(value).length > 0, { message: 'Inga ändringar skickades' });
+
 
 const requireAdminOrSupervisor = async (request: any, reply: any) => {
   await request.jwtVerify();
@@ -53,6 +64,70 @@ const shouldHideResultsForEmployee = (role: string, project: { employeeCanSeeRes
 };
 
 const canManageMaterials = (role: string) => ['ADMIN', 'SUPERVISOR'].includes(role);
+const canViewFinancials = (role: string, project: { employeeCanSeeResults: boolean }) => {
+  return ['ADMIN', 'SUPERVISOR', 'ACCOUNTANT'].includes(role) || !shouldHideResultsForEmployee(role, project);
+};
+
+function sanitizeProjectForRole<T extends Record<string, any>>(project: T, canView: boolean): T {
+  if (canView) return project;
+  const {
+    fixedPrice: _fixedPrice,
+    defaultRate: _defaultRate,
+    billingModel: _billingModel,
+    budgetHours: _budgetHours,
+    ...safeProject
+  } = project;
+  return {
+    ...safeProject,
+    fixedPrice: null,
+    defaultRate: null,
+    billingModel: null,
+    budgetHours: null,
+  } as unknown as T;
+}
+
+function mapMaterialForRole(item: any, canView: boolean) {
+  const lineTotal = item.unitPrice != null ? item.quantity * item.unitPrice : null;
+  return {
+    ...item,
+    purchasePrice: canView ? item.purchasePrice : null,
+    unitPrice: canView ? item.unitPrice : null,
+    lineTotal: canView ? lineTotal : null,
+  };
+}
+
+function parseOptionalNumber(value: unknown): number | null {
+  if (value == null || value === '') return null;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  const normalized = String(value).replace(/\s/g, '').replace(',', '.');
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parseRequiredNumber(value: unknown): number | null {
+  const parsed = parseOptionalNumber(value);
+  return parsed != null && parsed > 0 ? parsed : null;
+}
+
+function normalizeHeader(value: unknown) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function normalizeText(value: unknown) {
+  return String(value || '').trim();
+}
+
+function parseImportDate(value: unknown): Date {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
+  if (typeof value === 'number') {
+    const parsed = new Date(Math.round((value - 25569) * 86400 * 1000));
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+  const text = normalizeText(value);
+  if (!text) return new Date();
+  const parsed = new Date(text);
+  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+}
 
 function getDayEnd(date: string): Date {
   const d = new Date(date);
@@ -114,14 +189,14 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
     const projectsWithHours = await Promise.all(
       projects.map(async (project) => {
         const metrics = await getProjectMetrics(prisma, project);
-        const hideResults = shouldHideResultsForEmployee(request.user.role, project);
+        const canView = canViewFinancials(request.user.role, project);
 
         return {
-          ...project,
-          resultsVisibleToCurrentUser: !hideResults,
-          totalHours: hideResults ? null : metrics.totalHours,
-          billableHours: hideResults ? null : metrics.billableHours,
-          metrics: hideResults ? null : metrics,
+          ...sanitizeProjectForRole(project, canView),
+          resultsVisibleToCurrentUser: canView,
+          totalHours: canView ? metrics.totalHours : null,
+          billableHours: canView ? metrics.billableHours : null,
+          metrics: canView ? metrics : null,
         };
       })
     );
@@ -139,10 +214,16 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
       where.active = active === 'true';
     }
 
-    return prisma.materialArticle.findMany({
+    const articles = await prisma.materialArticle.findMany({
       where,
       orderBy: [{ active: 'desc' }, { name: 'asc' }],
     });
+
+    if (canManageMaterials(request.user.role) || request.user.role === 'ACCOUNTANT') {
+      return articles;
+    }
+
+    return articles.map(({ purchasePrice: _purchasePrice, defaultUnitPrice: _defaultUnitPrice, markupPercent: _markupPercent, ...article }) => article);
   });
 
   fastify.get('/materials/articles.xlsx', {
@@ -162,6 +243,9 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
       { header: 'Artikelnummer', key: 'articleNumber', width: 18 },
       { header: 'Kategori', key: 'category', width: 18 },
       { header: 'Enhet', key: 'unit', width: 12 },
+      { header: 'Inköpspris', key: 'purchasePrice', width: 14 },
+      { header: 'Försäljningspris', key: 'defaultUnitPrice', width: 16 },
+      { header: 'Påslag %', key: 'markupPercent', width: 12 },
       { header: 'Aktiv', key: 'active', width: 10 },
     ];
 
@@ -171,6 +255,9 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
         articleNumber: article.articleNumber || '',
         category: article.category || 'Övrigt',
         unit: article.unit,
+        purchasePrice: article.purchasePrice ?? '',
+        defaultUnitPrice: article.defaultUnitPrice ?? '',
+        markupPercent: article.markupPercent ?? '',
         active: article.active ? 'Ja' : 'Nej',
       });
     }
@@ -201,6 +288,11 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
       { header: 'Artikelnummer', key: 'articleNumber', width: 18 },
       { header: 'Kategori', key: 'category', width: 18 },
       { header: 'Enhet', key: 'unit', width: 12 },
+      { header: 'Antal', key: 'quantity', width: 12 },
+      { header: 'Datum', key: 'date', width: 14 },
+      { header: 'Inköpspris', key: 'purchasePrice', width: 14 },
+      { header: 'Försäljningspris', key: 'unitPrice', width: 16 },
+      { header: 'Kommentar', key: 'note', width: 32 },
       { header: 'Aktiv', key: 'active', width: 10 },
     ];
 
@@ -213,7 +305,18 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
       ['Skruv/nit', 'SKRUV-NIT', 'Skruv/nit', 'st', 'Ja'],
       ['Övrigt material', '', 'Övrigt', 'st', 'Ja'],
     ].forEach(([name, articleNumber, category, unit, active]) => {
-      worksheet.addRow({ name, articleNumber, category, unit, active });
+      worksheet.addRow({
+        name,
+        articleNumber,
+        category,
+        unit,
+        quantity: 1,
+        date: '',
+        purchasePrice: '',
+        unitPrice: '',
+        note: '',
+        active,
+      });
     });
 
     styleMaterialWorksheet(worksheet);
@@ -355,6 +458,303 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
     return { message: 'Materialartikeln inaktiverad' };
   });
 
+  fastify.get('/:id/summary', {
+    preHandler: [fastify.authenticate],
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const { from, to } = request.query as { from?: string; to?: string };
+
+    const project = await prisma.project.findUnique({
+      where: { id },
+      include: { customer: { select: { id: true, name: true, defaultRate: true } } },
+    });
+
+    if (!project || project.companyId !== request.user.companyId) {
+      return reply.status(404).send({ error: 'Projekt hittades inte' });
+    }
+
+    const canView = canViewFinancials(request.user.role, project);
+    if (!canView) {
+      return {
+        project: sanitizeProjectForRole(project, false),
+        period: { from: from || null, to: to || null },
+        resultsVisibleToCurrentUser: false,
+        metrics: null,
+        totals: {
+          totalHours: null,
+          billableHours: null,
+          laborCost: null,
+          materialCost: null,
+          materialSalesValue: null,
+          revenue: null,
+          result: null,
+          marginPercent: null,
+          entryCount: null,
+          materialRowCount: null,
+        },
+        warnings: [],
+        byActivity: [],
+        byUser: [],
+        recentEntries: [],
+        recentMaterials: [],
+      };
+    }
+
+    const dateFilter: any = {};
+    if (from) dateFilter.gte = new Date(from);
+    if (to) dateFilter.lte = getDayEnd(to);
+    const whereDate = Object.keys(dateFilter).length ? { date: dateFilter } : {};
+
+    const [approvedEntries, openEntryCount, materials] = await Promise.all([
+      prisma.timeEntry.findMany({
+        where: { projectId: id, status: 'APPROVED', ...whereDate },
+        include: {
+          user: { select: { id: true, name: true, hourlyCost: true } },
+          project: { select: { defaultRate: true, customer: { select: { defaultRate: true } } } },
+          activity: { select: { id: true, name: true, code: true, category: true, rateOverride: true } },
+        },
+        orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
+      }),
+      prisma.timeEntry.count({
+        where: { projectId: id, status: { not: 'APPROVED' }, ...whereDate },
+      }),
+      prisma.projectMaterial.findMany({
+        where: { projectId: id, ...whereDate },
+        include: { createdByUser: { select: { id: true, name: true } } },
+        orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
+      }),
+    ]);
+
+    const totalHours = approvedEntries.reduce((sum, entry) => sum + entry.hours, 0);
+    const billableEntries = approvedEntries.filter((entry) => entry.billable);
+    const billableHours = billableEntries.reduce((sum, entry) => sum + entry.hours, 0);
+    const billableValue = billableEntries.reduce((sum, entry) => sum + entry.hours * getRate(entry), 0);
+    const laborCost = approvedEntries.reduce((sum, entry) => sum + entry.hours * (entry.user.hourlyCost || 0), 0);
+    const materialCost = materials.reduce((sum, item) => sum + item.quantity * (item.purchasePrice ?? item.unitPrice ?? 0), 0);
+    const materialSalesValue = materials.reduce((sum, item) => sum + item.quantity * (item.unitPrice ?? 0), 0);
+    const revenue = project.billingModel === 'FIXED' && project.fixedPrice != null
+      ? project.fixedPrice + materialSalesValue
+      : billableValue + materialSalesValue;
+    const result = revenue > 0 ? revenue - laborCost - materialCost : null;
+    const marginPercent = result != null && revenue > 0 ? (result / revenue) * 100 : null;
+    const warnings: string[] = [];
+    if (openEntryCount > 0) warnings.push(`${openEntryCount} tidrader är inte attesterade`);
+    if (approvedEntries.some((entry) => entry.user.hourlyCost == null)) warnings.push('Timkostnad saknas på minst en användare');
+    if (materials.some((item) => item.purchasePrice == null)) warnings.push('Inköpspris saknas på minst en materialrad');
+    if (revenue === 0) warnings.push('Pris eller debiterbart värde saknas');
+
+    const byActivity = new Map<string, { activityId: string; activityName: string; activityCode: string; hours: number }>();
+    const byUser = new Map<string, { userId: string; userName: string; hours: number; billableHours: number }>();
+
+    for (const entry of approvedEntries) {
+      const activity = byActivity.get(entry.activity.id) || {
+        activityId: entry.activity.id,
+        activityName: entry.activity.name,
+        activityCode: entry.activity.code,
+        hours: 0,
+      };
+      activity.hours += entry.hours;
+      byActivity.set(entry.activity.id, activity);
+
+      const user = byUser.get(entry.user.id) || {
+        userId: entry.user.id,
+        userName: entry.user.name,
+        hours: 0,
+        billableHours: 0,
+      };
+      user.hours += entry.hours;
+      if (entry.billable) user.billableHours += entry.hours;
+      byUser.set(entry.user.id, user);
+    }
+
+    return {
+      project: sanitizeProjectForRole(project, true),
+      period: { from: from || null, to: to || null },
+      resultsVisibleToCurrentUser: true,
+      metrics: {
+        totalHours,
+        billableHours,
+        billableValue,
+        laborCost,
+        materialCost,
+        materialSalesValue,
+        projectResult: result,
+        marginPercent,
+        budgetUsagePercent: project.budgetHours ? (totalHours / project.budgetHours) * 100 : null,
+      },
+      totals: {
+        totalHours,
+        billableHours,
+        laborCost,
+        materialCost,
+        materialSalesValue,
+        revenue,
+        result,
+        marginPercent,
+        entryCount: approvedEntries.length,
+        materialRowCount: materials.length,
+      },
+      warnings,
+      byActivity: Array.from(byActivity.values()).sort((a, b) => b.hours - a.hours),
+      byUser: Array.from(byUser.values()).sort((a, b) => b.hours - a.hours),
+      recentEntries: approvedEntries.slice(0, 8),
+      recentMaterials: materials.slice(0, 8).map((item) => mapMaterialForRole(item, true)),
+    };
+  });
+
+  fastify.post('/:id/materials/import.xlsx', {
+    preHandler: [requireAdminOrSupervisor],
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const project = await prisma.project.findUnique({ where: { id } });
+    if (!project || project.companyId !== request.user.companyId) {
+      return reply.status(404).send({ error: 'Projekt hittades inte' });
+    }
+
+    const file = await (request as any).file();
+    if (!file) return reply.status(400).send({ error: 'Excel-fil saknas' });
+
+    const buffer = await file.toBuffer();
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(buffer);
+    const worksheet = workbook.worksheets[0];
+    if (!worksheet) return reply.status(400).send({ error: 'Excel-filen saknar blad' });
+
+    const headers = new Map<string, number>();
+    worksheet.getRow(1).eachCell((cell, colNumber) => headers.set(normalizeHeader(cell.value), colNumber));
+    const col = (name: string) => headers.get(normalizeHeader(name));
+    const articleCol = col('Artikel');
+    const quantityCol = col('Antal');
+    if (!articleCol || !quantityCol) {
+      return reply.status(400).send({ error: 'Excel-filen måste innehålla kolumnerna Artikel och Antal' });
+    }
+
+    const rows: Array<{
+      row: number;
+      articleName: string;
+      articleNumber: string | null;
+      category: string;
+      unit: string;
+      quantity: number;
+      date: Date;
+      purchasePrice: number | null;
+      unitPrice: number | null;
+      note: string | null;
+    }> = [];
+    const errors: Array<{ row: number; message: string }> = [];
+
+    worksheet.eachRow((row, rowNumber) => {
+      if (rowNumber === 1) return;
+      const articleName = normalizeText(row.getCell(articleCol).value);
+      const quantity = parseRequiredNumber(row.getCell(quantityCol).value);
+      const values = row.values as unknown[];
+      const hasAnyValue = values.some((value) => normalizeText(value));
+      if (!hasAnyValue) return;
+
+      if (!articleName) errors.push({ row: rowNumber, message: 'Artikel saknas' });
+      if (quantity == null) errors.push({ row: rowNumber, message: 'Antal måste vara större än 0' });
+      if (!articleName || quantity == null) return;
+
+      rows.push({
+        row: rowNumber,
+        articleName,
+        articleNumber: col('Artikelnummer') ? normalizeText(row.getCell(col('Artikelnummer')!).value) || null : null,
+        category: col('Kategori') ? normalizeText(row.getCell(col('Kategori')!).value) || 'Övrigt' : 'Övrigt',
+        unit: col('Enhet') ? normalizeText(row.getCell(col('Enhet')!).value) || 'st' : 'st',
+        quantity,
+        date: col('Datum') ? parseImportDate(row.getCell(col('Datum')!).value) : new Date(),
+        purchasePrice: col('Inköpspris') ? parseOptionalNumber(row.getCell(col('Inköpspris')!).value) : null,
+        unitPrice: col('Försäljningspris') ? parseOptionalNumber(row.getCell(col('Försäljningspris')!).value) : null,
+        note: col('Kommentar') ? normalizeText(row.getCell(col('Kommentar')!).value) || null : null,
+      });
+    });
+
+    if (errors.length) return reply.status(400).send({ error: 'Importen innehåller fel', errors });
+    if (!rows.length) return reply.status(400).send({ error: 'Inga materialrader att importera' });
+
+    const result = await prisma.$transaction(async (tx) => {
+      let createdArticles = 0;
+      const createdMaterials: any[] = [];
+
+      for (const row of rows) {
+        let createdArticle = false;
+        let article = await tx.materialArticle.findFirst({
+          where: {
+            companyId: request.user.companyId,
+            OR: [
+              ...(row.articleNumber ? [{ articleNumber: row.articleNumber }] : []),
+              { name: row.articleName, unit: row.unit },
+            ],
+          },
+        });
+        if (!article) {
+          article = await tx.materialArticle.create({
+            data: {
+              companyId: request.user.companyId,
+              name: row.articleName,
+              articleNumber: row.articleNumber,
+              category: row.category,
+              unit: row.unit,
+              purchasePrice: row.purchasePrice,
+              defaultUnitPrice: row.unitPrice,
+              active: true,
+            },
+          });
+          createdArticle = true;
+        }
+        if (createdArticle) createdArticles += 1;
+
+        const material = await tx.projectMaterial.create({
+          data: {
+            projectId: id,
+            articleId: article.id,
+            createdByUserId: request.user.id,
+            articleName: article.name,
+            articleNumber: article.articleNumber,
+            unit: article.unit,
+            purchasePrice: row.purchasePrice ?? article.purchasePrice,
+            unitPrice: row.unitPrice ?? article.defaultUnitPrice,
+            quantity: row.quantity,
+            date: row.date,
+            note: row.note,
+          },
+          include: { createdByUser: { select: { id: true, name: true } } },
+        });
+        createdMaterials.push(material);
+      }
+
+      await tx.auditLog.create({
+        data: {
+          userId: request.user.id,
+          action: 'IMPORT',
+          entityType: 'ProjectMaterialExcel',
+          entityId: id,
+          newValue: JSON.stringify({ projectId: id, rowCount: rows.length }),
+        },
+      });
+
+      return { createdArticles, createdMaterials };
+    });
+
+    await enqueueMaterialChanged(prisma, {
+      companyId: request.user.companyId,
+      projectId: id,
+      entityId: id,
+      action: 'IMPORT',
+      payload: { rowCount: result.createdMaterials.length },
+    });
+
+    return {
+      imported: result.createdMaterials.length,
+      created: result.createdMaterials.length,
+      updated: 0,
+      createdArticles: result.createdArticles,
+      skipped: 0,
+      errors: [],
+      items: result.createdMaterials.map((item) => mapMaterialForRole(item, true)),
+    };
+  });
+
   // Project by ID is registered after material registry routes so static
   // material paths can never be interpreted as project ids.
   fastify.get('/:id', {
@@ -373,17 +773,17 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(404).send({ error: 'Projekt hittades inte' });
     }
 
-    const hideResults = shouldHideResultsForEmployee(request.user.role, project);
+    const canView = canViewFinancials(request.user.role, project);
     const metrics = await getProjectMetrics(prisma, project);
 
-    const stats = hideResults
+    const stats = !canView
       ? null
       : await prisma.timeEntry.aggregate({
           where: { projectId: id },
           _sum: { hours: true },
         });
 
-    const billableStats = hideResults
+    const billableStats = !canView
       ? null
       : await prisma.timeEntry.aggregate({
           where: { projectId: id, billable: true },
@@ -391,11 +791,11 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
         });
 
     return {
-      ...project,
-      resultsVisibleToCurrentUser: !hideResults,
-      totalHours: hideResults ? null : (stats?._sum.hours || 0),
-      billableHours: hideResults ? null : (billableStats?._sum.hours || 0),
-      metrics: hideResults ? null : metrics,
+      ...sanitizeProjectForRole(project, canView),
+      resultsVisibleToCurrentUser: canView,
+      totalHours: canView ? (stats?._sum.hours || 0) : null,
+      billableHours: canView ? (billableStats?._sum.hours || 0) : null,
+      metrics: canView ? metrics : null,
     };
   });
 
@@ -409,7 +809,7 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(404).send({ error: 'Projekt hittades inte' });
     }
 
-    const hideResults = shouldHideResultsForEmployee(request.user.role, project);
+    const canView = canViewFinancials(request.user.role, project);
 
     const items = await prisma.projectMaterial.findMany({
       where: { projectId: id },
@@ -421,22 +821,14 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
       orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
     });
 
-    const mappedItems = items.map((item) => {
-      const lineTotal = item.unitPrice != null ? item.quantity * item.unitPrice : null;
-
-      return {
-        ...item,
-        unitPrice: hideResults ? null : item.unitPrice,
-        lineTotal: hideResults ? null : lineTotal,
-      };
-    });
+    const mappedItems = items.map((item) => mapMaterialForRole(item, canView));
 
     return {
-      costVisibleToCurrentUser: !hideResults,
+      costVisibleToCurrentUser: canView,
       items: mappedItems,
       totals: {
         quantity: items.reduce((sum, item) => sum + item.quantity, 0),
-        amount: hideResults
+        amount: !canView
           ? null
           : items.reduce((sum, item) => sum + (item.unitPrice != null ? item.quantity * item.unitPrice : 0), 0),
       },
@@ -511,10 +903,108 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
         },
       });
 
-      return reply.status(201).send({
-        ...material,
-        lineTotal: material.unitPrice != null ? material.quantity * material.unitPrice : null,
+      return reply.status(201).send(mapMaterialForRole(material, canViewFinancials(request.user.role, project)));
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return reply.status(400).send({ error: 'Ogiltig data', details: error.errors });
+      }
+      throw error;
+    }
+  });
+
+  fastify.patch('/:id/materials/:materialId', {
+    preHandler: [fastify.authenticate],
+  }, async (request, reply) => {
+    try {
+      const { id, materialId } = request.params as { id: string; materialId: string };
+      const body = projectMaterialPatchSchema.parse(request.body);
+
+      const project = await prisma.project.findUnique({ where: { id } });
+      if (!project || project.companyId !== request.user.companyId) {
+        return reply.status(404).send({ error: 'Projekt hittades inte' });
+      }
+
+      const material = await prisma.projectMaterial.findUnique({ where: { id: materialId } });
+      if (!material || material.projectId !== id) {
+        return reply.status(404).send({ error: 'Materialraden hittades inte' });
+      }
+
+      const isOwner = material.createdByUserId === request.user.id;
+      const isManager = canManageMaterials(request.user.role);
+      if (!isOwner && !isManager) {
+        return reply.status(403).send({ error: 'Atkomst nekad' });
+      }
+
+      const touchesFinancials =
+        body.articleId !== undefined ||
+        body.purchasePrice !== undefined ||
+        body.unitPrice !== undefined ||
+        body.invoiceStatus !== undefined ||
+        body.invoiceReference !== undefined;
+      if (touchesFinancials && !isManager) {
+        return reply.status(403).send({ error: 'Endast admin eller arbetsledare kan ändra pris, artikel eller fakturastatus' });
+      }
+
+      const data: any = {};
+      if (body.quantity !== undefined) data.quantity = body.quantity;
+      if (body.date !== undefined) data.date = new Date(body.date);
+      if (body.note !== undefined) data.note = body.note?.trim() || null;
+      if (body.purchasePrice !== undefined) data.purchasePrice = body.purchasePrice;
+      if (body.unitPrice !== undefined) data.unitPrice = body.unitPrice;
+      if (body.invoiceStatus !== undefined) {
+        data.invoiceStatus = body.invoiceStatus;
+        data.invoicedAt = body.invoiceStatus === 'INVOICED' ? new Date() : null;
+      }
+      if (body.invoiceReference !== undefined) data.invoiceReference = body.invoiceReference?.trim() || null;
+
+      if (body.articleId) {
+        const article = await prisma.materialArticle.findFirst({
+          where: { id: body.articleId, companyId: request.user.companyId, active: true },
+        });
+        if (!article) return reply.status(400).send({ error: 'Materialartikeln finns inte eller är inte aktiv' });
+        data.articleId = article.id;
+        data.articleName = article.name;
+        data.articleNumber = article.articleNumber;
+        data.unit = article.unit;
+        if (body.purchasePrice === undefined) data.purchasePrice = article.purchasePrice;
+        if (body.unitPrice === undefined) data.unitPrice = article.defaultUnitPrice;
+      }
+
+      const updated = await prisma.projectMaterial.update({
+        where: { id: materialId },
+        data,
+        include: { createdByUser: { select: { id: true, name: true } } },
       });
+
+      await prisma.auditLog.create({
+        data: {
+          userId: request.user.id,
+          action: 'UPDATE',
+          entityType: 'ProjectMaterial',
+          entityId: materialId,
+          oldValue: JSON.stringify({
+            articleName: material.articleName,
+            quantity: material.quantity,
+            unit: material.unit,
+            date: material.date,
+          }),
+          newValue: JSON.stringify(body),
+        },
+      });
+
+      await enqueueMaterialChanged(prisma, {
+        companyId: request.user.companyId,
+        projectId: id,
+        entityId: materialId,
+        action: 'UPDATE',
+        payload: {
+          articleName: updated.articleName,
+          quantity: updated.quantity,
+          unit: updated.unit,
+        },
+      });
+
+      return mapMaterialForRole(updated, canViewFinancials(request.user.role, project));
     } catch (error) {
       if (error instanceof z.ZodError) {
         return reply.status(400).send({ error: 'Ogiltig data', details: error.errors });

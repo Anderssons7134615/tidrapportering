@@ -7,7 +7,7 @@ import { customersApi, projectsApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
 import type { Project, ProjectListItem } from '../types';
 import { AppShell, Card, EmptyState, FilterBar, KpiCard, PageHeader, StatusBadge } from '../components/ui/design';
-import { formatDate, formatHours, formatPercent, parseSwedishNumber } from '../utils/format';
+import { formatCurrency, formatDate, formatHours, formatPercent, parseSwedishNumber } from '../utils/format';
 import { ListSkeleton } from '../components/ui/Skeleton';
 
 export default function Projects() {
@@ -20,10 +20,14 @@ export default function Projects() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState(searchParams.get('risk') ? 'RISK' : searchParams.get('missingBudget') ? 'RUNNING_JOB' : 'ALL');
   const [activeFilter, setActiveFilter] = useState('ACTIVE');
+  const [customerFilter, setCustomerFilter] = useState(searchParams.get('customerId') || '');
 
   const { data: projects, isLoading } = useQuery({
-    queryKey: ['projects', 'rich', activeFilter],
-    queryFn: () => projectsApi.list({ active: activeFilter === 'ALL' ? undefined : activeFilter === 'ACTIVE' }),
+    queryKey: ['projects', 'rich', activeFilter, customerFilter],
+    queryFn: () => projectsApi.list({
+      active: activeFilter === 'ALL' ? undefined : activeFilter === 'ACTIVE',
+      customerId: customerFilter || undefined,
+    }),
   });
 
   const { data: customers } = useQuery({
@@ -118,7 +122,7 @@ export default function Projects() {
     <AppShell>
       <PageHeader
         title="Projekt"
-        description="Följ timmar, budget och risk per projekt."
+        description="Jobbtavla för timmar, material, budget och projektläge."
         action={isManager && (
           <button onClick={() => setIsModalOpen(true)} className="btn-primary">
             <Plus className="h-4 w-4" />
@@ -134,24 +138,41 @@ export default function Projects() {
       </div>
 
       <FilterBar>
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1.2fr_0.8fr_0.8fr]">
+        <div className="grid grid-cols-1 gap-3 xl:grid-cols-[1.2fr_1fr_0.8fr]">
           <label className="relative">
             <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-graphite-400" />
             <input className="input pl-9" placeholder="Sök projekt, kund eller projektnummer" value={search} onChange={(event) => setSearch(event.target.value)} />
           </label>
-          <select className="input" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-            <option value="ALL">Alla statusar</option>
-            <option value="PLANNED">Planerad</option>
-            <option value="ONGOING">Pågående</option>
-            <option value="RUNNING_JOB">Löpande jobb</option>
-            <option value="RISK">Riskprojekt</option>
-            <option value="COMPLETED">Avslutad</option>
-          </select>
+          {isManager && (
+            <select className="input" value={customerFilter} onChange={(event) => setCustomerFilter(event.target.value)}>
+              <option value="">Alla kunder</option>
+              {customers?.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}
+            </select>
+          )}
           <select className="input" value={activeFilter} onChange={(event) => setActiveFilter(event.target.value)}>
             <option value="ACTIVE">Aktiva</option>
             <option value="INACTIVE">Inaktiva</option>
             <option value="ALL">Alla</option>
           </select>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {[
+            ['ALL', 'Alla'],
+            ['PLANNED', 'Planerade'],
+            ['ONGOING', 'Pågående'],
+            ['RUNNING_JOB', 'Löpande'],
+            ['RISK', 'Risk'],
+            ['COMPLETED', 'Avslutade'],
+          ].map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setStatusFilter(id)}
+              className={`rounded-lg border px-3 py-2 text-sm font-semibold transition ${statusFilter === id ? 'border-graphite-950 bg-graphite-950 text-white' : 'border-graphite-200 bg-white text-graphite-600 hover:border-primary-300 hover:text-primary-700'}`}
+            >
+              {label}
+            </button>
+          ))}
         </div>
       </FilterBar>
 
@@ -249,11 +270,13 @@ function ProjectRow({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 text-sm md:grid-cols-4">
+          <div className="grid grid-cols-2 gap-2 text-sm md:grid-cols-3 xl:grid-cols-6">
             <Metric label="Timmar" value={formatHours(metrics?.totalHours)} />
             <Metric label="Denna vecka" value={formatHours(metrics?.weekHours)} />
             <Metric label="Budget" value={project.budgetHours ? formatHours(project.budgetHours) : 'Löpande'} />
             <Metric label="Budgetläge" value={project.budgetHours ? formatPercent(metrics?.budgetUsagePercent) : 'Löpande'} />
+            <Metric label="Material" value={metrics ? formatCurrency(metrics.materialSalesValue) : 'Ej synligt'} />
+            <Metric label="Resultat" value={metrics?.projectResult != null ? formatCurrency(metrics.projectResult) : metrics ? '-' : 'Ej synligt'} />
           </div>
         </Link>
 
