@@ -1,14 +1,23 @@
 import { useMemo, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Edit2, Plus, Search, Trash2 } from 'lucide-react';
+import { AlertTriangle, ChevronRight, Clock, Coins, Edit2, Layers, MapPin, Plus, Search, SlidersHorizontal, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { customersApi, projectsApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
 import type { Project, ProjectListItem } from '../types';
-import { AppShell, Card, EmptyState, FilterBar, KpiCard, PageHeader, StatusBadge } from '../components/ui/design';
+import { AppShell, Card, EmptyState, KpiCard, PageHeader, StatusBadge } from '../components/ui/design';
 import { formatCurrency, formatDate, formatHours, formatPercent, parseSwedishNumber } from '../utils/format';
 import { ListSkeleton } from '../components/ui/Skeleton';
+
+const statusFilters = [
+  { id: 'ALL', label: 'Alla jobb' },
+  { id: 'ONGOING', label: 'Pågående' },
+  { id: 'RUNNING_JOB', label: 'Löpande' },
+  { id: 'RISK', label: 'Risk' },
+  { id: 'PLANNED', label: 'Planerade' },
+  { id: 'COMPLETED', label: 'Avslutade' },
+] as const;
 
 export default function Projects() {
   const queryClient = useQueryClient();
@@ -83,12 +92,18 @@ export default function Projects() {
   const totals = useMemo(() => {
     return filteredProjects.reduce(
       (acc, project) => {
-        acc.hours += project.metrics?.totalHours || 0;
-        acc.risk += project.metrics?.status.code === 'RISK' ? 1 : 0;
+        const metrics = project.metrics;
+        acc.hours += metrics?.totalHours || 0;
+        acc.weekHours += metrics?.weekHours || 0;
+        acc.material += metrics?.materialSalesValue || 0;
+        acc.result += metrics?.projectResult || 0;
+        acc.risk += metrics?.status.code === 'RISK' ? 1 : 0;
         acc.missingBudget += !project.budgetHours ? 1 : 0;
+        acc.completed += metrics?.status.code === 'COMPLETED' ? 1 : 0;
+        acc.withFinancials ||= metrics?.projectResult != null || Boolean(metrics?.materialSalesValue);
         return acc;
       },
-      { hours: 0, risk: 0, missingBudget: 0 }
+      { hours: 0, weekHours: 0, material: 0, result: 0, risk: 0, missingBudget: 0, completed: 0, withFinancials: false }
     );
   }, [filteredProjects]);
 
@@ -122,7 +137,7 @@ export default function Projects() {
     <AppShell>
       <PageHeader
         title="Projekt"
-        description="Jobbtavla för timmar, material, budget och projektläge."
+        description="Jobbtavla för aktiva jobb, budgetläge, material och färdiga projekts resultat."
         action={isManager && (
           <button onClick={() => setIsModalOpen(true)} className="btn-primary">
             <Plus className="h-4 w-4" />
@@ -131,69 +146,132 @@ export default function Projects() {
         )}
       />
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label="Projekt" value={filteredProjects.length} tone="dark" />
-        <KpiCard label="Timmar totalt" value={formatHours(totals.hours)} tone="orange" />
-        <KpiCard label="Risk / löpande" value={`${totals.risk} / ${totals.missingBudget}`} tone={totals.risk ? 'red' : 'green'} />
-      </div>
+      <section className="overflow-hidden rounded-xl border border-graphite-800 bg-graphite-950 text-white shadow-premium">
+        <div className="grid gap-0 lg:grid-cols-[1.1fr_0.9fr]">
+          <div className="p-5 sm:p-6">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white/75">
+                Projektläge
+              </span>
+              {totals.risk > 0 && (
+                <span className="inline-flex items-center gap-1 rounded-full border border-rose-300/30 bg-rose-400/15 px-3 py-1 text-xs font-semibold text-rose-100">
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                  {totals.risk} behöver kollas
+                </span>
+              )}
+            </div>
+            <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <HeroMetric label="Synliga jobb" value={filteredProjects.length} />
+              <HeroMetric label="Veckans timmar" value={formatHours(totals.weekHours)} />
+              <HeroMetric label="Löpande jobb" value={totals.missingBudget} />
+              <HeroMetric label="Avslutade" value={totals.completed} />
+            </div>
+          </div>
+          <div className="border-t border-white/10 bg-white/[0.04] p-5 sm:p-6 lg:border-l lg:border-t-0">
+            <div className="grid h-full grid-cols-1 gap-3 sm:grid-cols-2">
+              <MoneyPanel icon={<Layers className="h-5 w-5" />} label="Material i listan" value={totals.withFinancials ? formatCurrency(totals.material) : 'Dolt'} />
+              <MoneyPanel icon={<Coins className="h-5 w-5" />} label="Resultat" value={totals.withFinancials ? formatCurrency(totals.result) : 'Dolt'} tone={totals.result < 0 ? 'loss' : 'profit'} />
+            </div>
+          </div>
+        </div>
+      </section>
 
-      <FilterBar>
-        <div className="grid grid-cols-1 gap-3 xl:grid-cols-[1.2fr_1fr_0.8fr]">
-          <label className="relative">
-            <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-graphite-400" />
-            <input className="input pl-9" placeholder="Sök projekt, kund eller projektnummer" value={search} onChange={(event) => setSearch(event.target.value)} />
-          </label>
-          {isManager && (
-            <select className="input" value={customerFilter} onChange={(event) => setCustomerFilter(event.target.value)}>
-              <option value="">Alla kunder</option>
-              {customers?.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}
-            </select>
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[310px_1fr]">
+        <aside className="space-y-4 xl:sticky xl:top-4 xl:self-start">
+          <Card className="p-0">
+            <div className="border-b border-graphite-200 px-4 py-3">
+              <div className="flex items-center gap-2 font-semibold text-graphite-950">
+                <SlidersHorizontal className="h-4 w-4 text-primary-600" />
+                Filter
+              </div>
+            </div>
+            <div className="space-y-4 p-4">
+              <label className="relative block">
+                <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-graphite-400" />
+                <input className="input pl-9" placeholder="Sök jobb, kund, plats" value={search} onChange={(event) => setSearch(event.target.value)} />
+              </label>
+
+              {isManager && (
+                <label className="block">
+                  <span className="label">Kund</span>
+                  <select className="input" value={customerFilter} onChange={(event) => setCustomerFilter(event.target.value)}>
+                    <option value="">Alla kunder</option>
+                    {customers?.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}
+                  </select>
+                </label>
+              )}
+
+              <label className="block">
+                <span className="label">Visa</span>
+                <select className="input" value={activeFilter} onChange={(event) => setActiveFilter(event.target.value)}>
+                  <option value="ACTIVE">Aktiva projekt</option>
+                  <option value="INACTIVE">Inaktiva projekt</option>
+                  <option value="ALL">Alla projekt</option>
+                </select>
+              </label>
+
+              <div>
+                <span className="label">Status</span>
+                <div className="grid grid-cols-2 gap-2">
+                  {statusFilters.map((filter) => (
+                    <button
+                      key={filter.id}
+                      type="button"
+                      onClick={() => setStatusFilter(filter.id)}
+                      className={`min-h-10 rounded-lg border px-3 py-2 text-sm font-semibold transition ${
+                        statusFilter === filter.id
+                          ? 'border-graphite-950 bg-graphite-950 text-white shadow-sm'
+                          : 'border-graphite-200 bg-white text-graphite-600 hover:border-primary-300 hover:text-primary-700'
+                      }`}
+                    >
+                      {filter.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </Card>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 xl:grid-cols-1">
+            <KpiCard label="Timmar totalt" value={formatHours(totals.hours)} tone="orange" />
+            <KpiCard label="Riskjobb" value={totals.risk} tone={totals.risk ? 'red' : 'green'} />
+            <KpiCard label="Utan budget" value={totals.missingBudget} tone={totals.missingBudget ? 'yellow' : 'green'} />
+          </div>
+        </aside>
+
+        <main className="min-w-0 space-y-3">
+          <div className="flex flex-col gap-2 rounded-xl border border-white/70 bg-white/85 px-4 py-3 shadow-soft ring-1 ring-graphite-200/45 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-graphite-950">Jobböversikt</h2>
+              <p className="text-sm text-graphite-500">{filteredProjects.length} projekt matchar filtret</p>
+            </div>
+            <div className="flex flex-wrap gap-2 text-xs font-semibold text-graphite-500">
+              <span className="rounded-full bg-emerald-50 px-3 py-1 text-emerald-700">Grön: på plan</span>
+              <span className="rounded-full bg-amber-50 px-3 py-1 text-amber-800">Gul: nära budget</span>
+              <span className="rounded-full bg-rose-50 px-3 py-1 text-rose-700">Röd: risk</span>
+            </div>
+          </div>
+
+          {!filteredProjects.length ? (
+            <EmptyState title="Inga projekt matchar filtret" description="Justera filtren eller skapa ett nytt projekt." />
+          ) : (
+            <div className="grid grid-cols-1 gap-3 2xl:grid-cols-2">
+              {filteredProjects.map((project) => (
+                <ProjectCard
+                  key={project.id}
+                  project={project}
+                  isManager={isManager}
+                  onEdit={() => {
+                    setEditingProject(project);
+                    setIsModalOpen(true);
+                  }}
+                  onDelete={() => window.confirm('Inaktivera projekt?') && deleteMutation.mutate(project.id)}
+                />
+              ))}
+            </div>
           )}
-          <select className="input" value={activeFilter} onChange={(event) => setActiveFilter(event.target.value)}>
-            <option value="ACTIVE">Aktiva</option>
-            <option value="INACTIVE">Inaktiva</option>
-            <option value="ALL">Alla</option>
-          </select>
-        </div>
-        <div className="mt-3 flex flex-wrap gap-2">
-          {[
-            ['ALL', 'Alla'],
-            ['PLANNED', 'Planerade'],
-            ['ONGOING', 'Pågående'],
-            ['RUNNING_JOB', 'Löpande'],
-            ['RISK', 'Risk'],
-            ['COMPLETED', 'Avslutade'],
-          ].map(([id, label]) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => setStatusFilter(id)}
-              className={`rounded-lg border px-3 py-2 text-sm font-semibold transition ${statusFilter === id ? 'border-graphite-950 bg-graphite-950 text-white' : 'border-graphite-200 bg-white text-graphite-600 hover:border-primary-300 hover:text-primary-700'}`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      </FilterBar>
-
-      {!filteredProjects.length ? (
-        <EmptyState title="Inga projekt matchar filtret" description="Justera filtren eller skapa ett nytt projekt." />
-      ) : (
-        <div className="grid grid-cols-1 gap-3">
-          {filteredProjects.map((project) => (
-            <ProjectRow
-              key={project.id}
-              project={project}
-              isManager={isManager}
-              onEdit={() => {
-                setEditingProject(project);
-                setIsModalOpen(true);
-              }}
-              onDelete={() => window.confirm('Inaktivera projekt?') && deleteMutation.mutate(project.id)}
-            />
-          ))}
-        </div>
-      )}
+        </main>
+      </div>
 
       {isManager && isModalOpen && (
         <ProjectModal
@@ -208,7 +286,7 @@ export default function Projects() {
   );
 }
 
-function ProjectRow({
+function ProjectCard({
   project,
   isManager,
   onEdit,
@@ -223,14 +301,10 @@ function ProjectRow({
   const metrics = project.metrics;
   const runningJob = !project.budgetHours;
   const budgetUsage = Math.max(0, Math.min(metrics?.budgetUsagePercent || 0, 100));
-  const progressTone =
-    (metrics?.budgetUsagePercent || 0) >= 100
-      ? 'bg-rose-500'
-      : (metrics?.budgetUsagePercent || 0) >= 80
-        ? 'bg-amber-500'
-        : runningJob
-          ? 'bg-sky-500'
-          : 'bg-emerald-500';
+  const isRisk = metrics?.status.code === 'RISK' || (metrics?.budgetUsagePercent || 0) >= 100;
+  const isWarning = !isRisk && (runningJob || (metrics?.budgetUsagePercent || 0) >= 80);
+  const accent = isRisk ? 'border-l-rose-500' : isWarning ? 'border-l-amber-400' : 'border-l-emerald-500';
+  const progressTone = isRisk ? 'bg-rose-500' : isWarning ? 'bg-amber-500' : 'bg-emerald-500';
 
   return (
     <Card
@@ -243,63 +317,131 @@ function ProjectRow({
           navigate(`/projects/${project.id}`);
         }
       }}
-      className={`accent-line cursor-pointer transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 hover:-translate-y-0.5 hover:shadow-premium ${!project.active ? 'opacity-70' : ''}`}
+      className={`min-h-[290px] cursor-pointer border-l-4 ${accent} p-0 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 hover:-translate-y-0.5 hover:shadow-premium ${!project.active ? 'opacity-70' : ''}`}
       title="Öppna projekt"
     >
-      <div className="grid gap-4 xl:grid-cols-[1.05fr_1.75fr_auto] xl:items-center">
-        <Link to={`/projects/${project.id}`} onClick={(event) => event.stopPropagation()} className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <h2 className="truncate text-lg font-semibold text-graphite-950">{project.name}</h2>
-            {metrics?.status && <StatusBadge label={metrics.status.label} tone={metrics.status.tone} />}
-            {runningJob && <StatusBadge label="Löpande jobb" tone="green" />}
+      <div className="flex h-full flex-col">
+        <div className="border-b border-graphite-200 p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                {metrics?.status && <StatusBadge label={metrics.status.label} tone={metrics.status.tone} />}
+                {runningJob && <StatusBadge label="Löpande jobb" tone="yellow" />}
+              </div>
+              <h3 className="mt-3 line-clamp-2 text-xl font-semibold leading-tight text-graphite-950">{project.name}</h3>
+              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-graphite-500">
+                <span className="font-semibold text-graphite-700">{project.code}</span>
+                <span>{project.customer?.name || 'Intern'}</span>
+                {project.site && (
+                  <span className="inline-flex min-w-0 items-center gap-1">
+                    <MapPin className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">{project.site}</span>
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-1">
+              {isManager && (
+                <>
+                  <button onClick={(event) => { event.stopPropagation(); onEdit(); }} className="rounded-lg p-2 text-graphite-500 hover:bg-primary-50 hover:text-primary-700" title="Redigera">
+                    <Edit2 className="h-4 w-4" />
+                  </button>
+                  <button onClick={(event) => { event.stopPropagation(); onDelete(); }} className="rounded-lg p-2 text-rose-600 hover:bg-rose-50" title="Inaktivera">
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </>
+              )}
+              <ChevronRight className="h-5 w-5 text-graphite-300" />
+            </div>
           </div>
-          <p className="mt-1 text-sm text-graphite-500">
-            {project.code} · {project.customer?.name || 'Intern'}
-          </p>
-          {metrics?.lastActivityAt && <p className="mt-1 text-xs font-medium text-graphite-400">Senaste aktivitet {formatDate(metrics.lastActivityAt)}</p>}
-        </Link>
+        </div>
 
-        <Link to={`/projects/${project.id}`} onClick={(event) => event.stopPropagation()} className="space-y-3">
+        <div className="flex flex-1 flex-col gap-4 p-4">
           <div>
             <div className="mb-1.5 flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-graphite-500">
-              <span>Budgetförbrukning</span>
+              <span>Budgetläge</span>
               <span>{project.budgetHours ? formatPercent(metrics?.budgetUsagePercent) : 'Löpande jobb'}</span>
             </div>
-            <div className="h-2 overflow-hidden rounded-full bg-graphite-100">
+            <div className="h-3 overflow-hidden rounded-full bg-graphite-100">
               <div className={`h-full rounded-full ${progressTone}`} style={{ width: project.budgetHours ? `${budgetUsage}%` : '100%' }} />
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 text-sm md:grid-cols-3 xl:grid-cols-6">
-            <Metric label="Timmar" value={formatHours(metrics?.totalHours)} />
-            <Metric label="Denna vecka" value={formatHours(metrics?.weekHours)} />
-            <Metric label="Budget" value={project.budgetHours ? formatHours(project.budgetHours) : 'Löpande'} />
-            <Metric label="Budgetläge" value={project.budgetHours ? formatPercent(metrics?.budgetUsagePercent) : 'Löpande'} />
-            <Metric label="Material" value={metrics ? formatCurrency(metrics.materialSalesValue) : 'Ej synligt'} />
-            <Metric label="Resultat" value={metrics?.projectResult != null ? formatCurrency(metrics.projectResult) : metrics ? '-' : 'Ej synligt'} />
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            <ProjectMetric icon={<Clock className="h-4 w-4" />} label="Timmar" value={formatHours(metrics?.totalHours)} />
+            <ProjectMetric icon={<Clock className="h-4 w-4" />} label="Denna vecka" value={formatHours(metrics?.weekHours)} />
+            <ProjectMetric icon={<Layers className="h-4 w-4" />} label="Budget" value={project.budgetHours ? formatHours(project.budgetHours) : 'Löpande'} />
+            <ProjectMetric icon={<Layers className="h-4 w-4" />} label="Material" value={metrics ? formatCurrency(metrics.materialSalesValue) : 'Dolt'} />
+            <ProjectMetric
+              icon={<Coins className="h-4 w-4" />}
+              label="Resultat"
+              value={metrics?.projectResult != null ? formatCurrency(metrics.projectResult) : metrics ? '-' : 'Dolt'}
+              valueTone={metrics?.projectResult != null && metrics.projectResult < 0 ? 'text-rose-700' : 'text-emerald-700'}
+            />
+            <ProjectMetric label="Senast" value={metrics?.lastActivityAt ? formatDate(metrics.lastActivityAt) : '-'} />
           </div>
-        </Link>
 
-        {isManager && (
-          <div className="flex items-center justify-end gap-1">
-            <button onClick={(event) => { event.stopPropagation(); onEdit(); }} className="rounded-lg p-2 text-graphite-500 hover:bg-primary-50 hover:text-primary-700" title="Redigera">
-              <Edit2 className="h-4 w-4" />
-            </button>
-            <button onClick={(event) => { event.stopPropagation(); onDelete(); }} className="rounded-lg p-2 text-rose-600 hover:bg-rose-50" title="Inaktivera">
-              <Trash2 className="h-4 w-4" />
-            </button>
-          </div>
-        )}
+          {metrics?.warnings?.length ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900">
+              {metrics.warnings[0]}
+            </div>
+          ) : null}
+        </div>
       </div>
     </Card>
   );
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
+function HeroMetric({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="rounded-lg border border-graphite-200 bg-graphite-50 px-3 py-2 text-graphite-700">
-      <p className="text-xs text-graphite-500">{label}</p>
-      <p className="mt-0.5 font-semibold">{value}</p>
+    <div className="rounded-lg border border-white/10 bg-white/10 px-3 py-3">
+      <p className="text-xs font-semibold uppercase tracking-wide text-white/55">{label}</p>
+      <p className="mt-1 text-2xl font-semibold tracking-tight text-white">{value}</p>
+    </div>
+  );
+}
+
+function MoneyPanel({
+  icon,
+  label,
+  value,
+  tone = 'neutral',
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  tone?: 'neutral' | 'profit' | 'loss';
+}) {
+  const valueClass = tone === 'loss' ? 'text-rose-100' : tone === 'profit' ? 'text-emerald-100' : 'text-white';
+  return (
+    <div className="rounded-lg border border-white/10 bg-white/10 p-4">
+      <div className="flex items-center gap-2 text-white/65">
+        {icon}
+        <span className="text-xs font-semibold uppercase tracking-wide">{label}</span>
+      </div>
+      <p className={`mt-3 text-2xl font-semibold tracking-tight ${valueClass}`}>{value}</p>
+    </div>
+  );
+}
+
+function ProjectMetric({
+  icon,
+  label,
+  value,
+  valueTone = 'text-graphite-950',
+}: {
+  icon?: React.ReactNode;
+  label: string;
+  value: string;
+  valueTone?: string;
+}) {
+  return (
+    <div className="min-h-[74px] rounded-lg border border-graphite-200 bg-graphite-50 px-3 py-2">
+      <div className="flex items-center gap-1.5 text-xs font-medium text-graphite-500">
+        {icon}
+        <span>{label}</span>
+      </div>
+      <p className={`mt-1 break-words text-sm font-semibold sm:text-base ${valueTone}`}>{value}</p>
     </div>
   );
 }
