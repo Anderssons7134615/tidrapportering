@@ -394,46 +394,47 @@ const weekLockRoutes: FastifyPluginAsync = async (fastify) => {
       });
     }
 
-    // Uppdatera veckolås
-    const updatedLock = await prisma.weekLock.update({
-      where: { id },
-      data: {
-        status: 'APPROVED',
-        reviewedAt: new Date(),
-        reviewerId: request.user.id,
-      },
-    });
-
-    // Uppdatera tidrader
     const weekEnd = new Date(weekLock.weekStartDate);
     weekEnd.setDate(weekEnd.getDate() + 6);
     weekEnd.setHours(23, 59, 59, 999);
 
-    await prisma.timeEntry.updateMany({
-      where: {
-        userId: weekLock.userId,
-        date: {
-          gte: weekLock.weekStartDate,
-          lte: weekEnd,
+    const updatedLock = await prisma.$transaction(async (tx) => {
+      const lock = await tx.weekLock.update({
+        where: { id },
+        data: {
+          status: 'APPROVED',
+          reviewedAt: new Date(),
+          reviewerId: request.user.id,
         },
-        status: 'SUBMITTED',
-      },
-      data: {
-        status: 'APPROVED',
-        approvedAt: new Date(),
-        approverId: request.user.id,
-      },
-    });
+      });
 
-    // Audit log
-    await prisma.auditLog.create({
-      data: {
-        userId: request.user.id,
-        action: 'APPROVE',
-        entityType: 'WeekLock',
-        entityId: id,
-        newValue: JSON.stringify({ status: 'APPROVED' }),
-      },
+      await tx.timeEntry.updateMany({
+        where: {
+          userId: weekLock.userId,
+          date: {
+            gte: weekLock.weekStartDate,
+            lte: weekEnd,
+          },
+          status: 'SUBMITTED',
+        },
+        data: {
+          status: 'APPROVED',
+          approvedAt: new Date(),
+          approverId: request.user.id,
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          userId: request.user.id,
+          action: 'APPROVE',
+          entityType: 'WeekLock',
+          entityId: id,
+          newValue: JSON.stringify({ status: 'APPROVED' }),
+        },
+      });
+
+      return lock;
     });
 
     return updatedLock;
@@ -466,46 +467,47 @@ const weekLockRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(400).send({ error: 'Veckan kan inte nekas' });
       }
 
-      // Uppdatera veckolås
-      const updatedLock = await prisma.weekLock.update({
-        where: { id },
-        data: {
-          status: 'REJECTED',
-          comment: body.comment,
-          reviewedAt: new Date(),
-          reviewerId: request.user.id,
-        },
-      });
-
-      // Uppdatera tidrader tillbaka till DRAFT
       const weekEnd = new Date(weekLock.weekStartDate);
       weekEnd.setDate(weekEnd.getDate() + 6);
       weekEnd.setHours(23, 59, 59, 999);
 
-      await prisma.timeEntry.updateMany({
-        where: {
-          userId: weekLock.userId,
-          date: {
-            gte: weekLock.weekStartDate,
-            lte: weekEnd,
+      const updatedLock = await prisma.$transaction(async (tx) => {
+        const lock = await tx.weekLock.update({
+          where: { id },
+          data: {
+            status: 'REJECTED',
+            comment: body.comment,
+            reviewedAt: new Date(),
+            reviewerId: request.user.id,
           },
-          status: 'SUBMITTED',
-        },
-        data: {
-          status: 'REJECTED',
-          rejectNote: body.comment,
-        },
-      });
+        });
 
-      // Audit log
-      await prisma.auditLog.create({
-        data: {
-          userId: request.user.id,
-          action: 'REJECT',
-          entityType: 'WeekLock',
-          entityId: id,
-          newValue: JSON.stringify({ status: 'REJECTED', comment: body.comment }),
-        },
+        await tx.timeEntry.updateMany({
+          where: {
+            userId: weekLock.userId,
+            date: {
+              gte: weekLock.weekStartDate,
+              lte: weekEnd,
+            },
+            status: 'SUBMITTED',
+          },
+          data: {
+            status: 'REJECTED',
+            rejectNote: body.comment,
+          },
+        });
+
+        await tx.auditLog.create({
+          data: {
+            userId: request.user.id,
+            action: 'REJECT',
+            entityType: 'WeekLock',
+            entityId: id,
+            newValue: JSON.stringify({ status: 'REJECTED', comment: body.comment }),
+          },
+        });
+
+        return lock;
       });
 
       return updatedLock;
@@ -534,47 +536,47 @@ const weekLockRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(404).send({ error: 'Veckolås hittades inte' });
     }
 
-    // Uppdatera tidrader tillbaka till DRAFT
     const weekEnd = new Date(weekLock.weekStartDate);
     weekEnd.setDate(weekEnd.getDate() + 6);
     weekEnd.setHours(23, 59, 59, 999);
 
-    await prisma.timeEntry.updateMany({
-      where: {
-        userId: weekLock.userId,
-        date: {
-          gte: weekLock.weekStartDate,
-          lte: weekEnd,
+    await prisma.$transaction(async (tx) => {
+      await tx.timeEntry.updateMany({
+        where: {
+          userId: weekLock.userId,
+          date: {
+            gte: weekLock.weekStartDate,
+            lte: weekEnd,
+          },
         },
-      },
-      data: {
-        status: 'DRAFT',
-        submittedAt: null,
-        approvedAt: null,
-        approverId: null,
-        rejectNote: null,
-      },
-    });
+        data: {
+          status: 'DRAFT',
+          submittedAt: null,
+          approvedAt: null,
+          approverId: null,
+          rejectNote: null,
+        },
+      });
 
-    await prisma.weekLock.update({
-      where: { id },
-      data: {
-        status: 'DRAFT',
-        comment: null,
-        reviewedAt: null,
-        reviewerId: null,
-      },
-    });
+      await tx.weekLock.update({
+        where: { id },
+        data: {
+          status: 'DRAFT',
+          comment: null,
+          reviewedAt: null,
+          reviewerId: null,
+        },
+      });
 
-    // Audit log
-    await prisma.auditLog.create({
-      data: {
-        userId: request.user.id,
-        action: 'UNLOCK',
-        entityType: 'WeekLock',
-        entityId: id,
-        oldValue: JSON.stringify({ status: weekLock.status }),
-      },
+      await tx.auditLog.create({
+        data: {
+          userId: request.user.id,
+          action: 'UNLOCK',
+          entityType: 'WeekLock',
+          entityId: id,
+          oldValue: JSON.stringify({ status: weekLock.status }),
+        },
+      });
     });
 
     return { message: 'Veckan upplåst' };

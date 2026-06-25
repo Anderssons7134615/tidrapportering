@@ -5,6 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import { randomUUID } from 'crypto';
 import { pipeline } from 'stream/promises';
+import { Transform } from 'stream';
 import { enqueueTimeEntryChanged } from '../lib/obsidianSync.js';
 
 const timeEntrySchema = z.object({
@@ -843,6 +844,10 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
     const uploadDir = process.env.UPLOAD_DIR || '../uploads';
     const originalName = path.basename(data.filename || 'bilaga');
     const safeExt = getSafeExtension(originalName, data.mimetype);
+    if (!safeExt) {
+      return reply.status(400).send({ error: 'Filtypen är inte tillåten' });
+    }
+
     const filename = `${randomUUID()}${safeExt}`;
     const filepath = path.join(uploadDir, filename);
 
@@ -851,8 +856,16 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
       fs.mkdirSync(uploadDir, { recursive: true });
     }
 
-    // Spara fil
-    await pipeline(data.file, fs.createWriteStream(filepath));
+    let size = 0;
+    const countBytes = new Transform({
+      transform(chunk, _encoding, callback) {
+        size += chunk.length;
+        callback(null, chunk);
+      },
+    });
+
+    // Spara fil och räkna verklig storlek under streamingen
+    await pipeline(data.file, countBytes, fs.createWriteStream(filepath));
 
     const attachment = await prisma.attachment.create({
       data: {
@@ -860,12 +873,47 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
         filename,
         originalName,
         mimeType: data.mimetype,
-        size: 0, // TODO: beräkna storlek
+        size,
         path: filepath,
       },
     });
 
     return reply.status(201).send(attachment);
+  });
+
+  // Download attachment via authenticated API instead of public /uploads URL
+  fastify.get('/:id/attachments/:attachmentId/download', {
+    preHandler: [fastify.authenticate],
+  }, async (request, reply) => {
+    const { id, attachmentId } = request.params as { id: string; attachmentId: string };
+
+    const attachment = await prisma.attachment.findFirst({
+      where: {
+        id: attachmentId,
+        timeEntryId: id,
+        timeEntry: { user: { companyId: request.user.companyId } },
+      },
+      include: { timeEntry: true },
+    });
+
+    if (!attachment) {
+      return reply.status(404).send({ error: 'Bilaga hittades inte' });
+    }
+
+    if (request.user.role === 'EMPLOYEE' && attachment.timeEntry.userId !== request.user.id) {
+      return reply.status(403).send({ error: 'Åtkomst nekad' });
+    }
+
+    if (!fs.existsSync(attachment.path)) {
+      return reply.status(404).send({ error: 'Filen hittades inte i lagringen' });
+    }
+
+    const fileSize = attachment.size > 0 ? attachment.size : fs.statSync(attachment.path).size;
+
+    reply.header('Content-Type', attachment.mimeType || 'application/octet-stream');
+    reply.header('Content-Length', String(fileSize));
+    reply.header('Content-Disposition', `attachment; filename="${encodeURIComponent(attachment.originalName)}"`);
+    return reply.send(fs.createReadStream(attachment.path));
   });
 
   // Delete attachment
@@ -1001,7 +1049,7 @@ async function validateEntryReferences({
   return { error: null, activity };
 }
 
-function getSafeExtension(originalName: string, mimeType: string) {
+function getSafeExtension(originalName: string, mimeType: string): string | null {
   const ext = path.extname(originalName).toLowerCase();
   const allowed = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.pdf', '.txt', '.csv', '.xlsx']);
   if (allowed.has(ext)) return ext;
@@ -1010,7 +1058,10 @@ function getSafeExtension(originalName: string, mimeType: string) {
   if (mimeType === 'image/jpeg') return '.jpg';
   if (mimeType === 'image/png') return '.png';
   if (mimeType === 'image/webp') return '.webp';
-  return '.bin';
+  if (mimeType === 'text/plain') return '.txt';
+  if (mimeType === 'text/csv') return '.csv';
+  if (mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') return '.xlsx';
+  return null;
 }
 
 export default timeEntryRoutes;

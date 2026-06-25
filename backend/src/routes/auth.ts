@@ -97,6 +97,13 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
 
   // Register new company
   fastify.post('/register', async (request, reply) => {
+    const publicRegistrationEnabled =
+      process.env.ALLOW_PUBLIC_REGISTRATION === 'true' || process.env.NODE_ENV !== 'production';
+
+    if (!publicRegistrationEnabled) {
+      return reply.status(403).send({ error: 'Registrering är avstängd. Kontakta administratör.' });
+    }
+
     try {
       const body = registerSchema.parse(request.body);
 

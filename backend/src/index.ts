@@ -84,7 +84,8 @@ await fastify.register(rateLimit, {
   timeWindow: '1 minute',
 });
 
-// Static files for uploads
+// Static files for uploads är avstängt som standard i produktion.
+// Bilagor ska normalt hämtas via autentiserad API-route i timeEntries.ts.
 const uploadDir = process.env.UPLOAD_DIR
   ? path.resolve(process.env.UPLOAD_DIR)
   : path.resolve(__dirname, '../../uploads');
@@ -93,10 +94,12 @@ if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
 
-await fastify.register(fastifyStatic, {
-  root: uploadDir,
-  prefix: '/uploads/',
-});
+if (process.env.PUBLIC_UPLOADS_ENABLED === 'true') {
+  await fastify.register(fastifyStatic, {
+    root: uploadDir,
+    prefix: '/uploads/',
+  });
+}
 
 // Decorate fastify with authenticate
 fastify.decorate('authenticate', async function (request: any, reply: any) {
@@ -106,12 +109,22 @@ fastify.decorate('authenticate', async function (request: any, reply: any) {
     // Säkerställ att användare + företag fortfarande finns (viktigt efter reseed/reset av DB)
     const user = await prisma.user.findUnique({
       where: { id: request.user.id },
-      select: { id: true, active: true, companyId: true },
+      select: { id: true, email: true, role: true, active: true, companyId: true },
     });
 
     if (!user || !user.active || user.companyId !== request.user.companyId) {
       return reply.status(401).send({ error: 'Sessionen är inte längre giltig, logga in igen' });
     }
+
+    // Använd alltid aktuell roll/e-post från databasen så rolländringar slår igenom direkt
+    // även om användaren har en gammal JWT-token.
+    request.user = {
+      ...request.user,
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      companyId: user.companyId,
+    };
   } catch (err) {
     return reply.status(401).send({ error: 'Unauthorized' });
   }

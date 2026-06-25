@@ -36,11 +36,14 @@ const reminderRoutes: FastifyPluginAsync = async (fastify) => {
 
     const weekStart = getWeekStart();
 
+    const employeeWhere = {
+      active: true,
+      role: 'EMPLOYEE',
+      ...(isJobTokenAuth ? {} : { companyId: request.user.companyId }),
+    };
+
     const employees = await prisma.user.findMany({
-      where: {
-        active: true,
-        role: 'EMPLOYEE',
-      },
+      where: employeeWhere,
       include: {
         weekLocks: {
           where: {
@@ -109,6 +112,7 @@ const reminderRoutes: FastifyPluginAsync = async (fastify) => {
       sent,
       failed,
       authMode: isJobTokenAuth ? 'job-token' : 'jwt',
+      scope: isJobTokenAuth ? 'all-companies' : request.user.companyId,
     };
   });
 };
