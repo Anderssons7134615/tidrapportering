@@ -2,9 +2,10 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { activitiesApi } from '../services/api';
 import type { Activity } from '../types';
-import { Plus, Edit2, Trash2, Tags, Loader2, X } from 'lucide-react';
+import { Plus, Edit2, Trash2, Loader2, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ListSkeleton } from '../components/ui/Skeleton';
+import { AppShell, DataTable, PageHeader, StatusBadge } from '../components/ui/design';
 
 const categoryLabels: Record<string, string> = {
   WORK: 'Arbete',
@@ -13,6 +14,15 @@ const categoryLabels: Record<string, string> = {
   INTERNAL: 'Internt',
   CHANGE_ORDER: 'ÄTA',
   ABSENCE: 'Frånvaro',
+};
+
+const categoryTones: Record<string, 'blue' | 'green' | 'yellow' | 'gray' | 'orange'> = {
+  WORK: 'blue',
+  TRAVEL: 'orange',
+  MEETING: 'yellow',
+  INTERNAL: 'gray',
+  CHANGE_ORDER: 'green',
+  ABSENCE: 'gray',
 };
 
 export default function Activities() {
@@ -69,134 +79,111 @@ export default function Activities() {
       category: formData.get('category') as Activity['category'],
       billableDefault: editingActivity?.billableDefault ?? true,
       sortOrder: formData.get('sortOrder')
-        ? parseInt(formData.get('sortOrder') as string)
+        ? parseInt(formData.get('sortOrder') as string, 10)
         : 0,
     };
 
-    if (editingActivity) {
-      updateMutation.mutate({ id: editingActivity.id, data });
-    } else {
-      createMutation.mutate(data);
-    }
+    if (editingActivity) updateMutation.mutate({ id: editingActivity.id, data });
+    else createMutation.mutate(data);
   };
 
-  // Gruppera aktiviteter per kategori
-  const groupedActivities = activities?.reduce((acc, activity) => {
-    const category = activity.category;
-    if (!acc[category]) acc[category] = [];
-    acc[category].push(activity);
-    return acc;
-  }, {} as Record<string, Activity[]>);
+  const sortedActivities = [...(activities || [])].sort((a, b) => {
+    if (a.category !== b.category) return a.category.localeCompare(b.category);
+    return (a.sortOrder || 0) - (b.sortOrder || 0) || a.name.localeCompare(b.name);
+  });
 
-  if (isLoading) {
-    return <ListSkeleton />;
-  }
+  if (isLoading) return <ListSkeleton />;
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="page-title">Aktiviteter</h1>
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="btn-primary"
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          Ny aktivitet
-        </button>
-      </div>
+    <AppShell>
+      <PageHeader
+        title="Aktiviteter"
+        description="Standardaktiviteter för tidrapportering. Koder och kategorier används i rapporter och löneunderlag."
+        action={
+          <button onClick={() => setIsModalOpen(true)} className="btn-primary">
+            <Plus className="h-4 w-4" />
+            Ny aktivitet
+          </button>
+        }
+      />
 
-      {/* Lista grupperad per kategori */}
-      {groupedActivities && Object.entries(groupedActivities).map(([category, acts]) => (
-        <div key={category}>
-          <h2 className="font-medium text-gray-400 mb-2">
-            {categoryLabels[category] || category}
-          </h2>
-          <div className="space-y-2">
-            {acts.map((activity) => (
-              <div
-                key={activity.id}
-                className={`card flex items-center justify-between py-3 ${
-                  !activity.active ? 'opacity-50' : ''
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-gray-800 rounded-lg">
-                    <Tags className="w-4 h-4 text-gray-400" />
+      <DataTable>
+        <table className="min-w-[720px] w-full text-left text-sm">
+          <thead className="table-head">
+            <tr>
+              <th className="px-4 py-3">Aktivitet</th>
+              <th className="px-4 py-3">Kod</th>
+              <th className="px-4 py-3">Kategori</th>
+              <th className="px-4 py-3">Sortering</th>
+              <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3 text-right">Åtgärder</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-graphite-100">
+            {sortedActivities.map((activity) => (
+              <tr key={activity.id} className={!activity.active ? 'opacity-60' : ''}>
+                <td className="px-4 py-3 font-semibold text-graphite-950">{activity.name}</td>
+                <td className="px-4 py-3 text-graphite-700">{activity.code}</td>
+                <td className="px-4 py-3">
+                  <StatusBadge label={categoryLabels[activity.category] || activity.category} tone={categoryTones[activity.category] || 'gray'} />
+                </td>
+                <td className="px-4 py-3 text-graphite-600">{activity.sortOrder || 0}</td>
+                <td className="px-4 py-3">
+                  <StatusBadge label={activity.active ? 'Aktiv' : 'Inaktiv'} tone={activity.active ? 'green' : 'gray'} />
+                </td>
+                <td className="px-4 py-3">
+                  <div className="flex justify-end gap-1">
+                    <button
+                      onClick={() => {
+                        setEditingActivity(activity);
+                        setIsModalOpen(true);
+                      }}
+                      className="rounded-md p-2 text-graphite-500 hover:bg-primary-50 hover:text-primary-700"
+                      aria-label="Redigera aktivitet"
+                    >
+                      <Edit2 className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (confirm('Ta bort aktivitet?')) deleteMutation.mutate(activity.id);
+                      }}
+                      className="rounded-md p-2 text-graphite-500 hover:bg-rose-50 hover:text-rose-700"
+                      aria-label="Ta bort aktivitet"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
                   </div>
-                  <div>
-                    <p className="font-medium">{activity.name}</p>
-                    <p className="text-sm text-gray-400">
-                      Kod: {activity.code}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => {
-                      setEditingActivity(activity);
-                      setIsModalOpen(true);
-                    }}
-                    className="p-2 text-gray-500 hover:text-gray-300"
-                  >
-                    <Edit2 className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => {
-                      if (confirm('Ta bort aktivitet?')) {
-                        deleteMutation.mutate(activity.id);
-                      }
-                    }}
-                    className="p-2 text-gray-500 hover:text-red-400"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
+                </td>
+              </tr>
             ))}
-          </div>
-        </div>
-      ))}
+          </tbody>
+        </table>
+      </DataTable>
 
-      {/* Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-900 rounded-xl max-w-md w-full border border-gray-800">
-            <div className="p-4 border-b border-gray-800 flex items-center justify-between">
-              <h2 className="font-semibold">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-graphite-950/45 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md overflow-hidden rounded-lg border border-graphite-200 bg-white shadow-md">
+            <div className="flex items-center justify-between border-b border-graphite-200 px-4 py-3">
+              <h2 className="font-semibold text-graphite-950">
                 {editingActivity ? 'Redigera aktivitet' : 'Ny aktivitet'}
               </h2>
-              <button onClick={closeModal} className="p-1 hover:bg-gray-800 rounded">
-                <X className="w-5 h-5" />
+              <button onClick={closeModal} className="rounded-md p-1.5 text-graphite-500 hover:bg-graphite-100 hover:text-graphite-950">
+                <X className="h-5 w-5" />
               </button>
             </div>
-            <form onSubmit={handleSubmit} className="p-4 space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-4 p-4">
               <div>
                 <label className="label">Namn *</label>
-                <input
-                  name="name"
-                  defaultValue={editingActivity?.name}
-                  className="input"
-                  required
-                />
+                <input name="name" defaultValue={editingActivity?.name} className="input" required />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="label">Kod *</label>
-                  <input
-                    name="code"
-                    defaultValue={editingActivity?.code}
-                    className="input"
-                    placeholder="MONT"
-                    required
-                  />
+                  <input name="code" defaultValue={editingActivity?.code} className="input" placeholder="MONT" required />
                 </div>
                 <div>
                   <label className="label">Kategori</label>
-                  <select
-                    name="category"
-                    defaultValue={editingActivity?.category || 'WORK'}
-                    className="input"
-                  >
+                  <select name="category" defaultValue={editingActivity?.category || 'WORK'} className="input">
                     {Object.entries(categoryLabels).map(([value, label]) => (
                       <option key={value} value={value}>
                         {label}
@@ -207,35 +194,20 @@ export default function Activities() {
               </div>
               <div>
                 <label className="label">Sorteringsordning</label>
-                <input
-                  name="sortOrder"
-                  type="number"
-                  defaultValue={editingActivity?.sortOrder || 0}
-                  className="input"
-                />
+                <input name="sortOrder" type="number" defaultValue={editingActivity?.sortOrder || 0} className="input" />
               </div>
-              <div className="flex gap-3 pt-4">
-                <button type="button" onClick={closeModal} className="btn-secondary flex-1">
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <button type="button" onClick={closeModal} className="btn-secondary">
                   Avbryt
                 </button>
-                <button
-                  type="submit"
-                  disabled={createMutation.isPending || updateMutation.isPending}
-                  className="btn-primary flex-1"
-                >
-                  {(createMutation.isPending || updateMutation.isPending) ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : editingActivity ? (
-                    'Spara'
-                  ) : (
-                    'Skapa'
-                  )}
+                <button type="submit" disabled={createMutation.isPending || updateMutation.isPending} className="btn-primary">
+                  {createMutation.isPending || updateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : editingActivity ? 'Spara' : 'Skapa'}
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
-    </div>
+    </AppShell>
   );
 }

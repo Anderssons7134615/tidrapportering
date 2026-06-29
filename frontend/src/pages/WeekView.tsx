@@ -10,6 +10,7 @@ import { timeEntriesApi } from '../services/api';
 import { WeekViewSkeleton } from '../components/ui/Skeleton';
 import { useHaptic } from '../hooks/useHaptic';
 import type { TimeEntry } from '../types';
+import { AppShell } from '../components/ui/design';
 
 function SwipeableEntry({
   entry,
@@ -189,7 +190,7 @@ export default function WeekView() {
   }
 
   return (
-    <div className="space-y-6">
+    <AppShell>
       <div className="flex items-center justify-between">
         <button
           onClick={() => navigateWeek('prev')}
@@ -211,7 +212,7 @@ export default function WeekView() {
         </button>
       </div>
 
-      <div className="card">
+      <section className="border-y border-graphite-200 bg-white/85 px-3 py-3">
         <div className="mb-3 flex items-center justify-between">
           <span className="text-sm text-slate-500">Summering</span>
           {getStatusBadge()}
@@ -229,10 +230,10 @@ export default function WeekView() {
             <p className="text-sm text-red-600">{data.weekLock.comment}</p>
           </div>
         )}
-      </div>
+      </section>
 
       <motion.div
-        className="space-y-3"
+        className="work-panel overflow-hidden divide-y divide-graphite-100"
         initial="hidden"
         animate="visible"
         variants={{ visible: { transition: { staggerChildren: 0.04 } } }}
@@ -256,7 +257,7 @@ export default function WeekView() {
                   navigate(dayReportUrl);
                 }
               }}
-              className={`card cursor-pointer transition hover:-translate-y-0.5 hover:border-primary-300 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 ${isToday ? 'border-2 border-primary-700' : ''} ${isWeekend ? 'bg-slate-50' : ''}`}
+              className={`cursor-pointer px-3 py-4 transition hover:bg-primary-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 ${isToday ? 'border-l-4 border-l-primary-700 bg-primary-50/40' : ''} ${isWeekend ? 'bg-graphite-50' : ''}`}
               variants={{
                 hidden: { opacity: 0, y: 10 },
                 visible: { opacity: 1, y: 0 },
@@ -302,11 +303,11 @@ export default function WeekView() {
       {!isLocked && (
         <Link
           to="/time-entry"
-          className="block rounded-xl border-2 border-dashed border-slate-300 py-3 text-center text-slate-500 transition-colors hover:border-primary-600 hover:text-primary-700"
+          className="block border-y border-dashed border-graphite-300 bg-white py-3 text-center font-semibold text-graphite-600 transition-colors hover:border-primary-600 hover:text-primary-700"
         >
           + Lägg till tid
         </Link>
       )}
-    </div>
+    </AppShell>
   );
 }

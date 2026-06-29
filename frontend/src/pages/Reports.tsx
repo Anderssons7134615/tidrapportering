@@ -126,7 +126,12 @@ export default function Reports() {
   });
 
   const payrollData = useMemo(() => {
-    const entries = ((reportData?.entries || []) as PayrollEntry[]).slice().sort((a, b) => {
+    const sourceEntries = Array.isArray(reportData?.entries)
+      ? reportData.entries
+      : Array.isArray(reportData)
+        ? reportData
+        : [];
+    const entries = (sourceEntries as PayrollEntry[]).slice().sort((a, b) => {
       const userCompare = (a.user?.name || '').localeCompare(b.user?.name || '', 'sv');
       if (userCompare !== 0) return userCompare;
       return a.date.localeCompare(b.date);
