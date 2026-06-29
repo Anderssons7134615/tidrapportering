@@ -309,7 +309,20 @@ function ProjectTable({
   onDelete: (project: ProjectListItem) => void;
 }) {
   return (
-    <div className="overflow-x-auto border-y border-graphite-200 bg-white/90">
+    <>
+      <div className="divide-y divide-graphite-100 border-y border-graphite-200 bg-white md:hidden">
+        {projects.map((project) => (
+          <MobileProjectRow
+            key={project.id}
+            project={project}
+            isManager={isManager}
+            onEdit={() => onEdit(project)}
+            onDelete={() => onDelete(project)}
+          />
+        ))}
+      </div>
+
+      <div className="hidden overflow-x-auto border-y border-graphite-200 bg-white/90 md:block">
       <table className="min-w-[980px] w-full text-sm">
         <thead className="border-b border-graphite-200 bg-graphite-50 text-left text-xs font-semibold uppercase tracking-wide text-graphite-500">
           <tr>
@@ -336,6 +349,71 @@ function ProjectTable({
           ))}
         </tbody>
       </table>
+      </div>
+    </>
+  );
+}
+
+function MobileProjectRow({
+  project,
+  isManager,
+  onEdit,
+  onDelete,
+}: {
+  project: ProjectListItem;
+  isManager: boolean;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const navigate = useNavigate();
+  const metrics = project.metrics;
+  const runningJob = !project.budgetHours;
+  const usagePercent = metrics?.budgetUsagePercent ?? null;
+  const isRisk = metrics?.status.code === 'RISK' || (usagePercent ?? 0) >= 100;
+  const isWarning = !isRisk && (runningJob || (usagePercent ?? 0) >= 80);
+  const accentClass = isRisk ? 'border-l-rose-500' : isWarning ? 'border-l-amber-400' : 'border-l-emerald-500';
+
+  const openProject = () => navigate(`/projects/${project.id}`);
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={openProject}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          openProject();
+        }
+      }}
+      className={`border-l-4 ${accentClass} px-3 py-4 text-sm transition hover:bg-primary-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300 ${!project.active ? 'opacity-65' : ''}`}
+      title="Ã–ppna projekt"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="font-semibold text-graphite-950">{project.code} - {project.name}</p>
+          <p className="mt-1 text-graphite-600">{project.customer?.name || 'Intern'}{project.site ? ` · ${project.site}` : ''}</p>
+        </div>
+        <ChevronRight className="mt-1 h-5 w-5 shrink-0 text-graphite-400" />
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        {metrics?.status && <StatusBadge label={metrics.status.label} tone={metrics.status.tone} />}
+        {runningJob && <StatusBadge label="LÃ¶pande" tone="yellow" />}
+        <span className="font-semibold text-graphite-950">{formatHours(metrics?.totalHours)}</span>
+        <span className="text-graphite-500">{project.budgetHours ? `${formatPercent(usagePercent)} av budget` : 'Utan timbudget'}</span>
+      </div>
+
+      {isManager && (
+        <div className="mt-3 flex gap-2">
+          <button onClick={(event) => { event.stopPropagation(); onEdit(); }} className="rounded-md border border-graphite-200 bg-white px-3 py-2 text-sm font-semibold text-graphite-700" title="Redigera">
+            <Edit2 className="h-4 w-4" />
+          </button>
+          <button onClick={(event) => { event.stopPropagation(); onDelete(); }} className="rounded-md border border-rose-200 bg-white px-3 py-2 text-sm font-semibold text-rose-600" title="Inaktivera">
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

@@ -5,6 +5,7 @@ import type { User } from '../types';
 import { Plus, Edit2, Trash2, Loader2, X, Shield } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ListSkeleton } from '../components/ui/Skeleton';
+import { AppShell, DataTable, PageHeader, StatusBadge } from '../components/ui/design';
 
 const roleLabels: Record<string, string> = {
   ADMIN: 'Admin',
@@ -13,11 +14,11 @@ const roleLabels: Record<string, string> = {
   ACCOUNTANT: 'Revisor',
 };
 
-const roleColors: Record<string, string> = {
-  ADMIN: 'badge-red',
-  SUPERVISOR: 'badge-yellow',
-  EMPLOYEE: 'badge-blue',
-  ACCOUNTANT: 'badge-green',
+const roleTones: Record<string, 'red' | 'yellow' | 'blue' | 'green'> = {
+  ADMIN: 'red',
+  SUPERVISOR: 'yellow',
+  EMPLOYEE: 'blue',
+  ACCOUNTANT: 'green',
 };
 
 export default function UsersPage() {
@@ -77,185 +78,150 @@ export default function UsersPage() {
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
-    const data: any = {
+    const data: Partial<User> = {
       name: formData.get('name') as string,
       email: formData.get('email') as string,
       role: formData.get('role') as User['role'],
     };
 
-    if (!editingUser) {
-      data.password = formData.get('password') as string;
-    }
-
-    if (editingUser) {
-      updateMutation.mutate({ id: editingUser.id, data });
-    } else {
-      createMutation.mutate(data);
-    }
+    if (editingUser) updateMutation.mutate({ id: editingUser.id, data });
+    else createMutation.mutate({ ...data, password: formData.get('password') as string });
   };
 
-  if (isLoading) {
-    return <ListSkeleton />;
-  }
+  if (isLoading) return <ListSkeleton />;
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="page-title">Användare</h1>
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="btn-primary"
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          Ny användare
-        </button>
-      </div>
+    <AppShell>
+      <PageHeader
+        title="Användare"
+        description="Hantera medarbetare, roller och åtkomst i samma listvy som övriga register."
+        action={
+          <button onClick={() => setIsModalOpen(true)} className="btn-primary">
+            <Plus className="h-4 w-4" />
+            Ny användare
+          </button>
+        }
+      />
 
-      {/* Lista */}
-      <div className="space-y-3">
-        {users?.map((user) => (
-          <div
-            key={user.id}
-            className={`card flex items-center justify-between ${
-              !user.active ? 'opacity-50' : ''
-            }`}
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-primary-900/30 rounded-full flex items-center justify-center">
-                <span className="text-primary-400 font-medium">
-                  {user.name.split(' ').map((n) => n[0]).join('').toUpperCase()}
-                </span>
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <p className="font-medium">{user.name}</p>
-                  <span className={roleColors[user.role]}>
-                    {roleLabels[user.role]}
-                  </span>
-                </div>
-                <p className="text-sm text-gray-400">{user.email}</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => {
-                  setEditingUser(user);
-                  setIsModalOpen(true);
-                }}
-                className="p-2 text-gray-500 hover:text-gray-300"
-              >
-                <Edit2 className="w-4 h-4" />
-              </button>
-              {user.active && (
-                <button
-                  onClick={() => {
-                    if (confirm('Inaktivera användare?')) {
-                      deleteMutation.mutate(user.id);
-                    }
-                  }}
-                  className="p-2 text-gray-500 hover:text-red-400"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              )}
-              {!user.active && (
-                <button
-                  onClick={() => {
-                    if (confirm('GDPR: Radera användare och ALL data permanent? Detta kan inte ångras.')) {
-                      gdprDeleteMutation.mutate(user.id);
-                    }
-                  }}
-                  className="p-2 text-red-400 hover:text-red-600"
-                  title="GDPR: Radera permanent"
-                >
-                  <Shield className="w-4 h-4" />
-                </button>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
+      <DataTable>
+        <table className="min-w-[760px] w-full text-left text-sm">
+          <thead className="table-head">
+            <tr>
+              <th className="px-4 py-3">Namn</th>
+              <th className="px-4 py-3">E-post</th>
+              <th className="px-4 py-3">Roll</th>
+              <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3 text-right">Åtgärder</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-graphite-100">
+            {(users || []).map((user) => (
+              <tr key={user.id} className={!user.active ? 'opacity-60' : ''}>
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-graphite-200 bg-graphite-50 text-xs font-semibold text-graphite-700">
+                      {user.name.split(' ').map((n) => n[0]).join('').toUpperCase()}
+                    </div>
+                    <span className="font-semibold text-graphite-950">{user.name}</span>
+                  </div>
+                </td>
+                <td className="px-4 py-3 text-graphite-600">{user.email}</td>
+                <td className="px-4 py-3">
+                  <StatusBadge label={roleLabels[user.role]} tone={roleTones[user.role]} />
+                </td>
+                <td className="px-4 py-3">
+                  <StatusBadge label={user.active ? 'Aktiv' : 'Inaktiv'} tone={user.active ? 'green' : 'gray'} />
+                </td>
+                <td className="px-4 py-3">
+                  <div className="flex justify-end gap-1">
+                    <button
+                      onClick={() => {
+                        setEditingUser(user);
+                        setIsModalOpen(true);
+                      }}
+                      className="rounded-md p-2 text-graphite-500 hover:bg-primary-50 hover:text-primary-700"
+                      aria-label="Redigera användare"
+                    >
+                      <Edit2 className="h-4 w-4" />
+                    </button>
+                    {user.active ? (
+                      <button
+                        onClick={() => {
+                          if (confirm('Inaktivera användare?')) deleteMutation.mutate(user.id);
+                        }}
+                        className="rounded-md p-2 text-graphite-500 hover:bg-rose-50 hover:text-rose-700"
+                        aria-label="Inaktivera användare"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          if (confirm('GDPR: Radera användare och ALL data permanent? Detta kan inte ångras.')) {
+                            gdprDeleteMutation.mutate(user.id);
+                          }
+                        }}
+                        className="rounded-md p-2 text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+                        title="GDPR: Radera permanent"
+                      >
+                        <Shield className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </DataTable>
 
-      {/* Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-900 rounded-xl max-w-md w-full border border-gray-800">
-            <div className="p-4 border-b border-gray-800 flex items-center justify-between">
-              <h2 className="font-semibold">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-graphite-950/45 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md overflow-hidden rounded-lg border border-graphite-200 bg-white shadow-md">
+            <div className="flex items-center justify-between border-b border-graphite-200 px-4 py-3">
+              <h2 className="font-semibold text-graphite-950">
                 {editingUser ? 'Redigera användare' : 'Ny användare'}
               </h2>
-              <button onClick={closeModal} className="p-1 hover:bg-gray-800 rounded">
-                <X className="w-5 h-5" />
+              <button onClick={closeModal} className="rounded-md p-1.5 text-graphite-500 hover:bg-graphite-100 hover:text-graphite-950">
+                <X className="h-5 w-5" />
               </button>
             </div>
-            <form onSubmit={handleSubmit} className="p-4 space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-4 p-4">
               <div>
                 <label className="label">Namn *</label>
-                <input
-                  name="name"
-                  defaultValue={editingUser?.name}
-                  className="input"
-                  required
-                />
+                <input name="name" defaultValue={editingUser?.name} className="input" required />
               </div>
               <div>
                 <label className="label">E-post *</label>
-                <input
-                  name="email"
-                  type="email"
-                  defaultValue={editingUser?.email}
-                  className="input"
-                  required
-                />
+                <input name="email" type="email" defaultValue={editingUser?.email} className="input" required />
               </div>
               {!editingUser && (
                 <div>
                   <label className="label">Lösenord *</label>
-                  <input
-                    name="password"
-                    type="password"
-                    className="input"
-                    required
-                    minLength={6}
-                    placeholder="Minst 6 tecken"
-                  />
+                  <input name="password" type="password" className="input" required minLength={6} placeholder="Minst 6 tecken" />
                 </div>
               )}
               <div>
                 <label className="label">Roll</label>
-                <select
-                  name="role"
-                  defaultValue={editingUser?.role || 'EMPLOYEE'}
-                  className="input"
-                >
+                <select name="role" defaultValue={editingUser?.role || 'EMPLOYEE'} className="input">
                   <option value="EMPLOYEE">Medarbetare</option>
                   <option value="ACCOUNTANT">Revisor</option>
                   <option value="SUPERVISOR">Arbetsledare</option>
                   <option value="ADMIN">Admin</option>
                 </select>
               </div>
-              <div className="flex gap-3 pt-4">
-                <button type="button" onClick={closeModal} className="btn-secondary flex-1">
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <button type="button" onClick={closeModal} className="btn-secondary">
                   Avbryt
                 </button>
-                <button
-                  type="submit"
-                  disabled={createMutation.isPending || updateMutation.isPending}
-                  className="btn-primary flex-1"
-                >
-                  {(createMutation.isPending || updateMutation.isPending) ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : editingUser ? (
-                    'Spara'
-                  ) : (
-                    'Skapa'
-                  )}
+                <button type="submit" disabled={createMutation.isPending || updateMutation.isPending} className="btn-primary">
+                  {createMutation.isPending || updateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : editingUser ? 'Spara' : 'Skapa'}
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
-    </div>
+    </AppShell>
   );
 }

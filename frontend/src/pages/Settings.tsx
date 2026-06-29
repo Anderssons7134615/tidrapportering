@@ -6,6 +6,7 @@ import { authApi, pushSubscriptionsApi, settingsApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
 import { disablePushNotifications, enablePushNotifications, getPushStatus } from '../services/pushNotifications';
 import { SettingsSkeleton } from '../components/ui/Skeleton';
+import { AppShell, PageHeader } from '../components/ui/design';
 
 export default function Settings() {
   const queryClient = useQueryClient();
@@ -105,28 +106,24 @@ export default function Settings() {
   }
 
   return (
-    <div className="space-y-6">
-      <section className="hero-card">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <h1 className="page-title">Inställningar</h1>
-            <p className="mt-2 max-w-2xl text-sm text-slate-600">
-              Hantera konto, företag och notiser på ett sätt som fungerar lika bra i mobilen som på datorn.
-            </p>
-          </div>
+    <AppShell>
+      <PageHeader
+        title="Inställningar"
+        description="Hantera konto, företag och notiser på ett sätt som fungerar lika bra i mobilen som på datorn."
+        action={
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
             <div className="chip justify-center">{user?.role === 'ADMIN' ? 'Admin' : user?.role === 'SUPERVISOR' ? 'Arbetsledare' : user?.role === 'ACCOUNTANT' ? 'Revisor' : 'Medarbetare'}</div>
             <div className="chip justify-center">{pushSubscriptions.length} enhet(er)</div>
             <div className="chip justify-center">{pushStatus?.permission || 'standard'}</div>
           </div>
-        </div>
-      </section>
+        }
+      />
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.1fr_0.9fr]">
         <div className="space-y-6">
           <div className="card">
             <div className="mb-4 flex items-center gap-3">
-              <div className="rounded-2xl bg-slate-100 p-3 text-slate-700">
+              <div className="rounded-lg bg-graphite-100 p-3 text-graphite-700">
                 <Lock className="h-5 w-5" />
               </div>
               <div>
@@ -159,7 +156,7 @@ export default function Settings() {
           {isAdmin && settings && (
             <div className="card">
               <div className="mb-4 flex items-center gap-3">
-                <div className="rounded-2xl bg-sky-100 p-3 text-sky-700">
+                <div className="rounded-lg bg-sky-100 p-3 text-sky-700">
                   <Building className="h-5 w-5" />
                 </div>
                 <div>
@@ -214,7 +211,7 @@ export default function Settings() {
         <div className="space-y-6">
           <div className="card">
             <div className="mb-4 flex items-center gap-3">
-              <div className="rounded-2xl bg-amber-100 p-3 text-amber-700">
+              <div className="rounded-lg bg-amber-100 p-3 text-amber-700">
                 <Bell className="h-5 w-5" />
               </div>
               <div>
@@ -224,7 +221,7 @@ export default function Settings() {
             </div>
 
             {!pushStatus?.supported ? (
-              <p className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+              <p className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
                 Din webbläsare stödjer inte push-notiser.
               </p>
             ) : (
@@ -241,7 +238,7 @@ export default function Settings() {
                 </div>
 
                 {pushSubscriptions.length > 0 && (
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-500">
+                <div className="rounded-lg border border-graphite-200 bg-graphite-50 px-4 py-3 text-xs text-graphite-500">
                     <p className="font-semibold uppercase tracking-[0.14em] text-slate-400">Senaste endpoint</p>
                     <p className="mt-2 break-all">{pushSubscriptions[0].endpoint}</p>
                   </div>
@@ -266,7 +263,7 @@ export default function Settings() {
 
           <div className="card">
             <div className="mb-4 flex items-center gap-3">
-              <div className="rounded-2xl bg-slate-100 p-3 text-slate-700">
+              <div className="rounded-lg bg-graphite-100 p-3 text-graphite-700">
                 <SettingsIcon className="h-5 w-5" />
               </div>
               <div>
@@ -276,19 +273,19 @@ export default function Settings() {
             </div>
 
             <div className="space-y-3 text-sm text-slate-600">
-              <div className="flex items-center justify-between gap-3 rounded-2xl bg-slate-50 px-4 py-3">
+              <div className="flex items-center justify-between gap-3 rounded-lg bg-graphite-50 px-4 py-3">
                 <span>Version</span>
                 <span className="font-semibold text-slate-900">1.0.0</span>
               </div>
-              <div className="flex items-center justify-between gap-3 rounded-2xl bg-slate-50 px-4 py-3">
+              <div className="flex items-center justify-between gap-3 rounded-lg bg-graphite-50 px-4 py-3">
                 <span>Inloggad som</span>
                 <span className="font-semibold text-slate-900">{user?.name}</span>
               </div>
-              <div className="flex items-center justify-between gap-3 rounded-2xl bg-slate-50 px-4 py-3">
+              <div className="flex items-center justify-between gap-3 rounded-lg bg-graphite-50 px-4 py-3">
                 <span>E-post</span>
                 <span className="font-semibold text-slate-900">{user?.email}</span>
               </div>
-              <div className="flex items-center justify-between gap-3 rounded-2xl bg-slate-50 px-4 py-3">
+              <div className="flex items-center justify-between gap-3 rounded-lg bg-graphite-50 px-4 py-3">
                 <span>Roll</span>
                 <span className="font-semibold text-slate-900">
                   {user?.role === 'ADMIN' ? 'Admin' : user?.role === 'SUPERVISOR' ? 'Arbetsledare' : user?.role === 'ACCOUNTANT' ? 'Revisor' : 'Medarbetare'}
@@ -298,6 +295,6 @@ export default function Settings() {
           </div>
         </div>
       </div>
-    </div>
+    </AppShell>
   );
 }
