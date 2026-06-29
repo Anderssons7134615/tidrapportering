@@ -144,6 +144,7 @@ export const projectsApi = {
     const query = searchParams.toString();
     return fetchApi<Project[]>(`/projects${query ? `?${query}` : ''}`);
   },
+  nextCode: () => fetchApi<{ code: string }>('/projects/next-code'),
   get: (id: string) => fetchApi<Project>(`/projects/${id}`),
   listMaterialArticles: (active?: boolean) =>
     fetchApi<MaterialArticle[]>(`/projects/materials/articles${active !== undefined ? `?active=${active}` : ''}`),

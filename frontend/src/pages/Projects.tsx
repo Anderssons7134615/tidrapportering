@@ -1,12 +1,13 @@
 import { useMemo, useState } from 'react';
+import type { FormEvent, InputHTMLAttributes } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, ChevronRight, Clock, Coins, Edit2, Layers, MapPin, Plus, Search, SlidersHorizontal, Trash2 } from 'lucide-react';
+import { AlertTriangle, ChevronRight, Edit2, MapPin, Plus, Search, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { customersApi, projectsApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
 import type { Project, ProjectListItem } from '../types';
-import { AppShell, Card, EmptyState, KpiCard, PageHeader, StatusBadge } from '../components/ui/design';
+import { AppShell, EmptyState, StatusBadge } from '../components/ui/design';
 import { formatCurrency, formatDate, formatHours, formatPercent, parseSwedishNumber } from '../utils/format';
 import { ListSkeleton } from '../components/ui/Skeleton';
 
@@ -18,6 +19,26 @@ const statusFilters = [
   { id: 'PLANNED', label: 'Planerade' },
   { id: 'COMPLETED', label: 'Avslutade' },
 ] as const;
+
+function suggestNextProjectCode(projects?: ProjectListItem[]) {
+  let bestMatch: { prefix: string; number: number; width: number } | null = null;
+
+  for (const project of projects || []) {
+    const code = project.code?.trim();
+    const match = code?.match(/^(.*?)(\d+)$/);
+    if (!match) continue;
+
+    const number = Number.parseInt(match[2], 10);
+    if (!Number.isFinite(number)) continue;
+
+    if (!bestMatch || number > bestMatch.number) {
+      bestMatch = { prefix: match[1], number, width: match[2].length };
+    }
+  }
+
+  if (!bestMatch) return '';
+  return `${bestMatch.prefix}${String(bestMatch.number + 1).padStart(bestMatch.width, '0')}`;
+}
 
 export default function Projects() {
   const queryClient = useQueryClient();
@@ -44,6 +65,16 @@ export default function Projects() {
     queryFn: () => customersApi.list(true),
     enabled: isManager,
   });
+
+  const { data: nextCodeResult } = useQuery({
+    queryKey: ['projects', 'next-code'],
+    queryFn: projectsApi.nextCode,
+    enabled: isManager,
+  });
+
+  const projectItems = (projects || []) as ProjectListItem[];
+  const fallbackProjectCode = useMemo(() => suggestNextProjectCode(projectItems), [projectItems]);
+  const nextProjectCode = nextCodeResult?.code || fallbackProjectCode;
 
   const createMutation = useMutation({
     mutationFn: projectsApi.create,
@@ -78,7 +109,7 @@ export default function Projects() {
 
   const filteredProjects = useMemo(() => {
     const term = search.trim().toLowerCase();
-    return ((projects || []) as ProjectListItem[]).filter((project) => {
+    return projectItems.filter((project) => {
       const metrics = project.metrics;
       const matchesSearch = !term || [project.name, project.code, project.customer?.name, project.site]
         .filter(Boolean)
@@ -87,7 +118,7 @@ export default function Projects() {
         || (statusFilter === 'RUNNING_JOB' ? !project.budgetHours : metrics?.status.code === statusFilter);
       return matchesSearch && matchesStatus;
     });
-  }, [projects, search, statusFilter]);
+  }, [projectItems, search, statusFilter]);
 
   const totals = useMemo(() => {
     return filteredProjects.reduce(
@@ -107,12 +138,17 @@ export default function Projects() {
     );
   }, [filteredProjects]);
 
+  const openCreateModal = () => {
+    setEditingProject(null);
+    setIsModalOpen(true);
+  };
+
   const closeModal = () => {
     setIsModalOpen(false);
     setEditingProject(null);
   };
 
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
     const budgetHours = formData.get('budgetHours') as string;
@@ -135,148 +171,101 @@ export default function Projects() {
 
   return (
     <AppShell>
-      <PageHeader
-        title="Projekt"
-        description="Jobbtavla för aktiva jobb, budgetläge, material och färdiga projekts resultat."
-        action={isManager && (
-          <button onClick={() => setIsModalOpen(true)} className="btn-primary">
+      <header className="flex flex-col gap-3 border-b border-graphite-200 pb-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-sm font-semibold uppercase tracking-wide text-primary-700">Projektregister</p>
+          <h1 className="page-title mt-1">Projekt</h1>
+          <p className="mt-2 max-w-4xl text-sm leading-6 text-graphite-600">
+            Radlista för jobb, kund, projektnummer och timläge. Klicka på en rad för att öppna projektet.
+          </p>
+        </div>
+        {isManager && (
+          <button onClick={openCreateModal} className="btn-primary">
             <Plus className="h-4 w-4" />
             Nytt projekt
           </button>
         )}
-      />
+      </header>
 
-      <section className="overflow-hidden rounded-xl border border-graphite-800 bg-graphite-950 text-white shadow-premium">
-        <div className="grid gap-0 lg:grid-cols-[1.1fr_0.9fr]">
-          <div className="p-5 sm:p-6">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white/75">
-                Projektläge
-              </span>
-              {totals.risk > 0 && (
-                <span className="inline-flex items-center gap-1 rounded-full border border-rose-300/30 bg-rose-400/15 px-3 py-1 text-xs font-semibold text-rose-100">
-                  <AlertTriangle className="h-3.5 w-3.5" />
-                  {totals.risk} behöver kollas
-                </span>
-              )}
-            </div>
-            <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <HeroMetric label="Synliga jobb" value={filteredProjects.length} />
-              <HeroMetric label="Veckans timmar" value={formatHours(totals.weekHours)} />
-              <HeroMetric label="Löpande jobb" value={totals.missingBudget} />
-              <HeroMetric label="Avslutade" value={totals.completed} />
-            </div>
-          </div>
-          <div className="border-t border-white/10 bg-white/[0.04] p-5 sm:p-6 lg:border-l lg:border-t-0">
-            <div className="grid h-full grid-cols-1 gap-3 sm:grid-cols-2">
-              <MoneyPanel icon={<Layers className="h-5 w-5" />} label="Material i listan" value={totals.withFinancials ? formatCurrency(totals.material) : 'Dolt'} />
-              <MoneyPanel icon={<Coins className="h-5 w-5" />} label="Resultat" value={totals.withFinancials ? formatCurrency(totals.result) : 'Dolt'} tone={totals.result < 0 ? 'loss' : 'profit'} />
-            </div>
-          </div>
+      <section className="border-y border-graphite-200 bg-white/85 py-3">
+        <div className="grid grid-cols-1 gap-3 px-3 lg:grid-cols-[minmax(260px,1fr)_220px_220px]">
+          <label className="relative block">
+            <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-graphite-400" />
+            <input className="input pl-9" placeholder="Sök jobb, projektnummer, kund eller plats" value={search} onChange={(event) => setSearch(event.target.value)} />
+          </label>
+
+          {isManager && (
+            <select className="input" value={customerFilter} onChange={(event) => setCustomerFilter(event.target.value)} aria-label="Filtrera på kund">
+              <option value="">Alla kunder</option>
+              {customers?.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}
+            </select>
+          )}
+
+          <select className="input" value={activeFilter} onChange={(event) => setActiveFilter(event.target.value)} aria-label="Visa projekt">
+            <option value="ACTIVE">Aktiva projekt</option>
+            <option value="INACTIVE">Inaktiva projekt</option>
+            <option value="ALL">Alla projekt</option>
+          </select>
+        </div>
+
+        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 px-3 text-sm">
+          {statusFilters.map((filter) => (
+            <button
+              key={filter.id}
+              type="button"
+              onClick={() => setStatusFilter(filter.id)}
+              className={`border-b-2 pb-1 font-semibold transition ${
+                statusFilter === filter.id
+                  ? 'border-primary-600 text-primary-800'
+                  : 'border-transparent text-graphite-500 hover:border-graphite-300 hover:text-graphite-900'
+              }`}
+            >
+              {filter.label}
+            </button>
+          ))}
         </div>
       </section>
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[310px_1fr]">
-        <aside className="space-y-4 xl:sticky xl:top-4 xl:self-start">
-          <Card className="p-0">
-            <div className="border-b border-graphite-200 px-4 py-3">
-              <div className="flex items-center gap-2 font-semibold text-graphite-950">
-                <SlidersHorizontal className="h-4 w-4 text-primary-600" />
-                Filter
-              </div>
-            </div>
-            <div className="space-y-4 p-4">
-              <label className="relative block">
-                <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-graphite-400" />
-                <input className="input pl-9" placeholder="Sök jobb, kund, plats" value={search} onChange={(event) => setSearch(event.target.value)} />
-              </label>
-
-              {isManager && (
-                <label className="block">
-                  <span className="label">Kund</span>
-                  <select className="input" value={customerFilter} onChange={(event) => setCustomerFilter(event.target.value)}>
-                    <option value="">Alla kunder</option>
-                    {customers?.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}
-                  </select>
-                </label>
-              )}
-
-              <label className="block">
-                <span className="label">Visa</span>
-                <select className="input" value={activeFilter} onChange={(event) => setActiveFilter(event.target.value)}>
-                  <option value="ACTIVE">Aktiva projekt</option>
-                  <option value="INACTIVE">Inaktiva projekt</option>
-                  <option value="ALL">Alla projekt</option>
-                </select>
-              </label>
-
-              <div>
-                <span className="label">Status</span>
-                <div className="grid grid-cols-2 gap-2">
-                  {statusFilters.map((filter) => (
-                    <button
-                      key={filter.id}
-                      type="button"
-                      onClick={() => setStatusFilter(filter.id)}
-                      className={`min-h-10 rounded-lg border px-3 py-2 text-sm font-semibold transition ${
-                        statusFilter === filter.id
-                          ? 'border-graphite-950 bg-graphite-950 text-white shadow-sm'
-                          : 'border-graphite-200 bg-white text-graphite-600 hover:border-primary-300 hover:text-primary-700'
-                      }`}
-                    >
-                      {filter.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </Card>
-
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 xl:grid-cols-1">
-            <KpiCard label="Timmar totalt" value={formatHours(totals.hours)} tone="orange" />
-            <KpiCard label="Riskjobb" value={totals.risk} tone={totals.risk ? 'red' : 'green'} />
-            <KpiCard label="Utan budget" value={totals.missingBudget} tone={totals.missingBudget ? 'yellow' : 'green'} />
-          </div>
-        </aside>
-
-        <main className="min-w-0 space-y-3">
-          <div className="flex flex-col gap-2 rounded-xl border border-white/70 bg-white/85 px-4 py-3 shadow-soft ring-1 ring-graphite-200/45 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h2 className="text-lg font-semibold text-graphite-950">Jobböversikt</h2>
-              <p className="text-sm text-graphite-500">{filteredProjects.length} projekt matchar filtret</p>
-            </div>
-            <div className="flex flex-wrap gap-2 text-xs font-semibold text-graphite-500">
-              <span className="rounded-full bg-emerald-50 px-3 py-1 text-emerald-700">Grön: på plan</span>
-              <span className="rounded-full bg-amber-50 px-3 py-1 text-amber-800">Gul: nära budget</span>
-              <span className="rounded-full bg-rose-50 px-3 py-1 text-rose-700">Röd: risk</span>
-            </div>
-          </div>
-
-          {!filteredProjects.length ? (
-            <EmptyState title="Inga projekt matchar filtret" description="Justera filtren eller skapa ett nytt projekt." />
-          ) : (
-            <div className="grid grid-cols-1 gap-3 2xl:grid-cols-2">
-              {filteredProjects.map((project) => (
-                <ProjectCard
-                  key={project.id}
-                  project={project}
-                  isManager={isManager}
-                  onEdit={() => {
-                    setEditingProject(project);
-                    setIsModalOpen(true);
-                  }}
-                  onDelete={() => window.confirm('Inaktivera projekt?') && deleteMutation.mutate(project.id)}
-                />
-              ))}
-            </div>
+      <section className="space-y-3">
+        <div className="flex flex-col gap-2 text-sm leading-6 text-graphite-700 lg:flex-row lg:items-center lg:justify-between">
+          <p>
+            Visar <strong>{filteredProjects.length}</strong> projekt. Totalt <strong>{formatHours(totals.hours)}</strong>,
+            {' '}varav <strong>{formatHours(totals.weekHours)}</strong> denna vecka.
+            {totals.risk > 0 && <span className="ml-1 font-semibold text-rose-700">{totals.risk} projekt behöver kollas.</span>}
+            {totals.missingBudget > 0 && <span className="ml-1">{totals.missingBudget} löpande jobb saknar budget.</span>}
+          </p>
+          {isManager && nextProjectCode && (
+            <p className="font-semibold text-graphite-900">Nästa projektnummer: {nextProjectCode}</p>
           )}
-        </main>
-      </div>
+        </div>
+
+        {!filteredProjects.length ? (
+          <EmptyState title="Inga projekt matchar filtret" description="Justera filtren eller skapa ett nytt projekt." />
+        ) : (
+          <ProjectTable
+            projects={filteredProjects}
+            isManager={isManager}
+            onEdit={(project) => {
+              setEditingProject(project);
+              setIsModalOpen(true);
+            }}
+            onDelete={(project) => window.confirm('Inaktivera projekt?') && deleteMutation.mutate(project.id)}
+          />
+        )}
+
+        {totals.withFinancials && (
+          <p className="border-t border-graphite-200 pt-3 text-sm leading-6 text-graphite-600">
+            Material i urvalet: <strong>{formatCurrency(totals.material)}</strong>. Resultat i urvalet:{' '}
+            <strong className={totals.result < 0 ? 'text-rose-700' : 'text-emerald-700'}>{formatCurrency(totals.result)}</strong>.
+          </p>
+        )}
+      </section>
 
       {isManager && isModalOpen && (
         <ProjectModal
           editingProject={editingProject}
           customers={customers}
+          suggestedCode={nextProjectCode}
           isSaving={createMutation.isPending || updateMutation.isPending}
           onClose={closeModal}
           onSubmit={handleSubmit}
@@ -286,7 +275,50 @@ export default function Projects() {
   );
 }
 
-function ProjectCard({
+function ProjectTable({
+  projects,
+  isManager,
+  onEdit,
+  onDelete,
+}: {
+  projects: ProjectListItem[];
+  isManager: boolean;
+  onEdit: (project: ProjectListItem) => void;
+  onDelete: (project: ProjectListItem) => void;
+}) {
+  return (
+    <div className="overflow-x-auto border-y border-graphite-200 bg-white/90">
+      <table className="min-w-[980px] w-full text-sm">
+        <thead className="border-b border-graphite-200 bg-graphite-50 text-left text-xs font-semibold uppercase tracking-wide text-graphite-500">
+          <tr>
+            <th className="px-3 py-3">Projektnr</th>
+            <th className="px-3 py-3">Projekt</th>
+            <th className="px-3 py-3">Kund och plats</th>
+            <th className="px-3 py-3">Status</th>
+            <th className="px-3 py-3 text-right">Timmar</th>
+            <th className="px-3 py-3">Budget</th>
+            <th className="px-3 py-3">Senast</th>
+            <th className="px-3 py-3 text-right">Resultat</th>
+            <th className="px-3 py-3 text-right">Öppna</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-graphite-100">
+          {projects.map((project) => (
+            <ProjectRow
+              key={project.id}
+              project={project}
+              isManager={isManager}
+              onEdit={() => onEdit(project)}
+              onDelete={() => onDelete(project)}
+            />
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function ProjectRow({
   project,
   isManager,
   onEdit,
@@ -300,170 +332,118 @@ function ProjectCard({
   const navigate = useNavigate();
   const metrics = project.metrics;
   const runningJob = !project.budgetHours;
-  const budgetUsage = Math.max(0, Math.min(metrics?.budgetUsagePercent || 0, 100));
-  const isRisk = metrics?.status.code === 'RISK' || (metrics?.budgetUsagePercent || 0) >= 100;
-  const isWarning = !isRisk && (runningJob || (metrics?.budgetUsagePercent || 0) >= 80);
-  const accent = isRisk ? 'border-l-rose-500' : isWarning ? 'border-l-amber-400' : 'border-l-emerald-500';
-  const progressTone = isRisk ? 'bg-rose-500' : isWarning ? 'bg-amber-500' : 'bg-emerald-500';
+  const usagePercent = metrics?.budgetUsagePercent ?? null;
+  const isRisk = metrics?.status.code === 'RISK' || (usagePercent ?? 0) >= 100;
+  const isWarning = !isRisk && (runningJob || (usagePercent ?? 0) >= 80);
+  const accentClass = isRisk ? 'border-l-rose-500' : isWarning ? 'border-l-amber-400' : 'border-l-emerald-500';
+  const progressClass = isRisk ? 'bg-rose-500' : isWarning ? 'bg-amber-500' : 'bg-emerald-500';
+  const progressWidth = project.budgetHours ? `${Math.max(0, Math.min(usagePercent || 0, 100))}%` : '100%';
+
+  const openProject = () => navigate(`/projects/${project.id}`);
 
   return (
-    <Card
+    <tr
       role="button"
       tabIndex={0}
-      onClick={() => navigate(`/projects/${project.id}`)}
+      onClick={openProject}
       onKeyDown={(event) => {
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault();
-          navigate(`/projects/${project.id}`);
+          openProject();
         }
       }}
-      className={`min-h-[290px] cursor-pointer border-l-4 ${accent} p-0 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 hover:-translate-y-0.5 hover:shadow-premium ${!project.active ? 'opacity-70' : ''}`}
+      className={`cursor-pointer border-l-4 ${accentClass} transition hover:bg-primary-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300 ${!project.active ? 'opacity-65' : ''}`}
       title="Öppna projekt"
     >
-      <div className="flex h-full flex-col">
-        <div className="border-b border-graphite-200 p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                {metrics?.status && <StatusBadge label={metrics.status.label} tone={metrics.status.tone} />}
-                {runningJob && <StatusBadge label="Löpande jobb" tone="yellow" />}
-              </div>
-              <h3 className="mt-3 line-clamp-2 text-xl font-semibold leading-tight text-graphite-950">{project.name}</h3>
-              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-graphite-500">
-                <span className="font-semibold text-graphite-700">{project.code}</span>
-                <span>{project.customer?.name || 'Intern'}</span>
-                {project.site && (
-                  <span className="inline-flex min-w-0 items-center gap-1">
-                    <MapPin className="h-3.5 w-3.5 shrink-0" />
-                    <span className="truncate">{project.site}</span>
-                  </span>
-                )}
-              </div>
-            </div>
-            <div className="flex shrink-0 items-center gap-1">
-              {isManager && (
-                <>
-                  <button onClick={(event) => { event.stopPropagation(); onEdit(); }} className="rounded-lg p-2 text-graphite-500 hover:bg-primary-50 hover:text-primary-700" title="Redigera">
-                    <Edit2 className="h-4 w-4" />
-                  </button>
-                  <button onClick={(event) => { event.stopPropagation(); onDelete(); }} className="rounded-lg p-2 text-rose-600 hover:bg-rose-50" title="Inaktivera">
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </>
-              )}
-              <ChevronRight className="h-5 w-5 text-graphite-300" />
-            </div>
+      <td className="whitespace-nowrap px-3 py-3 font-semibold text-graphite-900">{project.code}</td>
+      <td className="px-3 py-3">
+        <p className="font-semibold text-graphite-950">{project.name}</p>
+        {metrics?.warnings?.length ? (
+          <p className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-amber-800">
+            <AlertTriangle className="h-3.5 w-3.5" />
+            {metrics.warnings[0]}
+          </p>
+        ) : null}
+      </td>
+      <td className="px-3 py-3 text-graphite-700">
+        <p>{project.customer?.name || 'Intern'}</p>
+        {project.site && (
+          <p className="mt-1 inline-flex max-w-[220px] items-center gap-1 text-xs text-graphite-500">
+            <MapPin className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">{project.site}</span>
+          </p>
+        )}
+      </td>
+      <td className="px-3 py-3">
+        <div className="flex flex-wrap gap-1.5">
+          {metrics?.status && <StatusBadge label={metrics.status.label} tone={metrics.status.tone} />}
+          {runningJob && <StatusBadge label="Löpande" tone="yellow" />}
+        </div>
+      </td>
+      <td className="whitespace-nowrap px-3 py-3 text-right font-semibold text-graphite-950">
+        {formatHours(metrics?.totalHours)}
+        <p className="text-xs font-normal text-graphite-500">{formatHours(metrics?.weekHours)} denna vecka</p>
+      </td>
+      <td className="px-3 py-3">
+        <div className="min-w-[150px]">
+          <div className="mb-1 flex items-center justify-between gap-2 text-xs text-graphite-500">
+            <span>{project.budgetHours ? formatHours(project.budgetHours) : 'Löpande jobb'}</span>
+            <span>{project.budgetHours ? formatPercent(usagePercent) : ''}</span>
+          </div>
+          <div className="h-1.5 overflow-hidden bg-graphite-100">
+            <div className={`h-full ${progressClass}`} style={{ width: progressWidth }} />
           </div>
         </div>
-
-        <div className="flex flex-1 flex-col gap-4 p-4">
-          <div>
-            <div className="mb-1.5 flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-graphite-500">
-              <span>Budgetläge</span>
-              <span>{project.budgetHours ? formatPercent(metrics?.budgetUsagePercent) : 'Löpande jobb'}</span>
-            </div>
-            <div className="h-3 overflow-hidden rounded-full bg-graphite-100">
-              <div className={`h-full rounded-full ${progressTone}`} style={{ width: project.budgetHours ? `${budgetUsage}%` : '100%' }} />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-            <ProjectMetric icon={<Clock className="h-4 w-4" />} label="Timmar" value={formatHours(metrics?.totalHours)} />
-            <ProjectMetric icon={<Clock className="h-4 w-4" />} label="Denna vecka" value={formatHours(metrics?.weekHours)} />
-            <ProjectMetric icon={<Layers className="h-4 w-4" />} label="Budget" value={project.budgetHours ? formatHours(project.budgetHours) : 'Löpande'} />
-            <ProjectMetric icon={<Layers className="h-4 w-4" />} label="Material" value={metrics ? formatCurrency(metrics.materialSalesValue) : 'Dolt'} />
-            <ProjectMetric
-              icon={<Coins className="h-4 w-4" />}
-              label="Resultat"
-              value={metrics?.projectResult != null ? formatCurrency(metrics.projectResult) : metrics ? '-' : 'Dolt'}
-              valueTone={metrics?.projectResult != null && metrics.projectResult < 0 ? 'text-rose-700' : 'text-emerald-700'}
-            />
-            <ProjectMetric label="Senast" value={metrics?.lastActivityAt ? formatDate(metrics.lastActivityAt) : '-'} />
-          </div>
-
-          {metrics?.warnings?.length ? (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900">
-              {metrics.warnings[0]}
-            </div>
-          ) : null}
+      </td>
+      <td className="whitespace-nowrap px-3 py-3 text-graphite-700">{metrics?.lastActivityAt ? formatDate(metrics.lastActivityAt) : '-'}</td>
+      <td className={`whitespace-nowrap px-3 py-3 text-right font-semibold ${metrics?.projectResult != null && metrics.projectResult < 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
+        {metrics?.projectResult != null ? formatCurrency(metrics.projectResult) : metrics ? '-' : 'Dolt'}
+      </td>
+      <td className="whitespace-nowrap px-3 py-3 text-right">
+        <div className="inline-flex items-center justify-end gap-1">
+          {isManager && (
+            <>
+              <button onClick={(event) => { event.stopPropagation(); onEdit(); }} className="rounded-md p-2 text-graphite-500 hover:bg-white hover:text-primary-700" title="Redigera">
+                <Edit2 className="h-4 w-4" />
+              </button>
+              <button onClick={(event) => { event.stopPropagation(); onDelete(); }} className="rounded-md p-2 text-rose-600 hover:bg-white" title="Inaktivera">
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </>
+          )}
+          <ChevronRight className="h-5 w-5 text-graphite-400" />
         </div>
-      </div>
-    </Card>
-  );
-}
-
-function HeroMetric({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="rounded-lg border border-white/10 bg-white/10 px-3 py-3">
-      <p className="text-xs font-semibold uppercase tracking-wide text-white/55">{label}</p>
-      <p className="mt-1 text-2xl font-semibold tracking-tight text-white">{value}</p>
-    </div>
-  );
-}
-
-function MoneyPanel({
-  icon,
-  label,
-  value,
-  tone = 'neutral',
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  tone?: 'neutral' | 'profit' | 'loss';
-}) {
-  const valueClass = tone === 'loss' ? 'text-rose-100' : tone === 'profit' ? 'text-emerald-100' : 'text-white';
-  return (
-    <div className="rounded-lg border border-white/10 bg-white/10 p-4">
-      <div className="flex items-center gap-2 text-white/65">
-        {icon}
-        <span className="text-xs font-semibold uppercase tracking-wide">{label}</span>
-      </div>
-      <p className={`mt-3 text-2xl font-semibold tracking-tight ${valueClass}`}>{value}</p>
-    </div>
-  );
-}
-
-function ProjectMetric({
-  icon,
-  label,
-  value,
-  valueTone = 'text-graphite-950',
-}: {
-  icon?: React.ReactNode;
-  label: string;
-  value: string;
-  valueTone?: string;
-}) {
-  return (
-    <div className="min-h-[74px] rounded-lg border border-graphite-200 bg-graphite-50 px-3 py-2">
-      <div className="flex items-center gap-1.5 text-xs font-medium text-graphite-500">
-        {icon}
-        <span>{label}</span>
-      </div>
-      <p className={`mt-1 break-words text-sm font-semibold sm:text-base ${valueTone}`}>{value}</p>
-    </div>
+      </td>
+    </tr>
   );
 }
 
 function ProjectModal({
   editingProject,
   customers,
+  suggestedCode,
   isSaving,
   onClose,
   onSubmit,
 }: {
   editingProject: Project | null;
   customers?: Array<{ id: string; name: string }>;
+  suggestedCode: string;
   isSaving: boolean;
   onClose: () => void;
-  onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
+  const isEditing = Boolean(editingProject);
+  const codeDefault = editingProject?.code || suggestedCode;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-graphite-950/65 p-4 backdrop-blur-sm">
       <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg border border-graphite-200 bg-white shadow-2xl">
-        <div className="border-b border-graphite-200 bg-graphite-950 px-5 py-4 text-white">
-          <h2 className="text-lg font-semibold">{editingProject ? 'Redigera projekt' : 'Nytt projekt'}</h2>
+        <div className="border-b border-graphite-200 px-5 py-4">
+          <h2 className="text-lg font-semibold text-graphite-950">{isEditing ? 'Redigera projekt' : 'Nytt projekt'}</h2>
+          {!isEditing && suggestedCode && (
+            <p className="mt-1 text-sm text-graphite-600">Nästa lediga projektnummer är förifyllt: <strong>{suggestedCode}</strong>.</p>
+          )}
         </div>
         <form onSubmit={onSubmit} className="grid grid-cols-1 gap-4 p-5 md:grid-cols-2">
           <label className="md:col-span-2">
@@ -474,7 +454,7 @@ function ProjectModal({
             </select>
           </label>
           <Field name="name" label="Projektnamn" defaultValue={editingProject?.name} required />
-          <Field name="code" label="Projektnummer" defaultValue={editingProject?.code} required />
+          <Field key={codeDefault || 'project-code'} name="code" label="Projektnummer" defaultValue={codeDefault} placeholder={suggestedCode || 'Ex. 1001'} required />
           <Field name="site" label="Arbetsplats" defaultValue={editingProject?.site} />
           <label>
             <span className="label">Status</span>
@@ -489,14 +469,14 @@ function ProjectModal({
             <span className="label">Anteckningar</span>
             <textarea name="notes" defaultValue={editingProject?.notes || ''} className="input" rows={3} />
           </label>
-          <label className="md:col-span-2 flex items-center gap-3 rounded-lg border border-graphite-200 bg-graphite-50 p-3 text-sm">
+          <label className="md:col-span-2 flex items-center gap-3 border border-graphite-200 bg-graphite-50 p-3 text-sm">
             <input name="employeeCanSeeResults" type="checkbox" defaultChecked={editingProject?.employeeCanSeeResults || false} />
             Visa projekttimmar för anställda
           </label>
           <div className="flex gap-3 md:col-span-2">
             <button type="button" onClick={onClose} className="btn-secondary flex-1">Avbryt</button>
             <button type="submit" className="btn-primary flex-1" disabled={isSaving}>
-              {editingProject ? 'Spara' : 'Skapa'}
+              {isEditing ? 'Spara' : 'Skapa'}
             </button>
           </div>
         </form>
@@ -505,7 +485,7 @@ function ProjectModal({
   );
 }
 
-function Field({ label, ...props }: React.InputHTMLAttributes<HTMLInputElement> & { label: string }) {
+function Field({ label, ...props }: InputHTMLAttributes<HTMLInputElement> & { label: string }) {
   return (
     <label>
       <span className="label">{label}</span>
