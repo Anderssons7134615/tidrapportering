@@ -19,6 +19,13 @@ const projectSchema = z.object({
   notes: z.string().optional().nullable(),
 });
 
+const createProjectSchema = projectSchema.extend({
+  code: z.preprocess(
+    (value) => typeof value === 'string' && value.trim() === '' ? undefined : value,
+    z.string().trim().min(1).optional()
+  ),
+});
+
 const materialArticleSchema = z.object({
   name: z.string().min(2),
   articleNumber: z.string().trim().optional().nullable(),
@@ -138,6 +145,35 @@ function getDayEnd(date: string): Date {
   const d = new Date(date);
   d.setHours(23, 59, 59, 999);
   return d;
+}
+
+function getNextProjectCodeFromCodes(codes: Array<string | null | undefined>) {
+  let bestMatch: { prefix: string; number: number; width: number } | null = null;
+
+  for (const rawCode of codes) {
+    const code = rawCode?.trim();
+    const match = code?.match(/^(.*?)(\d+)$/);
+    if (!match) continue;
+
+    const number = Number.parseInt(match[2], 10);
+    if (!Number.isFinite(number)) continue;
+
+    if (!bestMatch || number > bestMatch.number) {
+      bestMatch = { prefix: match[1], number, width: match[2].length };
+    }
+  }
+
+  if (!bestMatch) return '1';
+  return `${bestMatch.prefix}${String(bestMatch.number + 1).padStart(bestMatch.width, '0')}`;
+}
+
+async function getNextProjectCode(companyId: string) {
+  const projects = await prisma.project.findMany({
+    where: { companyId },
+    select: { code: true },
+  });
+
+  return getNextProjectCodeFromCodes(projects.map((project) => project.code));
 }
 
 function styleMaterialWorksheet(worksheet: ExcelJS.Worksheet) {
@@ -599,6 +635,13 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     return { message: 'Materialartikeln inaktiverad' };
+  });
+
+  fastify.get('/next-code', {
+    preHandler: [requireAdminOrSupervisor],
+  }, async (request) => {
+    const code = await getNextProjectCode(request.user.companyId);
+    return { code };
   });
 
   fastify.get('/:id/summary', {
@@ -1390,25 +1433,36 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [requireAdminOrSupervisor],
   }, async (request, reply) => {
     try {
-      const body = projectSchema.parse(request.body);
+      const body = createProjectSchema.parse(request.body);
+      const requestedCode = body.code?.trim();
+      let code = requestedCode || await getNextProjectCode(request.user.companyId);
+      let project: any = null;
+
+      for (let attempt = 0; attempt < 5; attempt += 1) {
 
       // Kontrollera att projektkod är unik inom företaget
       const existing = await prisma.project.findUnique({
         where: {
           companyId_code: {
             companyId: request.user.companyId,
-            code: body.code,
+            code,
           },
         },
       });
 
       if (existing) {
-        return reply.status(400).send({ error: 'Projektkoden finns redan' });
+        if (requestedCode) {
+          return reply.status(400).send({ error: 'Projektkoden finns redan' });
+        }
+        code = await getNextProjectCode(request.user.companyId);
+        continue;
       }
 
-      const project = await prisma.project.create({
+      try {
+        project = await prisma.project.create({
         data: {
           ...body,
+          code,
           employeeCanSeeResults: body.employeeCanSeeResults ?? false,
           companyId: request.user.companyId,
         },
@@ -1416,6 +1470,19 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
           customer: { select: { id: true, name: true } },
         },
       });
+        break;
+      } catch (error: any) {
+        if (!requestedCode && error?.code === 'P2002') {
+          code = await getNextProjectCode(request.user.companyId);
+          continue;
+        }
+        throw error;
+      }
+      }
+
+      if (!project) {
+        return reply.status(409).send({ error: 'Kunde inte skapa ett unikt projektnummer. Försök igen.' });
+      }
 
       // Audit log
       await prisma.auditLog.create({

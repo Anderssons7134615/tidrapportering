@@ -194,8 +194,8 @@ export default function Layout() {
           </button>
         </aside>
 
-        <main className="w-full flex-1 px-4 pb-32 pt-4 sm:px-6 sm:pt-6 lg:px-8 lg:pb-10 lg:pt-7">
-          <div className="mx-auto w-full max-w-7xl">
+        <main className="min-w-0 w-full flex-1 px-4 pb-32 pt-4 sm:px-6 sm:pt-6 lg:px-8 lg:pb-10 lg:pt-7">
+          <div className="mx-auto min-w-0 w-full max-w-7xl">
             <Outlet />
           </div>
         </main>
