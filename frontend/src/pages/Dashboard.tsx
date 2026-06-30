@@ -58,7 +58,7 @@ export default function Dashboard() {
         <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
           <div className="min-w-0">
             <p className="app-eyebrow">Arbetsläge</p>
-            <h1 className="mt-1 text-3xl font-semibold tracking-tight text-graphite-950 sm:text-4xl">
+            <h1 className="mt-1 text-3xl font-semibold tracking-normal text-graphite-950 sm:text-4xl">
               {isManager ? 'Dagens kontroll' : `God arbetsdag${firstName ? `, ${firstName}` : ''}`}
             </h1>
             <p className="app-description">
@@ -86,8 +86,8 @@ export default function Dashboard() {
         </div>
       </header>
 
-      <section className="work-panel overflow-hidden">
-        <div className="grid divide-y divide-graphite-200 md:grid-cols-4 md:divide-x md:divide-y-0">
+      <section className="overflow-hidden border-y border-graphite-900 bg-graphite-950 text-white">
+        <div className="grid grid-cols-2 divide-x divide-y divide-white/10 md:grid-cols-4 md:divide-y-0">
           <StatusMetric label="Attest väntar" value={pendingCount} detail="veckor" tone={pendingCount ? 'yellow' : 'green'} icon={<CheckCircle2 className="h-4 w-4" />} />
           <StatusMetric label="Budgetrisk" value={riskCount} detail="projekt" tone={riskCount ? 'red' : 'green'} icon={<AlertTriangle className="h-4 w-4" />} />
           <StatusMetric label={isManager ? 'Löpande utan budget' : 'Saknade dagar'} value={isManager ? runningCount : missingWeekdays.length} detail={isManager ? 'projekt' : 'denna vecka'} tone={(isManager ? runningCount : missingWeekdays.length) ? 'yellow' : 'green'} icon={<ListChecks className="h-4 w-4" />} />
@@ -124,15 +124,15 @@ function StatusMetric({
   tone: StatusTone;
   icon: ReactNode;
 }) {
-  const color = tone === 'red' ? 'text-rose-700' : tone === 'yellow' ? 'text-amber-700' : tone === 'green' ? 'text-emerald-700' : 'text-primary-700';
+  const color = tone === 'red' ? 'text-rose-300' : tone === 'yellow' ? 'text-amber-200' : tone === 'green' ? 'text-emerald-200' : 'text-primary-200';
 
   return (
-    <div className="flex items-start gap-3 px-4 py-4">
+    <div className="flex items-start gap-3 px-5 py-4">
       <span className={`mt-1 ${color}`}>{icon}</span>
       <div className="min-w-0">
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-graphite-500">{label}</p>
-        <p className="mt-1 text-2xl font-semibold tracking-tight text-graphite-950">{value}</p>
-        <p className="mt-1 text-sm text-graphite-600">{detail}</p>
+        <p className="text-[11px] font-semibold uppercase tracking-normal text-white/50">{label}</p>
+        <p className="mt-1 text-2xl font-semibold tracking-normal text-white tabular-nums">{value}</p>
+        <p className="mt-1 text-sm text-white/60">{detail}</p>
       </div>
     </div>
   );
@@ -164,9 +164,9 @@ function WorkQueue({
           <Link
             key={item.id}
             to={item.to}
-            className="grid gap-3 px-4 py-4 transition hover:bg-primary-50/60 sm:grid-cols-[2.5rem_1fr_auto] sm:items-start"
+            className="grid gap-3 px-4 py-4 transition hover:bg-primary-50/60 sm:grid-cols-[1.75rem_1fr_auto] sm:items-start"
           >
-            <span className="hidden h-8 w-8 items-center justify-center rounded-md bg-graphite-100 text-sm font-semibold text-graphite-600 sm:flex">
+            <span className="hidden pt-0.5 text-sm font-semibold text-graphite-400 sm:block">
               {index + 1}
             </span>
             <span className="min-w-0">
@@ -181,8 +181,8 @@ function WorkQueue({
         ))}
 
         {isManager && pendingApprovals.slice(0, 3).map((lock) => (
-          <Link key={lock.id} to="/approval" className="grid gap-3 px-4 py-4 transition hover:bg-primary-50/60 sm:grid-cols-[2.5rem_1fr_auto] sm:items-start">
-            <span className="hidden h-8 w-8 items-center justify-center rounded-md bg-amber-50 text-amber-700 sm:flex">
+          <Link key={lock.id} to="/approval" className="grid gap-3 px-4 py-4 transition hover:bg-primary-50/60 sm:grid-cols-[1.75rem_1fr_auto] sm:items-start">
+            <span className="hidden pt-0.5 text-amber-700 sm:block">
               <Users className="h-4 w-4" />
             </span>
             <span>
@@ -223,11 +223,11 @@ function WeekPulse({
 
       <div className="grid grid-cols-2 divide-x divide-graphite-200 border-b border-graphite-200">
         <div className="px-4 py-3">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-graphite-500">Vecka</p>
+          <p className="text-[11px] font-semibold uppercase tracking-normal text-graphite-500">Vecka</p>
           <p className="mt-1 text-2xl font-semibold text-graphite-950">{formatHours(weeklyHours)}</p>
         </div>
         <div className="px-4 py-3">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-graphite-500">Månad</p>
+          <p className="text-[11px] font-semibold uppercase tracking-normal text-graphite-500">Månad</p>
           <p className="mt-1 text-2xl font-semibold text-graphite-950">{formatHours(monthlyHours)}</p>
         </div>
       </div>

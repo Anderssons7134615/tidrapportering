@@ -6,13 +6,13 @@
   :root {
     color-scheme: light;
 
-    --color-bg: #f6f7fb;
-    --color-bg-soft: #edf0f6;
+    --color-bg: #eef2f1;
+    --color-bg-soft: #e5ebe9;
     --color-surface: #ffffff;
     --color-text: #171b1a;
     --color-text-muted: #62666d;
-    --color-border: #e3e6ee;
-    --color-focus: #5e6ad2;
+    --color-border: #d9dfdc;
+    --color-focus: #1b7169;
 
     --radius-sm: 0.5rem;
     --radius-md: 0.8rem;
@@ -27,8 +27,18 @@
   }
 
   body {
-    @apply bg-[#f4f6f8] text-graphite-900 antialiased;
+    @apply bg-[#eef2f1] text-graphite-900 antialiased;
+    background:
+      linear-gradient(180deg, #f8faf9 0%, #eef2f1 42%, #e6ecea 100%);
     font-feature-settings: "cv01", "ss03";
+  }
+
+  #root {
+    min-height: 100dvh;
+  }
+
+  ::selection {
+    background: rgba(27, 113, 105, 0.18);
   }
 
   input,
@@ -40,27 +50,32 @@
 
 @layer components {
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-md px-3.5 py-2.5 text-sm font-semibold transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2.5 text-sm font-semibold transition duration-200 active:translate-y-px focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white disabled:cursor-not-allowed disabled:opacity-50 disabled:active:translate-y-0;
   }
 
   .btn-primary {
-    @apply btn bg-primary-700 text-white shadow-sm hover:bg-primary-800 focus:ring-primary-300;
+    @apply btn bg-primary-700 text-white hover:bg-primary-800 focus:ring-primary-300;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 1px 2px rgba(11, 15, 14, 0.12);
   }
 
   .btn-secondary {
-    @apply btn border border-graphite-200 bg-white text-graphite-800 shadow-sm hover:border-primary-300 hover:bg-primary-50 hover:text-primary-800 focus:ring-primary-200;
+    @apply btn border border-graphite-200 bg-white/90 text-graphite-800 hover:border-primary-300 hover:bg-primary-50 hover:text-primary-800 focus:ring-primary-200;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
   }
 
   .btn-danger {
-    @apply btn bg-rose-600 text-white shadow-sm hover:bg-rose-700 focus:ring-rose-500;
+    @apply btn bg-rose-600 text-white hover:bg-rose-700 focus:ring-rose-500;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 1px 2px rgba(136, 19, 55, 0.14);
   }
 
   .btn-success {
-    @apply btn bg-emerald-600 text-white shadow-sm hover:bg-emerald-700 focus:ring-emerald-500;
+    @apply btn bg-emerald-600 text-white hover:bg-emerald-700 focus:ring-emerald-500;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 1px 2px rgba(6, 95, 70, 0.14);
   }
 
   .input {
-    @apply w-full rounded-md border border-graphite-200 bg-white px-3.5 py-2.5 text-sm text-graphite-950 placeholder:text-graphite-400 shadow-sm transition duration-150 hover:border-graphite-300 focus:border-primary-500 focus:bg-white focus:ring-2 focus:ring-primary-100;
+    @apply w-full rounded-lg border border-graphite-200 bg-white/90 px-3.5 py-2.5 text-sm text-graphite-950 placeholder:text-graphite-400 transition duration-200 hover:border-graphite-300 focus:border-primary-500 focus:bg-white focus:ring-2 focus:ring-primary-100;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
   }
 
   .label {
@@ -68,15 +83,21 @@
   }
 
   .card {
-    @apply rounded-lg border border-graphite-200 bg-white p-4 shadow-none sm:p-5;
+    @apply border-y border-graphite-200 bg-white/80 p-4 shadow-none sm:p-5;
+    border-radius: 0;
+    border-left: 0;
+    border-right: 0;
   }
 
   .hero-card {
-    @apply overflow-hidden rounded-lg border border-graphite-200 bg-white p-5 shadow-none sm:p-6;
+    @apply overflow-hidden border-y border-graphite-200 bg-white/80 p-5 shadow-none sm:p-6;
+    border-radius: 0;
+    border-left: 0;
+    border-right: 0;
   }
 
   .page-title {
-    @apply text-2xl font-semibold tracking-tight text-graphite-950 sm:text-3xl;
+    @apply text-2xl font-bold tracking-normal text-graphite-950 sm:text-3xl;
   }
 
   .badge {
@@ -104,19 +125,26 @@
   }
 
   .section-title {
-    @apply text-base font-semibold tracking-tight text-graphite-950;
+    @apply text-base font-semibold tracking-normal text-graphite-950;
   }
 
   .surface-muted {
-    @apply rounded-lg border border-graphite-200 bg-graphite-50;
+    @apply border-y border-graphite-200 bg-graphite-50;
+    border-radius: 0;
   }
 
   .soft-panel {
-    @apply rounded-lg border border-graphite-200 bg-white shadow-none;
+    @apply border-y border-graphite-200 bg-white/80 shadow-none;
+    border-radius: 0;
+    border-left: 0;
+    border-right: 0;
   }
 
   .stat-card {
-    @apply rounded-lg border border-graphite-200 bg-white p-4 shadow-none transition hover:border-primary-200;
+    @apply border-y border-graphite-200 bg-white/80 p-4 shadow-none transition hover:border-primary-200;
+    border-radius: 0;
+    border-left: 0;
+    border-right: 0;
   }
 
   .chip {
@@ -124,11 +152,14 @@
   }
 
   .table-wrap {
-    @apply overflow-hidden rounded-lg border border-graphite-200 bg-white shadow-none;
+    @apply overflow-hidden border-y border-graphite-200 bg-white/90 shadow-none;
+    border-radius: 0;
+    border-left: 0;
+    border-right: 0;
   }
 
   .table-head {
-    @apply border-b border-graphite-200 bg-graphite-50 text-left text-[11px] uppercase tracking-wide text-graphite-500;
+    @apply border-b border-graphite-200 bg-[#f3f6f4] text-left text-[11px] font-semibold uppercase tracking-normal text-graphite-500;
   }
 
   .table-wrap tbody tr {
@@ -136,19 +167,25 @@
   }
 
   .premium-panel {
-    @apply rounded-lg border border-graphite-200 bg-white text-graphite-950 shadow-none;
+    @apply border-y border-graphite-200 bg-white/80 text-graphite-950 shadow-none;
+    border-radius: 0;
+    border-left: 0;
+    border-right: 0;
   }
 
   .dashboard-command {
-    @apply overflow-hidden rounded-lg border border-graphite-200 bg-white text-graphite-950 shadow-none;
+    @apply overflow-hidden border-y border-graphite-200 bg-white/80 text-graphite-950 shadow-none;
+    border-radius: 0;
+    border-left: 0;
+    border-right: 0;
   }
 
   .dashboard-primary-action {
-    @apply inline-flex items-center justify-center gap-2 rounded-md bg-primary-700 px-4 py-2.5 text-sm font-semibold text-white shadow-none transition-colors hover:bg-primary-800;
+    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-primary-700 px-4 py-2.5 text-sm font-semibold text-white shadow-none transition hover:bg-primary-800 active:translate-y-px;
   }
 
   .dashboard-secondary-action {
-    @apply inline-flex items-center justify-center gap-2 rounded-md border border-graphite-200 bg-white px-4 py-2.5 text-sm font-semibold text-graphite-800 shadow-none transition-colors hover:border-primary-300 hover:bg-primary-50 hover:text-primary-800;
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-graphite-200 bg-white/90 px-4 py-2.5 text-sm font-semibold text-graphite-800 shadow-none transition hover:border-primary-300 hover:bg-primary-50 hover:text-primary-800 active:translate-y-px;
   }
 
   .accent-line {
@@ -165,11 +202,11 @@
   }
 
   .app-header {
-    @apply border-b border-graphite-200 pb-4;
+    @apply relative border-b border-graphite-200 pb-5;
   }
 
   .app-eyebrow {
-    @apply text-xs font-semibold uppercase tracking-wide text-primary-700;
+    @apply text-xs font-bold tracking-normal text-primary-700;
   }
 
   .app-description {
@@ -177,11 +214,31 @@
   }
 
   .work-panel {
-    @apply rounded-lg border border-graphite-200 bg-white shadow-none;
+    @apply border-y border-graphite-200 bg-white/80 shadow-none;
+    border-radius: 0;
+    border-left: 0;
+    border-right: 0;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+    transition: border-color 180ms ease, background-color 180ms ease;
   }
 
   .work-panel-header {
-    @apply flex items-center justify-between gap-3 border-b border-graphite-200 px-4 py-3;
+    @apply flex items-center justify-between gap-3 border-b border-graphite-200 bg-white/60 px-4 py-3;
+  }
+
+  .filter-strip {
+    @apply border-y border-graphite-200 bg-white/80 py-3;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.68);
+  }
+
+  .app-header::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    bottom: -1px;
+    width: 6rem;
+    height: 2px;
+    background: linear-gradient(90deg, #1b7169, rgba(27, 113, 105, 0));
   }
 
   .text-link {
@@ -202,7 +259,7 @@
     }
 
     .card {
-      @apply rounded-lg p-4;
+      @apply p-4;
     }
 
     .mobile-sticky-submit {

@@ -75,8 +75,8 @@ export default function Layout() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f4f6f8] text-graphite-900">
-      <header className="safe-top sticky top-0 z-50 border-b border-graphite-200 bg-white/95 shadow-sm backdrop-blur lg:hidden">
+    <div className="min-h-screen bg-[#eef2f1] text-graphite-900">
+      <header className="safe-top sticky top-0 z-50 border-b border-graphite-200 bg-[#f8faf9]/95 shadow-sm backdrop-blur lg:hidden">
         <div className="mx-auto flex h-16 max-w-[96rem] items-center justify-between px-4">
           <div className="flex min-w-0 items-center gap-3">
             <button
@@ -101,27 +101,27 @@ export default function Layout() {
       </header>
 
       <div className="mx-auto flex w-full max-w-[96rem]">
-        <aside className="sticky top-0 hidden h-screen w-72 shrink-0 flex-col border-r border-graphite-200 bg-white lg:flex">
-          <div className="border-b border-graphite-200 px-5 py-5">
+        <aside className="sticky top-0 hidden h-screen w-72 shrink-0 flex-col border-r border-white/10 bg-graphite-950 text-white lg:flex">
+          <div className="border-b border-white/10 px-5 py-5">
             <div className="flex items-center gap-3">
-              <BrandMark />
+              <BrandMark onDark />
               <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-graphite-950">TidApp</p>
-                <p className="truncate text-xs text-graphite-500">Tid, vecka och attest</p>
+                <p className="truncate text-sm font-semibold text-white">TidApp</p>
+                <p className="truncate text-xs text-white/50">Tid, vecka och attest</p>
               </div>
             </div>
 
-            <div className="mt-5 flex items-start gap-3 rounded-lg border border-graphite-200 bg-graphite-50 px-3 py-3">
-              <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary-700" />
+            <div className="mt-5 flex items-start gap-3 border-t border-white/10 pt-4">
+              <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary-300" />
               <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-graphite-950">{user?.companyName || 'TidApp'}</p>
-                <p className="mt-0.5 text-xs text-graphite-500">{roleLabel[user?.role || ''] || 'Medarbetare'}</p>
+                <p className="truncate text-sm font-semibold text-white">{user?.companyName || 'TidApp'}</p>
+                <p className="mt-0.5 text-xs text-white/50">{roleLabel[user?.role || ''] || 'Medarbetare'}</p>
               </div>
             </div>
           </div>
 
           <nav className="min-h-0 flex-1 overflow-y-auto px-3 py-4">
-            <p className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-wide text-graphite-400">Arbete</p>
+            <p className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-normal text-white/40">Arbete</p>
             <div className="space-y-1">
               {filteredNavItems.map((item) => (
                 <SideNavLink key={item.to} item={item} />
@@ -129,17 +129,17 @@ export default function Layout() {
             </div>
           </nav>
 
-          <div className="border-t border-graphite-200 p-3">
-            <div className="mb-2 flex items-center justify-between rounded-md bg-graphite-50 px-3 py-2 text-xs font-semibold text-graphite-600">
+          <div className="border-t border-white/10 p-3">
+            <div className="mb-2 flex items-center justify-between rounded-lg border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-semibold text-white/70">
               <span className="inline-flex items-center gap-2">
                 {isOnline ? <Wifi className="h-3.5 w-3.5 text-emerald-600" /> : <WifiOff className="h-3.5 w-3.5 text-amber-600" />}
                 {isOnline ? 'Online' : 'Offline'}
               </span>
-              {pendingEntries.length > 0 && <span className="text-amber-700">{pendingEntries.length} väntar</span>}
+              {pendingEntries.length > 0 && <span className="text-amber-200">{pendingEntries.length} väntar</span>}
             </div>
             <button
               onClick={handleLogout}
-              className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-sm font-semibold text-graphite-600 transition hover:bg-rose-50 hover:text-rose-700"
+              className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold text-white/60 transition hover:bg-rose-500/10 hover:text-rose-100"
             >
               <LogOut size={18} />
               <span>Logga ut</span>
@@ -155,19 +155,19 @@ export default function Layout() {
         )}
 
         <aside
-          className={`fixed left-0 top-0 z-50 h-full w-72 border-r border-graphite-200 bg-white shadow-md transition-transform duration-200 lg:hidden ${
+          className={`fixed left-0 top-0 z-50 h-full w-72 border-r border-white/10 bg-graphite-950 text-white shadow-md transition-transform duration-200 lg:hidden ${
             menuOpen ? 'translate-x-0' : '-translate-x-full'
           }`}
         >
-          <div className="flex items-center justify-between border-b border-graphite-200 px-4 py-4">
+          <div className="flex items-center justify-between border-b border-white/10 px-4 py-4">
             <div className="flex min-w-0 items-center gap-3">
-              <BrandMark compact />
+              <BrandMark compact onDark />
               <div className="min-w-0">
-                <p className="truncate font-semibold text-graphite-950">TidApp</p>
-                <p className="truncate text-xs text-graphite-500">{user?.companyName || 'Navigation'}</p>
+                <p className="truncate font-semibold text-white">TidApp</p>
+                <p className="truncate text-xs text-white/50">{user?.companyName || 'Navigation'}</p>
               </div>
             </div>
-            <button onClick={() => setMenuOpen(false)} className="rounded-md p-1.5 text-graphite-500 hover:bg-graphite-100 hover:text-graphite-950">
+            <button onClick={() => setMenuOpen(false)} className="rounded-lg p-1.5 text-white/60 hover:bg-white/10 hover:text-white">
               <X size={20} />
             </button>
           </div>
@@ -180,7 +180,7 @@ export default function Layout() {
 
           <button
             onClick={handleLogout}
-            className="mx-3 mt-4 flex w-[calc(100%-1.5rem)] items-center gap-3 rounded-md px-3 py-2.5 text-sm font-semibold text-graphite-600 hover:bg-rose-50 hover:text-rose-700"
+            className="mx-3 mt-4 flex w-[calc(100%-1.5rem)] items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold text-white/60 hover:bg-rose-500/10 hover:text-rose-100"
           >
             <LogOut size={18} />
             <span>Logga ut</span>
@@ -194,7 +194,7 @@ export default function Layout() {
         </main>
       </div>
 
-      <nav className="safe-bottom fixed bottom-0 left-0 right-0 z-40 border-t border-graphite-200 bg-white text-graphite-600 shadow-sm lg:hidden">
+      <nav className="safe-bottom fixed bottom-0 left-0 right-0 z-40 border-t border-graphite-200 bg-[#f8faf9]/95 text-graphite-600 shadow-sm backdrop-blur lg:hidden">
         <div className="mx-auto grid max-w-md grid-cols-5 items-center gap-1 px-2 py-2">
           {filteredBottomTabs.slice(0, 5).map((item) => (
             <NavLink
@@ -234,14 +234,14 @@ function SideNavLink({
       to={item.to}
       onClick={onClick}
       className={({ isActive }) =>
-        `group flex items-center gap-3 rounded-md border-l-2 px-3 py-2.5 text-sm font-semibold transition ${
+        `group flex items-center gap-3 rounded-lg border-l-2 px-3 py-2.5 text-sm font-semibold transition ${
           isActive
-            ? 'border-primary-700 bg-primary-50 text-primary-800'
-            : 'border-transparent text-graphite-600 hover:bg-graphite-50 hover:text-graphite-950'
+            ? 'border-primary-300 bg-primary-500/15 text-white'
+            : 'border-transparent text-white/60 hover:bg-white/[0.07] hover:text-white'
         }`
       }
     >
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-white text-graphite-500 ring-1 ring-graphite-200 transition group-hover:text-primary-700">
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-white/[0.07] text-current ring-1 ring-white/10 transition group-hover:bg-white/[0.11]">
         <item.icon size={17} />
       </span>
       <span>{item.label}</span>
@@ -249,14 +249,20 @@ function SideNavLink({
   );
 }
 
-function BrandMark({ compact = false }: { compact?: boolean }) {
+function BrandMark({ compact = false, onDark = false }: { compact?: boolean; onDark?: boolean }) {
   return (
     <div
-      className={`flex h-10 shrink-0 items-center justify-center rounded-md border border-graphite-200 bg-white px-2 ${
-        compact ? 'w-24' : 'w-28'
+      className={`flex h-10 shrink-0 items-center justify-center ${
+        onDark
+          ? compact ? 'w-24 px-0 text-white' : 'w-28 px-0 text-white'
+          : `rounded-lg border border-graphite-200 bg-white px-2 ${compact ? 'w-24' : 'w-28'}`
       }`}
     >
-      <img src="/anderssons-logo.svg" alt="Anderssons Isolering" className="h-7 w-full object-contain" />
+      <img
+        src="/anderssons-logo.svg"
+        alt="Anderssons Isolering"
+        className={`h-7 w-full object-contain ${onDark ? 'brightness-0 invert' : ''}`}
+      />
     </div>
   );
 }

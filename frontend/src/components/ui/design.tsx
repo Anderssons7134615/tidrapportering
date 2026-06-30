@@ -25,6 +25,17 @@ const toneAccentClasses: Record<Tone, string> = {
   dark: 'bg-primary-400',
 };
 
+const toneTextClasses: Record<Tone, string> = {
+  blue: 'text-sky-700',
+  green: 'text-emerald-700',
+  yellow: 'text-amber-800',
+  red: 'text-rose-700',
+  gray: 'text-graphite-600',
+  slate: 'text-graphite-800',
+  orange: 'text-primary-800',
+  dark: 'text-graphite-950',
+};
+
 export function AppShell({ children }: { children: ReactNode }) {
   return <div className="app-workspace">{children}</div>;
 }
@@ -67,11 +78,11 @@ export function KpiCard({
   tone?: Tone;
 }) {
   return (
-    <div className={`relative overflow-hidden rounded-lg border bg-white px-4 py-3 shadow-none ${toneClasses[tone]}`}>
-      <div className={`absolute inset-y-0 left-0 w-1 ${toneAccentClasses[tone]}`} />
-      <p className="text-[11px] font-semibold uppercase tracking-wide opacity-70">{label}</p>
-      <p className="mt-1 text-xl font-semibold tracking-tight sm:text-2xl">{value}</p>
-      {hint && <p className="mt-1 text-xs font-medium opacity-75">{hint}</p>}
+    <div className="relative border-y border-graphite-200 bg-white/70 px-4 py-3 shadow-none">
+      <div className={`absolute inset-y-0 left-0 w-0.5 ${toneAccentClasses[tone]}`} />
+      <p className="text-[11px] font-semibold uppercase tracking-normal text-graphite-500">{label}</p>
+      <p className={`mt-1 text-xl font-semibold tracking-normal tabular-nums sm:text-2xl ${toneTextClasses[tone]}`}>{value}</p>
+      {hint && <p className="mt-1 text-xs font-medium text-graphite-500">{hint}</p>}
     </div>
   );
 }
@@ -118,8 +129,8 @@ export function DataTable({ children }: { children: ReactNode }) {
 
 export function EmptyState({ title, description }: { title: string; description?: string }) {
   return (
-    <div className="rounded-lg border border-dashed border-graphite-300 bg-white px-4 py-8 text-center">
-      <AlertCircle className="mx-auto h-5 w-5 text-primary-500" />
+    <div className="border-y border-dashed border-graphite-300 bg-white/60 px-4 py-7 text-left">
+      <AlertCircle className="h-5 w-5 text-primary-600" />
       <p className="mt-2 font-semibold text-graphite-950">{title}</p>
       {description && <p className="mt-1 text-sm text-graphite-500">{description}</p>}
     </div>
@@ -154,14 +165,14 @@ export function Tabs({
   onChange: (id: string) => void;
 }) {
   return (
-    <div className="flex gap-1 overflow-x-auto rounded-lg border border-graphite-200 bg-white p-1 shadow-none">
+    <div className="flex gap-5 overflow-x-auto border-b border-graphite-200 bg-transparent">
       {tabs.map((tab) => (
         <button
           key={tab.id}
           type="button"
           onClick={() => onChange(tab.id)}
-          className={`whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold transition ${
-            active === tab.id ? 'bg-primary-700 text-white shadow-none' : 'text-graphite-600 hover:bg-primary-50 hover:text-primary-800'
+          className={`whitespace-nowrap border-b-2 px-0 py-2 text-sm font-semibold transition ${
+            active === tab.id ? 'border-primary-600 text-primary-800' : 'border-transparent text-graphite-600 hover:border-graphite-300 hover:text-graphite-950'
           }`}
         >
           {tab.label}

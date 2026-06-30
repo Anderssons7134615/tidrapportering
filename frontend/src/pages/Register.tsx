@@ -50,7 +50,7 @@ export default function Register() {
         <section className="border-b border-graphite-200 pb-8 lg:border-b-0 lg:border-r lg:pb-0 lg:pr-12">
           <img src="/anderssons-logo.svg" alt="Anderssons Isolering" className="h-14 w-fit object-contain" />
           <p className="mt-8 text-sm font-semibold uppercase tracking-wide text-primary-700">Nytt konto</p>
-          <h1 className="mt-2 max-w-2xl text-4xl font-semibold tracking-tight text-graphite-950 sm:text-5xl">
+          <h1 className="mt-2 max-w-2xl text-4xl font-semibold tracking-normal text-graphite-950 sm:text-5xl">
             Starta TidApp för företaget.
           </h1>
           <p className="mt-5 max-w-xl text-base leading-7 text-graphite-600">
@@ -76,7 +76,7 @@ export default function Register() {
                 <Building2 className="h-4 w-4" />
                 Registrera företag
               </p>
-              <h2 className="mt-2 text-2xl font-semibold tracking-tight text-graphite-950">Företag och konto</h2>
+              <h2 className="mt-2 text-2xl font-semibold tracking-normal text-graphite-950">Företag och konto</h2>
             </div>
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">

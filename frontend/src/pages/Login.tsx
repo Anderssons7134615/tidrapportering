@@ -35,7 +35,7 @@ export default function Login() {
         <section className="flex flex-col justify-center border-b border-graphite-200 pb-8 lg:border-b-0 lg:border-r lg:pb-0 lg:pr-12">
           <img src="/anderssons-logo.svg" alt="Anderssons Isolering" className="h-14 w-fit object-contain" />
           <p className="mt-8 text-sm font-semibold uppercase tracking-wide text-primary-700">TidApp</p>
-          <h1 className="mt-2 max-w-3xl text-4xl font-semibold tracking-tight text-graphite-950 sm:text-5xl">
+          <h1 className="mt-2 max-w-3xl text-4xl font-semibold tracking-normal text-graphite-950 sm:text-5xl">
             Tidrapportering som känns rak, tydlig och lätt att lita på.
           </h1>
           <p className="mt-5 max-w-2xl text-base leading-7 text-graphite-600">
@@ -56,7 +56,7 @@ export default function Login() {
                 <ShieldCheck className="h-4 w-4" />
                 Logga in
               </p>
-              <h2 className="mt-2 text-2xl font-semibold tracking-tight text-graphite-950">Fortsätt arbetet</h2>
+              <h2 className="mt-2 text-2xl font-semibold tracking-normal text-graphite-950">Fortsätt arbetet</h2>
               <p className="mt-1 text-sm text-graphite-500">Använd samma konto på mobil och dator.</p>
             </div>
 
