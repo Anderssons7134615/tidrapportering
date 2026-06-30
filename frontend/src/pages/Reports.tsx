@@ -303,7 +303,7 @@ export default function Reports() {
     <AppShell>
       <header className="flex flex-col gap-3 border-b border-graphite-200 pb-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <p className="text-sm font-semibold uppercase tracking-wide text-primary-700">Rapport</p>
+          <p className="text-sm font-semibold tracking-normal text-primary-700">Rapport</p>
           <h1 className="page-title mt-1">Rapport för timmar</h1>
           <p className="mt-2 max-w-4xl text-sm leading-6 text-graphite-600">
             Läsbart löne- och revisorsunderlag med period, summering per person och alla attesterade tidrader.
@@ -325,7 +325,7 @@ export default function Reports() {
         </div>
       </header>
 
-      <section className="border-y border-graphite-200 bg-white/85 py-3">
+      <section className="filter-strip">
         <div className="grid grid-cols-1 gap-3 px-3 lg:grid-cols-[minmax(260px,1fr)_170px_170px_220px]">
           <label className="relative block">
             <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-graphite-400" />
@@ -387,8 +387,8 @@ export default function Reports() {
             )}
           </section>
 
-          <section className="border-y border-graphite-200 py-4">
-            <div className="grid grid-cols-1 gap-2 text-sm leading-6 text-graphite-700 md:grid-cols-2 xl:grid-cols-4">
+          <section className="border-y border-graphite-200 bg-white/60 py-4">
+            <div className="grid grid-cols-1 divide-y divide-graphite-200 text-sm leading-6 text-graphite-700 md:grid-cols-2 md:divide-x md:divide-y-0 xl:grid-cols-4">
               <ReportLine label="Personer med tid" value={`${payrollData.employees.length} personer`} />
               <ReportLine label="Saknar tid" value={`${missingUsers.length} personer`} warning={missingUsers.length > 0} />
               <ReportLine label="Semester" value={`${formatHours(payrollData.totals.vacationHours)} på ${vacationRows} rader`} />
@@ -447,7 +447,7 @@ export default function Reports() {
             ) : (
               <div className="overflow-x-auto border-y border-graphite-200 bg-white/90">
                 <table className="min-w-[980px] w-full text-sm">
-                  <thead className="border-b border-graphite-200 bg-graphite-50 text-left text-xs font-semibold uppercase tracking-wide text-graphite-500">
+                  <thead className="sticky top-0 z-10 border-b border-graphite-200 bg-[#f3f6f4] text-left text-xs font-semibold uppercase tracking-normal text-graphite-500">
                     <tr>
                       <th className="px-3 py-3">Datum</th>
                       <th className="px-3 py-3">Anställd</th>
@@ -505,7 +505,7 @@ export default function Reports() {
 
 function ReportLine({ label, value, warning = false }: { label: string; value: string; warning?: boolean }) {
   return (
-    <p>
+    <p className="px-3 py-2">
       <span className="font-semibold text-graphite-950">{label}:</span>{' '}
       <span className={warning ? 'font-semibold text-amber-900' : 'text-graphite-700'}>{value}</span>
     </p>
@@ -533,7 +533,7 @@ function EmployeeSection({ row }: { row: EmployeePayrollRow }) {
 
       <div className="mt-3 overflow-x-auto">
         <table className="min-w-[640px] w-full text-sm">
-          <thead className="text-left text-xs font-semibold uppercase tracking-wide text-graphite-500">
+          <thead className="text-left text-xs font-semibold uppercase tracking-normal text-graphite-500">
             <tr>
               <th className="py-2 pr-3">Arbetsmoment</th>
               <th className="py-2 pr-3">Typ</th>

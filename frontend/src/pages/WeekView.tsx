@@ -212,7 +212,7 @@ export default function WeekView() {
         </button>
       </div>
 
-      <section className="border-y border-graphite-200 bg-white/85 px-3 py-3">
+      <section className="filter-strip px-3">
         <div className="mb-3 flex items-center justify-between">
           <span className="text-sm text-slate-500">Summering</span>
           {getStatusBadge()}

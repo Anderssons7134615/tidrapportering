@@ -5,16 +5,16 @@ export default {
     extend: {
       colors: {
         primary: {
-          50: '#f4f5ff',
-          100: '#e9ebff',
-          200: '#d6daff',
-          300: '#b8c0ff',
-          400: '#8f99ff',
-          500: '#5e6ad2',
-          600: '#4f5bbc',
-          700: '#414a9a',
-          800: '#343b78',
-          900: '#252b5c',
+          50: '#effaf7',
+          100: '#d9f2ec',
+          200: '#b7e4da',
+          300: '#82cdbf',
+          400: '#46ad9d',
+          500: '#248c80',
+          600: '#1b7169',
+          700: '#185c56',
+          800: '#174a47',
+          900: '#153d3a',
         },
         graphite: {
           50: '#f7f7f5',
@@ -31,7 +31,7 @@ export default {
         },
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        sans: ['Aptos', '"Segoe UI Variable"', '"Segoe UI"', 'system-ui', '-apple-system', 'sans-serif'],
       },
       boxShadow: {
         soft: '0 1px 2px rgba(15, 23, 42, 0.04), 0 10px 24px rgba(15, 23, 42, 0.06)',

@@ -80,7 +80,7 @@ export default function DashboardDetail() {
         }
       />
 
-      <section className="border-y border-graphite-200 bg-white/85 py-3">
+      <section className="filter-strip">
         <div className="grid grid-cols-1 gap-3 px-3 text-sm leading-6 text-graphite-700 md:grid-cols-2">
           <p><span className="font-semibold text-graphite-950">Totalt:</span> {totalLabel}</p>
           <p><span className="font-semibold text-graphite-950">Visning:</span> {scopeLabel}</p>

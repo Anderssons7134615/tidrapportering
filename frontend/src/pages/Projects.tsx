@@ -195,7 +195,7 @@ export default function Projects() {
     <AppShell>
       <header className="flex flex-col gap-3 border-b border-graphite-200 pb-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-sm font-semibold uppercase tracking-wide text-primary-700">Projektregister</p>
+          <p className="text-sm font-semibold tracking-normal text-primary-700">Projektregister</p>
           <h1 className="page-title mt-1">Projekt</h1>
           <p className="mt-2 max-w-4xl text-sm leading-6 text-graphite-600">
             Radlista för jobb, kund, projektnummer och timläge. Klicka på en rad för att öppna projektet.
@@ -209,7 +209,7 @@ export default function Projects() {
         )}
       </header>
 
-      <section className="border-y border-graphite-200 bg-white/85 py-3">
+      <section className="filter-strip">
         <div className="grid grid-cols-1 gap-3 px-3 lg:grid-cols-[minmax(260px,1fr)_220px_220px]">
           <label className="relative block">
             <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-graphite-400" />
@@ -324,7 +324,7 @@ function ProjectTable({
 
       <div className="hidden overflow-x-auto border-y border-graphite-200 bg-white/90 md:block">
       <table className="min-w-[980px] w-full text-sm">
-        <thead className="border-b border-graphite-200 bg-graphite-50 text-left text-xs font-semibold uppercase tracking-wide text-graphite-500">
+        <thead className="sticky top-0 z-10 border-b border-graphite-200 bg-[#f3f6f4] text-left text-xs font-semibold uppercase tracking-normal text-graphite-500">
           <tr>
             <th className="px-3 py-3">Projektnr</th>
             <th className="px-3 py-3">Projekt</th>
@@ -367,10 +367,10 @@ function MobileProjectRow({
 }) {
   const navigate = useNavigate();
   const metrics = project.metrics;
-  const runningJob = !project.budgetHours;
+  const runningJob = !project.budgetHours && !['MISSING_BUDGET', 'ONGOING'].includes(metrics?.status.code || '');
   const usagePercent = metrics?.budgetUsagePercent ?? null;
   const isRisk = metrics?.status.code === 'RISK' || (usagePercent ?? 0) >= 100;
-  const isWarning = !isRisk && (runningJob || (usagePercent ?? 0) >= 80);
+  const isWarning = !isRisk && (!project.budgetHours || (usagePercent ?? 0) >= 80);
   const accentClass = isRisk ? 'border-l-rose-500' : isWarning ? 'border-l-amber-400' : 'border-l-emerald-500';
 
   const openProject = () => navigate(`/projects/${project.id}`);
@@ -399,7 +399,7 @@ function MobileProjectRow({
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {metrics?.status && <StatusBadge label={metrics.status.label} tone={metrics.status.tone} />}
-        {runningJob && <StatusBadge label="LÃ¶pande" tone="yellow" />}
+        {runningJob && <StatusBadge label="Löpande" tone="yellow" />}
         <span className="font-semibold text-graphite-950">{formatHours(metrics?.totalHours)}</span>
         <span className="text-graphite-500">{project.budgetHours ? `${formatPercent(usagePercent)} av budget` : 'Utan timbudget'}</span>
       </div>
@@ -437,7 +437,7 @@ function ProjectRow({
   const isWarning = !isRisk && (runningJob || (usagePercent ?? 0) >= 80);
   const accentClass = isRisk ? 'border-l-rose-500' : isWarning ? 'border-l-amber-400' : 'border-l-emerald-500';
   const progressClass = isRisk ? 'bg-rose-500' : isWarning ? 'bg-amber-500' : 'bg-emerald-500';
-  const progressWidth = project.budgetHours ? `${Math.max(0, Math.min(usagePercent || 0, 100))}%` : '100%';
+  const progressWidth = `${Math.max(0, Math.min(usagePercent || 0, 100))}%`;
 
   const openProject = () => navigate(`/projects/${project.id}`);
 
@@ -455,7 +455,7 @@ function ProjectRow({
       className={`cursor-pointer border-l-4 ${accentClass} transition hover:bg-primary-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300 ${!project.active ? 'opacity-65' : ''}`}
       title="Öppna projekt"
     >
-      <td className="whitespace-nowrap px-3 py-3 font-semibold text-graphite-900">{project.code}</td>
+      <td className="whitespace-nowrap px-3 py-3 font-semibold text-graphite-900 tabular-nums">{project.code}</td>
       <td className="px-3 py-3">
         <p className="font-semibold text-graphite-950">{project.name}</p>
         {metrics?.warnings?.length ? (
@@ -477,26 +477,28 @@ function ProjectRow({
       <td className="px-3 py-3">
         <div className="flex flex-wrap gap-1.5">
           {metrics?.status && <StatusBadge label={metrics.status.label} tone={metrics.status.tone} />}
-          {runningJob && <StatusBadge label="Löpande" tone="yellow" />}
+          {runningJob && metrics?.status.code !== 'MISSING_BUDGET' && <StatusBadge label="Löpande" tone="yellow" />}
         </div>
       </td>
-      <td className="whitespace-nowrap px-3 py-3 text-right font-semibold text-graphite-950">
+      <td className="whitespace-nowrap px-3 py-3 text-right font-semibold text-graphite-950 tabular-nums">
         {formatHours(metrics?.totalHours)}
         <p className="text-xs font-normal text-graphite-500">{formatHours(metrics?.weekHours)} denna vecka</p>
       </td>
       <td className="px-3 py-3">
         <div className="min-w-[150px]">
-          <div className="mb-1 flex items-center justify-between gap-2 text-xs text-graphite-500">
+          <div className="mb-1 flex items-center justify-between gap-2 text-xs text-graphite-500 tabular-nums">
             <span>{project.budgetHours ? formatHours(project.budgetHours) : 'Löpande jobb'}</span>
             <span>{project.budgetHours ? formatPercent(usagePercent) : ''}</span>
           </div>
-          <div className="h-1.5 overflow-hidden bg-graphite-100">
-            <div className={`h-full ${progressClass}`} style={{ width: progressWidth }} />
-          </div>
+          {project.budgetHours && (
+            <div className="h-1 overflow-hidden bg-graphite-100">
+              <div className={`h-full ${progressClass}`} style={{ width: progressWidth }} />
+            </div>
+          )}
         </div>
       </td>
       <td className="whitespace-nowrap px-3 py-3 text-graphite-700">{metrics?.lastActivityAt ? formatDate(metrics.lastActivityAt) : '-'}</td>
-      <td className={`whitespace-nowrap px-3 py-3 text-right font-semibold ${metrics?.projectResult != null && metrics.projectResult < 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
+      <td className={`whitespace-nowrap px-3 py-3 text-right font-semibold tabular-nums ${metrics?.projectResult != null && metrics.projectResult < 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
         {metrics?.projectResult != null ? formatCurrency(metrics.projectResult) : metrics ? '-' : 'Dolt'}
       </td>
       <td className="whitespace-nowrap px-3 py-3 text-right">
