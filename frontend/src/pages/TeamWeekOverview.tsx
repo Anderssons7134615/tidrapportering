@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { addWeeks, format, startOfWeek, subWeeks } from 'date-fns';
 import { sv } from 'date-fns/locale';
 import {
@@ -57,7 +57,9 @@ const filterTabs = [
 type FilterId = typeof filterTabs[number]['id'];
 
 export default function TeamWeekOverview() {
-  const [selectedDate, setSelectedDate] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
+  const [searchParams, setSearchParams] = useSearchParams();
+  const dateParam = searchParams.get('date');
+  const [selectedDate, setSelectedDate] = useState(() => startOfWeek(dateParam ? new Date(dateParam) : new Date(), { weekStartsOn: 1 }));
   const [search, setSearch] = useState('');
   const [activeFilter, setActiveFilter] = useState<FilterId>('needs-action');
   const [expandedUsers, setExpandedUsers] = useState<Record<string, boolean>>({});
@@ -128,7 +130,9 @@ export default function TeamWeekOverview() {
   }, [data]);
 
   const navigateWeek = (dir: 'prev' | 'next') => {
-    setSelectedDate((date) => (dir === 'prev' ? subWeeks(date, 1) : addWeeks(date, 1)));
+    const nextDate = dir === 'prev' ? subWeeks(weekStart, 1) : addWeeks(weekStart, 1);
+    setSelectedDate(nextDate);
+    setSearchParams({ date: format(nextDate, 'yyyy-MM-dd') });
   };
 
   const toggleUser = (userId: string) => {
@@ -218,6 +222,7 @@ export default function TeamWeekOverview() {
                 user={user}
                 expanded={!!expandedUsers[user.userId]}
                 onToggle={() => toggleUser(user.userId)}
+                weekStart={weekStartStr}
               />
             ))}
           </div>
@@ -231,10 +236,12 @@ function TeamWeekUserRow({
   user,
   expanded,
   onToggle,
+  weekStart,
 }: {
   user: TeamWeekSummaryUser;
   expanded: boolean;
   onToggle: () => void;
+  weekStart: string;
 }) {
   const attention = attentionMeta[user.attentionStatus || 'OK'] || attentionMeta.OK;
   const missingDays = user.missingDays || [];
@@ -273,7 +280,7 @@ function TeamWeekUserRow({
 
       {expanded && (
         <div className="space-y-4 border-t border-slate-100 bg-slate-50/70 px-4 pb-4 pt-3">
-          <ActionPanel user={user} />
+          <ActionPanel user={user} weekStart={weekStart} />
 
           <div className="grid gap-4 xl:grid-cols-2">
             <div className="table-wrap">
@@ -350,7 +357,7 @@ function DayCell({ day }: { day: TeamWeekSummaryDay }) {
   );
 }
 
-function ActionPanel({ user }: { user: TeamWeekSummaryUser }) {
+function ActionPanel({ user, weekStart }: { user: TeamWeekSummaryUser; weekStart: string }) {
   if (user.attentionStatus === 'APPROVED') {
     return (
       <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
@@ -386,7 +393,7 @@ function ActionPanel({ user }: { user: TeamWeekSummaryUser }) {
             Attestera
           </Link>
         )}
-        <Link to={`/time-entry?userId=${user.userId}`} className="btn-secondary">
+        <Link to={`/time-entry?${new URLSearchParams({ userId: user.userId, date: weekStart, return: `/team-week?date=${weekStart}` }).toString()}`} className="btn-secondary">
           <Clock className="h-4 w-4" />
           Öppna tid
         </Link>

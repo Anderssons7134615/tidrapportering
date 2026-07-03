@@ -5,9 +5,7 @@ import multipart from '@fastify/multipart';
 import rateLimit from '@fastify/rate-limit';
 import fastifyStatic from '@fastify/static';
 import { PrismaClient } from '@prisma/client';
-import path from 'path';
-import fs from 'fs';
-import { fileURLToPath } from 'url';
+import { ensureUploadDir } from './lib/uploads.js';
 
 // Routes
 import authRoutes from './routes/auth.js';
@@ -23,9 +21,6 @@ import dashboardRoutes from './routes/dashboard.js';
 import pushSubscriptionRoutes from './routes/pushSubscriptions.js';
 import reminderRoutes from './routes/reminders.js';
 import obsidianSyncRoutes from './routes/obsidianSync.js';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 // Prisma client
 export const prisma = new PrismaClient();
@@ -60,7 +55,7 @@ await fastify.register(cors, {
     // Tillåt även Cloudflare Pages-domäner under uppsättning
     const isPagesDomain = /^https:\/\/[a-z0-9-]+\.pages\.dev$/i.test(normalized);
 
-    if (isAllowed) {
+    if (isAllowed || isPagesDomain) {
       cb(null, true);
     } else {
       cb(new Error('Origin not allowed by CORS'), false);
@@ -86,13 +81,7 @@ await fastify.register(rateLimit, {
 
 // Static files for uploads är avstängt som standard i produktion.
 // Bilagor ska normalt hämtas via autentiserad API-route i timeEntries.ts.
-const uploadDir = process.env.UPLOAD_DIR
-  ? path.resolve(process.env.UPLOAD_DIR)
-  : path.resolve(__dirname, '../../uploads');
-
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
+const uploadDir = ensureUploadDir();
 
 if (process.env.PUBLIC_UPLOADS_ENABLED === 'true') {
   await fastify.register(fastifyStatic, {
