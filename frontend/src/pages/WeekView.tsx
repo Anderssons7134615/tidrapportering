@@ -16,10 +16,12 @@ function SwipeableEntry({
   entry,
   onDelete,
   isDeleting,
+  editUrl,
 }: {
   entry: TimeEntry;
   onDelete: () => void;
   isDeleting: boolean;
+  editUrl: string;
 }) {
   const x = useMotionValue(0);
   const deleteOpacity = useTransform(x, [-80, -40, 0], [1, 0.5, 0]);
@@ -76,7 +78,7 @@ function SwipeableEntry({
             {canModify && (
               <>
                 <Link
-                  to={`/time-entry?id=${entry.id}`}
+                  to={editUrl}
                   onClick={(event) => event.stopPropagation()}
                   className="rounded-lg p-1 text-slate-500 transition hover:bg-slate-100 hover:text-primary-700"
                   title="Redigera"
@@ -133,7 +135,11 @@ export default function WeekView() {
       haptic('light');
       toast.success('Tidrad borttagen');
       refetch();
+      queryClient.invalidateQueries({ queryKey: ['timeEntries'] });
+      queryClient.invalidateQueries({ queryKey: ['weekLocks'] });
+      queryClient.invalidateQueries({ queryKey: ['team-week-summary'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
     },
     onError: (error: Error) => {
       haptic('error');
@@ -145,7 +151,9 @@ export default function WeekView() {
     haptic('light');
     const newDate = direction === 'prev' ? subWeeks(weekStart, 1) : addWeeks(weekStart, 1);
     setSelectedDate(newDate);
-    setSearchParams({ date: format(newDate, 'yyyy-MM-dd') });
+    const params = new URLSearchParams({ date: format(newDate, 'yyyy-MM-dd') });
+    if (userIdParam) params.set('userId', userIdParam);
+    setSearchParams(params);
   };
 
   const weekDays = Array.from({ length: 7 }, (_, index) => addDays(weekStart, index));
@@ -159,6 +167,17 @@ export default function WeekView() {
       params.set('return', `/week?${returnParams.toString()}`);
       params.set('userId', userIdParam);
     }
+    return `/time-entry?${params.toString()}`;
+  };
+
+  const getWeekReturnUrl = () => {
+    const params = new URLSearchParams({ date: weekStartStr });
+    if (userIdParam) params.set('userId', userIdParam);
+    return `/week?${params.toString()}`;
+  };
+
+  const getEntryEditUrl = (entryId: string) => {
+    const params = new URLSearchParams({ id: entryId, return: getWeekReturnUrl() });
     return `/time-entry?${params.toString()}`;
   };
 
@@ -195,6 +214,7 @@ export default function WeekView() {
         <button
           onClick={() => navigateWeek('prev')}
           className="rounded-lg p-2 transition-transform hover:bg-slate-100 active:scale-90"
+          aria-label="Föregående vecka"
         >
           <ChevronLeft className="h-5 w-5" />
         </button>
@@ -207,6 +227,7 @@ export default function WeekView() {
         <button
           onClick={() => navigateWeek('next')}
           className="rounded-lg p-2 transition-transform hover:bg-slate-100 active:scale-90"
+          aria-label="Nästa vecka"
         >
           <ChevronRight className="h-5 w-5" />
         </button>
@@ -289,6 +310,7 @@ export default function WeekView() {
                           entry={entry}
                           onDelete={() => deleteMutation.mutate(entry.id)}
                           isDeleting={deleteMutation.isPending}
+                          editUrl={getEntryEditUrl(entry.id)}
                         />
                       </motion.div>
                     ))}
@@ -302,7 +324,7 @@ export default function WeekView() {
 
       {!isLocked && (
         <Link
-          to="/time-entry"
+          to={getDayReportUrl(weekStart)}
           className="block border-y border-dashed border-graphite-300 bg-white py-3 text-center font-semibold text-graphite-600 transition-colors hover:border-primary-600 hover:text-primary-700"
         >
           + Lägg till tid

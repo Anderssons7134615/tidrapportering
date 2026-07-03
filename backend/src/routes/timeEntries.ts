@@ -7,6 +7,8 @@ import { randomUUID } from 'crypto';
 import { pipeline } from 'stream/promises';
 import { Transform } from 'stream';
 import { enqueueTimeEntryChanged } from '../lib/obsidianSync.js';
+import { ensureUploadDir } from '../lib/uploads.js';
+import { deleteAttachmentFiles } from '../lib/attachments.js';
 
 const timeEntrySchema = z.object({
   projectId: z.string().uuid().optional().nullable(),
@@ -733,6 +735,7 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
 
     const entry = await prisma.timeEntry.findFirst({
       where: { id, user: { companyId: request.user.companyId } },
+      include: { attachments: { select: { path: true } } },
     });
     if (!entry) {
       return reply.status(404).send({ error: 'Tidrad hittades inte' });
@@ -749,6 +752,7 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     await prisma.timeEntry.delete({ where: { id } });
+    deleteAttachmentFiles(entry.attachments, fastify.log);
 
     const weekStart = getWeekStart(entry.date);
     const weekEnd = getWeekEnd(weekStart);
@@ -841,7 +845,7 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(400).send({ error: 'Ingen fil bifogad' });
     }
 
-    const uploadDir = process.env.UPLOAD_DIR || '../uploads';
+    const uploadDir = ensureUploadDir();
     const originalName = path.basename(data.filename || 'bilaga');
     const safeExt = getSafeExtension(originalName, data.mimetype);
     if (!safeExt) {
@@ -850,11 +854,6 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
 
     const filename = `${randomUUID()}${safeExt}`;
     const filepath = path.join(uploadDir, filename);
-
-    // Skapa mapp om den inte finns
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
 
     let size = 0;
     const countBytes = new Transform({
@@ -939,12 +938,8 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(403).send({ error: 'Åtkomst nekad' });
     }
 
-    // Ta bort fil
-    if (fs.existsSync(attachment.path)) {
-      fs.unlinkSync(attachment.path);
-    }
-
     await prisma.attachment.delete({ where: { id: attachmentId } });
+    deleteAttachmentFiles([{ path: attachment.path }], fastify.log);
 
     return { message: 'Bilaga borttagen' };
   });

@@ -2,6 +2,7 @@ import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import { prisma } from '../index.js';
+import { deleteAttachmentFiles } from '../lib/attachments.js';
 
 const createUserSchema = z.object({
   email: z.string().email(),
@@ -252,6 +253,11 @@ const userRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     // Ta bort all användardata
+    const attachments = await prisma.attachment.findMany({
+      where: { timeEntry: { userId: id } },
+      select: { path: true },
+    });
+
     await prisma.$transaction([
       prisma.attachment.deleteMany({
         where: { timeEntry: { userId: id } },
@@ -264,6 +270,7 @@ const userRoutes: FastifyPluginAsync = async (fastify) => {
       }),
       prisma.user.delete({ where: { id } }),
     ]);
+    deleteAttachmentFiles(attachments, fastify.log);
 
     // Audit log
     await prisma.auditLog.create({

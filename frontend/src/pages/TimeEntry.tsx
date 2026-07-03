@@ -41,14 +41,21 @@ export default function TimeEntry() {
       return [];
     }
   });
+  const effectiveListUserId = canReportForOthers ? selectedUserId || user?.id : undefined;
+  const weekReturnUrl = useMemo(() => {
+    const params = new URLSearchParams({ date });
+    if (selectedUserId) params.set('userId', selectedUserId);
+    return `/week?${params.toString()}`;
+  }, [date, selectedUserId]);
+  const defaultReturnUrl = returnTo || weekReturnUrl;
 
   const { data: projects } = useQuery({ queryKey: ['projects', 'active'], queryFn: () => projectsApi.list({ active: true }) });
   const { data: activities } = useQuery({ queryKey: ['activities', 'active'], queryFn: () => activitiesApi.list(true) });
   const { data: users } = useQuery({ queryKey: ['users'], queryFn: usersApi.list, enabled: canReportForOthers });
   const yesterday = format(new Date(new Date(date).getTime() - 86400000), 'yyyy-MM-dd');
   const { refetch: fetchYesterday } = useQuery({
-    queryKey: ['copy-yesterday', yesterday, selectedUserId],
-    queryFn: () => timeEntriesApi.list({ from: yesterday, to: yesterday, userId: canReportForOthers ? selectedUserId || undefined : undefined }),
+    queryKey: ['copy-yesterday', yesterday, effectiveListUserId],
+    queryFn: () => timeEntriesApi.list({ from: yesterday, to: yesterday, userId: effectiveListUserId }),
     enabled: false,
   });
   const { data: existingEntry, isLoading: isLoadingEntry } = useQuery({
@@ -57,13 +64,13 @@ export default function TimeEntry() {
     enabled: isEditMode,
   });
   const { data: dailyEntries } = useQuery({
-    queryKey: ['timeEntries', 'day', date, selectedUserId],
+    queryKey: ['timeEntries', 'day', date, effectiveListUserId],
     queryFn: () => timeEntriesApi.list({
       from: date,
       to: date,
-      userId: canReportForOthers ? selectedUserId || undefined : undefined,
+      userId: effectiveListUserId,
     }),
-    enabled: !isEditMode,
+    enabled: !isEditMode && (!canReportForOthers || Boolean(effectiveListUserId)),
   });
 
   useEffect(() => {
@@ -81,8 +88,10 @@ export default function TimeEntry() {
 
   useEffect(() => {
     const activity = activities?.find((item) => item.id === activityId);
-    if (activity) setBillable(activity.billableDefault);
-  }, [activityId, activities]);
+    if (!activity) return;
+    if (isEditMode && existingEntry?.activityId === activityId) return;
+    setBillable(activity.billableDefault);
+  }, [activityId, activities, isEditMode, existingEntry?.activityId]);
 
   const groupedActivities = useMemo(() => {
     return activities?.reduce((acc, activity) => {
@@ -136,7 +145,7 @@ export default function TimeEntry() {
       haptic('success');
       toast.success('Tidrad uppdaterad');
       invalidate();
-      navigate(returnTo || `/week?date=${date}`);
+      navigate(defaultReturnUrl);
     },
     onError: (error: Error) => {
       haptic('error');
@@ -259,7 +268,7 @@ export default function TimeEntry() {
                   {dailyEntries?.length ? `${dailyTotal.toFixed(1)} h rapporterat på dagen` : 'Ingen tid rapporterad på dagen ännu'}
                 </p>
               </div>
-              <Link to={returnTo || `/week?date=${date}`} className="btn-secondary shrink-0">
+              <Link to={defaultReturnUrl} className="btn-secondary shrink-0">
                 Tillbaka till veckan
               </Link>
             </div>
@@ -269,7 +278,7 @@ export default function TimeEntry() {
                 {dailyEntries.map((entry) => (
                   <Link
                     key={entry.id}
-                    to={`/time-entry?id=${entry.id}&return=${encodeURIComponent(returnTo || `/time-entry?date=${date}`)}`}
+                    to={`/time-entry?id=${entry.id}&return=${encodeURIComponent(defaultReturnUrl)}`}
                     className="block rounded-lg border border-primary-100 bg-white px-3 py-2.5 transition hover:border-primary-300 hover:bg-primary-50"
                   >
                     <div className="flex items-start justify-between gap-3">

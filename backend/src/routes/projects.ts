@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { prisma } from '../index.js';
 import { getProjectMetrics, getRate } from '../lib/projectMetrics.js';
 import { enqueueMaterialChanged, enqueueProjectChanged, enqueueTimeEntryChanged } from '../lib/obsidianSync.js';
+import { deleteAttachmentFiles } from '../lib/attachments.js';
 
 const projectSchema = z.object({
   customerId: z.string().uuid().optional().nullable(),
@@ -1668,11 +1669,17 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(404).send({ error: 'Projekt hittades inte' });
     }
 
+    const attachments = await prisma.attachment.findMany({
+      where: { timeEntry: { projectId: id } },
+      select: { path: true },
+    });
+
     await prisma.$transaction([
       prisma.attachment.deleteMany({ where: { timeEntry: { projectId: id } } }),
       prisma.timeEntry.deleteMany({ where: { projectId: id } }),
       prisma.project.delete({ where: { id } }),
     ]);
+    deleteAttachmentFiles(attachments, fastify.log);
 
     await prisma.auditLog.create({
       data: {
