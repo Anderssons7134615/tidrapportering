@@ -5,6 +5,9 @@ import { prisma } from '../index.js';
 import { getProjectMetrics, getRate } from '../lib/projectMetrics.js';
 import { enqueueMaterialChanged, enqueueProjectChanged, enqueueTimeEntryChanged } from '../lib/obsidianSync.js';
 import { deleteAttachmentFiles } from '../lib/attachments.js';
+import { requireRoles } from '../lib/authorization.js';
+import { endOfUtcDay, getDateOnlyInTimeZone, getWeekStartUtc, parseDateOnly } from '../lib/dateOnly.js';
+import { getNextProjectCodeFromCodes } from '../lib/projectCode.js';
 
 const projectSchema = z.object({
   customerId: z.string().uuid().optional().nullable(),
@@ -56,16 +59,7 @@ const projectMaterialPatchSchema = z.object({
 }).refine((value) => Object.keys(value).length > 0, { message: 'Inga ändringar skickades' });
 
 
-const requireAdminOrSupervisor = async (request: any, reply: any) => {
-  await request.jwtVerify();
-  const user = await prisma.user.findUnique({ where: { id: request.user.id }, select: { active: true, companyId: true } });
-  if (!user || !user.active || user.companyId !== request.user.companyId) {
-    return reply.status(401).send({ error: 'Unauthorized' });
-  }
-  if (!['ADMIN', 'SUPERVISOR'].includes(request.user.role)) {
-    return reply.status(403).send({ error: 'Åtkomst nekad' });
-  }
-};
+const requireAdminOrSupervisor = requireRoles(['ADMIN', 'SUPERVISOR']);
 
 const shouldHideResultsForEmployee = (role: string, project: { employeeCanSeeResults: boolean }) => {
   return role === 'EMPLOYEE' && !project.employeeCanSeeResults;
@@ -85,13 +79,29 @@ function sanitizeProjectForRole<T extends Record<string, any>>(project: T, canVi
     budgetHours: _budgetHours,
     ...safeProject
   } = project;
-  return {
+  const sanitized = {
     ...safeProject,
     fixedPrice: null,
     defaultRate: null,
     billingModel: null,
     budgetHours: null,
-  } as unknown as T;
+  } as Record<string, any>;
+
+  if (sanitized.customer && typeof sanitized.customer === 'object') {
+    const { defaultRate: _customerDefaultRate, ...safeCustomer } = sanitized.customer;
+    sanitized.customer = safeCustomer;
+  }
+
+  return sanitized as T;
+}
+
+async function customerBelongsToCompany(customerId: string | null | undefined, companyId: string) {
+  if (!customerId) return true;
+  const customer = await prisma.customer.findFirst({
+    where: { id: customerId, companyId },
+    select: { id: true },
+  });
+  return Boolean(customer);
 }
 
 function mapMaterialForRole(item: any, canView: boolean) {
@@ -125,16 +135,17 @@ function normalizeText(value: unknown) {
   return String(value || '').trim();
 }
 
-function parseImportDate(value: unknown): Date {
-  if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
+function parseImportDate(value: unknown): Date | null {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
+  }
   if (typeof value === 'number') {
     const parsed = new Date(Math.round((value - 25569) * 86400 * 1000));
     if (!Number.isNaN(parsed.getTime())) return parsed;
   }
   const text = normalizeText(value);
-  if (!text) return new Date();
-  const parsed = new Date(text);
-  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+  if (!text) return null;
+  return parseDateOnly(text);
 }
 
 function parseActive(value: unknown): boolean {
@@ -142,52 +153,15 @@ function parseActive(value: unknown): boolean {
   return !['nej', 'no', 'false', '0', 'inaktiv'].includes(text);
 }
 
-function getDayEnd(date: string): Date {
-  const d = new Date(date);
-  d.setHours(23, 59, 59, 999);
-  return d;
-}
+function parseDateFilter(from?: string, to?: string): { gte?: Date; lte?: Date } | null {
+  const parsedFrom = from ? parseDateOnly(from) : null;
+  const parsedTo = to ? parseDateOnly(to) : null;
+  if ((from && !parsedFrom) || (to && !parsedTo) || (parsedFrom && parsedTo && parsedFrom > parsedTo)) return null;
 
-function getNextProjectCodeFromCodes(codes: Array<string | null | undefined>) {
-  const matches: Array<{ prefix: string; number: number; width: number; digits: string }> = [];
-
-  for (const rawCode of codes) {
-    const code = rawCode?.trim();
-    const match = code?.match(/^(.*?)(\d+)$/);
-    if (!match) continue;
-
-    const number = Number.parseInt(match[2], 10);
-    if (!Number.isFinite(number)) continue;
-
-    matches.push({ prefix: match[1], number, width: match[2].length, digits: match[2] });
-  }
-
-  if (!matches.length) return '1';
-
-  const fullPaddedNumbers = matches.filter((match) => match.prefix === '' && match.digits.length > 1 && match.digits.startsWith('0'));
-  const paddedSuffixes = matches.filter((match) => match.digits.length > 1 && match.digits.startsWith('0'));
-  const candidates = fullPaddedNumbers.length ? fullPaddedNumbers : paddedSuffixes.length ? paddedSuffixes : matches;
-  const preferredWidth = getPreferredCodeWidth(candidates);
-  const widthMatches = candidates.filter((match) => match.width === preferredWidth);
-  const bestMatch = widthMatches.reduce((best, match) => match.number > best.number ? match : best, widthMatches[0]);
-
-  if (!bestMatch) return '1';
-  return `${bestMatch.prefix}${String(bestMatch.number + 1).padStart(bestMatch.width, '0')}`;
-}
-
-function getPreferredCodeWidth(matches: Array<{ number: number; width: number }>) {
-  const widths = new Map<number, { count: number; maxNumber: number }>();
-
-  for (const match of matches) {
-    const current = widths.get(match.width) || { count: 0, maxNumber: 0 };
-    widths.set(match.width, {
-      count: current.count + 1,
-      maxNumber: Math.max(current.maxNumber, match.number),
-    });
-  }
-
-  return Array.from(widths.entries())
-    .sort((a, b) => b[1].count - a[1].count || b[1].maxNumber - a[1].maxNumber || b[0] - a[0])[0][0];
+  return {
+    ...(parsedFrom ? { gte: parsedFrom } : {}),
+    ...(parsedTo ? { lte: endOfUtcDay(parsedTo) } : {}),
+  };
 }
 
 async function getNextProjectCode(companyId: string) {
@@ -709,9 +683,8 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
       };
     }
 
-    const dateFilter: any = {};
-    if (from) dateFilter.gte = new Date(from);
-    if (to) dateFilter.lte = getDayEnd(to);
+    const dateFilter = parseDateFilter(from, to);
+    if (!dateFilter) return reply.status(400).send({ error: 'Ange giltiga datum som YYYY-MM-DD där from inte är efter to' });
     const whereDate = Object.keys(dateFilter).length ? { date: dateFilter } : {};
 
     const [approvedEntries, openEntryCount, materials] = await Promise.all([
@@ -860,9 +833,14 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
       const hasAnyValue = values.some((value) => normalizeText(value));
       if (!hasAnyValue) return;
 
+      const dateColumn = col('Datum');
+      const rawDate = dateColumn ? row.getCell(dateColumn).value : null;
+      const materialDate = rawDate ? parseImportDate(rawDate) : getDateOnlyInTimeZone();
+
       if (!articleName) errors.push({ row: rowNumber, message: 'Artikel saknas' });
       if (quantity == null) errors.push({ row: rowNumber, message: 'Antal måste vara större än 0' });
-      if (!articleName || quantity == null) return;
+      if (!materialDate) errors.push({ row: rowNumber, message: 'Datum måste vara ett giltigt YYYY-MM-DD eller Excel-datum' });
+      if (!articleName || quantity == null || !materialDate) return;
 
       rows.push({
         row: rowNumber,
@@ -871,7 +849,7 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
         category: col('Kategori') ? normalizeText(row.getCell(col('Kategori')!).value) || 'Övrigt' : 'Övrigt',
         unit: col('Enhet') ? normalizeText(row.getCell(col('Enhet')!).value) || 'st' : 'st',
         quantity,
-        date: col('Datum') ? parseImportDate(row.getCell(col('Datum')!).value) : new Date(),
+        date: materialDate,
         purchasePrice: col('Inköpspris') ? parseOptionalNumber(row.getCell(col('Inköpspris')!).value) : null,
         unitPrice: col('Försäljningspris') ? parseOptionalNumber(row.getCell(col('Försäljningspris')!).value) : null,
         note: col('Kommentar') ? normalizeText(row.getCell(col('Kommentar')!).value) || null : null,
@@ -1048,6 +1026,10 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [fastify.authenticate],
   }, async (request, reply) => {
     try {
+      if (request.user.role === 'ACCOUNTANT') {
+        return reply.status(403).send({ error: 'Revisorsrollen har endast läsbehörighet' });
+      }
+
       const { id } = request.params as { id: string };
       const body = projectMaterialSchema.parse(request.body);
 
@@ -1125,6 +1107,10 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [fastify.authenticate],
   }, async (request, reply) => {
     try {
+      if (request.user.role === 'ACCOUNTANT') {
+        return reply.status(403).send({ error: 'Revisorsrollen har endast läsbehörighet' });
+      }
+
       const { id, materialId } = request.params as { id: string; materialId: string };
       const body = projectMaterialPatchSchema.parse(request.body);
 
@@ -1225,6 +1211,10 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.delete('/:id/materials/:materialId', {
     preHandler: [fastify.authenticate],
   }, async (request, reply) => {
+    if (request.user.role === 'ACCOUNTANT') {
+      return reply.status(403).send({ error: 'Revisorsrollen har endast läsbehörighet' });
+    }
+
     const { id, materialId } = request.params as { id: string; materialId: string };
 
     const project = await prisma.project.findUnique({ where: { id } });
@@ -1296,9 +1286,9 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(403).send({ error: 'Projektresultat är inte synliga för anställda i detta projekt' });
     }
 
-    const where: any = { projectId: id };
-    if (from) where.date = { ...where.date, gte: new Date(from) };
-    if (to) where.date = { ...where.date, lte: getDayEnd(to) };
+    const dateFilter = parseDateFilter(from, to);
+    if (!dateFilter) return reply.status(400).send({ error: 'Ange giltiga datum som YYYY-MM-DD där from inte är efter to' });
+    const where: any = { projectId: id, ...(Object.keys(dateFilter).length ? { date: dateFilter } : {}) };
 
     const entries = await prisma.timeEntry.findMany({
       where,
@@ -1335,8 +1325,9 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
       user: { companyId: request.user.companyId },
     };
 
-    if (from) where.date = { ...where.date, gte: new Date(from) };
-    if (to) where.date = { ...where.date, lte: getDayEnd(to) };
+    const dateFilter = parseDateFilter(from, to);
+    if (!dateFilter) return reply.status(400).send({ error: 'Ange giltiga datum som YYYY-MM-DD där from inte är efter to' });
+    if (Object.keys(dateFilter).length) where.date = dateFilter;
 
     const entries = await prisma.timeEntry.findMany({
       where,
@@ -1351,17 +1342,8 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
       },
     });
 
-    const getWeekStart = (date: Date) => {
-      const d = new Date(date);
-      const day = d.getDay();
-      const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-      d.setDate(diff);
-      d.setHours(0, 0, 0, 0);
-      return d;
-    };
-
     const getIsoWeek = (date: Date) => {
-      const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+      const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
       const dayNum = d.getUTCDay() || 7;
       d.setUTCDate(d.getUTCDate() + 4 - dayNum);
       const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
@@ -1385,7 +1367,7 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
     }> = {};
 
     for (const entry of entries) {
-      const weekStartDate = getWeekStart(entry.date);
+      const weekStartDate = getWeekStartUtc(entry.date);
       const key = `${entry.userId}_${weekStartDate.toISOString()}`;
 
       if (!byEmployeeWeek[key]) {
@@ -1406,7 +1388,7 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
 
       byEmployeeWeek[key].hours += entry.hours;
       byEmployeeWeek[key].entryCount += 1;
-      const dayLabel = weekdayLabels[entry.date.getDay()] || 'Okänd';
+      const dayLabel = weekdayLabels[entry.date.getUTCDay()] || 'Okänd';
       byEmployeeWeek[key].dayHours[dayLabel] = (byEmployeeWeek[key].dayHours[dayLabel] || 0) + entry.hours;
 
       if (entry.billable) {
@@ -1457,6 +1439,10 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
   }, async (request, reply) => {
     try {
       const body = createProjectSchema.parse(request.body);
+      if (!await customerBelongsToCompany(body.customerId, request.user.companyId)) {
+        return reply.status(400).send({ error: 'Kunden finns inte i ditt företag' });
+      }
+
       const requestedCode = body.code?.trim();
       let code = requestedCode || await getNextProjectCode(request.user.companyId);
       let project: any = null;
@@ -1554,6 +1540,10 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
       const project = await prisma.project.findUnique({ where: { id } });
       if (!project || project.companyId !== request.user.companyId) {
         return reply.status(404).send({ error: 'Projekt hittades inte' });
+      }
+
+      if (body.customerId !== undefined && !await customerBelongsToCompany(body.customerId, request.user.companyId)) {
+        return reply.status(400).send({ error: 'Kunden finns inte i ditt företag' });
       }
 
       // Om kod ändras, kontrollera att den är unik inom företaget
@@ -1667,6 +1657,13 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
     const project = await prisma.project.findUnique({ where: { id } });
     if (!project || project.companyId !== request.user.companyId) {
       return reply.status(404).send({ error: 'Projekt hittades inte' });
+    }
+
+    const timeEntryCount = await prisma.timeEntry.count({ where: { projectId: id } });
+    if (timeEntryCount > 0) {
+      return reply.status(409).send({
+        error: 'Projekt med rapporterad tid kan inte raderas permanent. Arkivera projektet i stället.',
+      });
     }
 
     const attachments = await prisma.attachment.findMany({

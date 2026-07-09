@@ -1,8 +1,10 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-interface PendingEntry {
+export interface PendingEntry {
   localId: string;
+  ownerUserId: string;
+  userId?: string;
   projectId?: string | null;
   activityId: string;
   date: string;
@@ -20,8 +22,7 @@ interface OfflineState {
   pendingEntries: PendingEntry[];
   isOnline: boolean;
   addPendingEntry: (entry: Omit<PendingEntry, 'localId' | 'createdAt'>) => void;
-  removePendingEntry: (localId: string) => void;
-  setPendingEntries: (entries: PendingEntry[]) => void;
+  removePendingEntries: (localIds: string[]) => void;
   clearPendingEntries: () => void;
   setOnline: (online: boolean) => void;
 }
@@ -42,16 +43,23 @@ export const useOfflineStore = create<OfflineState>()(
             },
           ],
         })),
-      removePendingEntry: (localId) =>
+      removePendingEntries: (localIds) =>
         set((state) => ({
-          pendingEntries: state.pendingEntries.filter((e) => e.localId !== localId),
+          pendingEntries: state.pendingEntries.filter((entry) => !localIds.includes(entry.localId)),
         })),
-      setPendingEntries: (entries) => set({ pendingEntries: entries }),
       clearPendingEntries: () => set({ pendingEntries: [] }),
       setOnline: (online) => set({ isOnline: online }),
     }),
     {
       name: 'tidapp-offline',
+      version: 1,
+      migrate: (persistedState: any, version) => {
+        if (version < 1 && Array.isArray(persistedState?.pendingEntries) && persistedState.pendingEntries.length > 0) {
+          localStorage.setItem('tidapp-offline-legacy-backup', JSON.stringify(persistedState.pendingEntries));
+          return { ...persistedState, pendingEntries: [] };
+        }
+        return persistedState;
+      },
     }
   )
 );

@@ -7,7 +7,7 @@ import { projectsApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
 import type { MaterialArticle, Project, ProjectMaterial, ProjectSummary, TimeEntry } from '../types';
 import { AppShell, Button, Card, DataTable, EmptyState, FormField, KpiCard, PageHeader, StatusBadge, Tabs } from '../components/ui/design';
-import { formatCurrency, formatDate, formatHours, formatPercent, parseSwedishNumber } from '../utils/format';
+import { formatCurrency, formatDate, formatHours, formatPercent, parseSwedishNumber, toDateInputValue } from '../utils/format';
 
 const tabs = [
   { id: 'overview', label: 'Översikt' },
@@ -27,7 +27,7 @@ type MaterialForm = {
 const emptyMaterialForm = (): MaterialForm => ({
   articleId: '',
   quantity: '',
-  date: new Date().toISOString().slice(0, 10),
+  date: toDateInputValue(new Date()),
   note: '',
 });
 
@@ -162,7 +162,7 @@ export default function ProjectDetail() {
     setMaterialForm({
       articleId: item.articleId,
       quantity: String(item.quantity).replace('.', ','),
-      date: new Date(item.date).toISOString().slice(0, 10),
+      date: toDateInputValue(item.date),
       note: item.note || '',
     });
     setActiveTab('materials');

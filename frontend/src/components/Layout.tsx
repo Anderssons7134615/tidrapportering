@@ -1,5 +1,6 @@
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Home,
   Clock,
@@ -22,6 +23,7 @@ import {
 import { useAuthStore } from '../stores/authStore';
 import { useOfflineStore } from '../stores/offlineStore';
 import { useSync } from '../hooks/useSync';
+import { authApi } from '../services/api';
 
 const navItems = [
   { to: '/', icon: Home, label: 'Översikt', roles: ['ADMIN', 'SUPERVISOR', 'EMPLOYEE'] },
@@ -57,19 +59,32 @@ const roleLabel: Record<string, string> = {
 export default function Layout() {
   useSync();
 
-  const { user, logout } = useAuthStore();
+  const { token, user, setUser, logout } = useAuthStore();
   const { isOnline, pendingEntries } = useOfflineStore();
+  const queryClient = useQueryClient();
   const navigate = useNavigate();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
+  const { data: currentUser } = useQuery({
+    queryKey: ['auth', 'me'],
+    queryFn: authApi.me,
+    enabled: Boolean(token),
+    staleTime: 60_000,
+  });
+
+  useEffect(() => {
+    if (currentUser) setUser(currentUser);
+  }, [currentUser, setUser]);
 
   const filteredNavItems = navItems.filter((item) => item.roles.includes(user?.role || ''));
   const filteredBottomTabs = bottomTabs.filter((item) => item.roles.includes(user?.role || ''));
   const activeItem =
     filteredNavItems.find((item) => location.pathname === item.to) ||
     filteredNavItems.find((item) => item.to !== '/' && location.pathname.startsWith(item.to));
+  const pendingEntryCount = pendingEntries.filter((entry) => entry.ownerUserId === user?.id).length;
 
   const handleLogout = () => {
+    queryClient.clear();
     logout();
     navigate('/login');
   };
@@ -96,7 +111,7 @@ export default function Layout() {
             </div>
           </div>
 
-          <TopStatus isOnline={isOnline} pendingEntries={pendingEntries.length} userName={user?.name} onLogout={handleLogout} />
+          <TopStatus isOnline={isOnline} pendingEntries={pendingEntryCount} userName={user?.name} onLogout={handleLogout} />
         </div>
       </header>
 
@@ -135,7 +150,7 @@ export default function Layout() {
                 {isOnline ? <Wifi className="h-3.5 w-3.5 text-emerald-600" /> : <WifiOff className="h-3.5 w-3.5 text-amber-600" />}
                 {isOnline ? 'Online' : 'Offline'}
               </span>
-              {pendingEntries.length > 0 && <span className="text-amber-200">{pendingEntries.length} väntar</span>}
+              {pendingEntryCount > 0 && <span className="text-amber-200">{pendingEntryCount} väntar</span>}
             </div>
             <button
               onClick={handleLogout}
@@ -167,7 +182,7 @@ export default function Layout() {
                 <p className="truncate text-xs text-white/50">{user?.companyName || 'Navigation'}</p>
               </div>
             </div>
-            <button onClick={() => setMenuOpen(false)} className="rounded-lg p-1.5 text-white/60 hover:bg-white/10 hover:text-white">
+            <button onClick={() => setMenuOpen(false)} className="rounded-lg p-1.5 text-white/60 hover:bg-white/10 hover:text-white" aria-label="Stäng meny">
               <X size={20} />
             </button>
           </div>

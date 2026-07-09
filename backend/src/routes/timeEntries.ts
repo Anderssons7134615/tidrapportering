@@ -1,4 +1,5 @@
 import { FastifyPluginAsync } from 'fastify';
+import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../index.js';
 import fs from 'fs';
@@ -9,17 +10,26 @@ import { Transform } from 'stream';
 import { enqueueTimeEntryChanged } from '../lib/obsidianSync.js';
 import { ensureUploadDir } from '../lib/uploads.js';
 import { deleteAttachmentFiles } from '../lib/attachments.js';
+import { requireRoles } from '../lib/authorization.js';
+import {
+  dateOnlySchema,
+  endOfUtcDay,
+  getWeekEndUtc,
+  getWeekStartUtc,
+  parseDateOnly,
+  toDateKey,
+} from '../lib/dateOnly.js';
 
 const timeEntrySchema = z.object({
   projectId: z.string().uuid().optional().nullable(),
   activityId: z.string().uuid(),
   userId: z.string().uuid().optional(),
-  date: z.string().transform((d) => new Date(d)),
-  startTime: z.string().optional().nullable(),
-  endTime: z.string().optional().nullable(),
-  hours: z.number().min(0).max(24),
+  date: dateOnlySchema,
+  startTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional().nullable(),
+  endTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional().nullable(),
+  hours: z.number().positive().max(24),
   billable: z.boolean().optional(),
-  note: z.string().optional().nullable(),
+  note: z.string().max(2000).optional().nullable(),
   gpsLat: z.number().optional().nullable(),
   gpsLng: z.number().optional().nullable(),
 });
@@ -29,6 +39,11 @@ const bulkSyncSchema = z.array(
     localId: z.string().optional(),
     id: z.string().uuid().optional(),
   })
+).max(100);
+
+const requireTimeWriter = requireRoles(
+  ['ADMIN', 'SUPERVISOR', 'EMPLOYEE'],
+  'Revisorsrollen har endast läsbehörighet'
 );
 
 const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
@@ -53,8 +68,16 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
       where.userId = userId;
     }
 
-    if (from) where.date = { ...where.date, gte: new Date(from) };
-    if (to) where.date = { ...where.date, lte: getDayEnd(to) };
+    if (from) {
+      const parsedFrom = parseDateOnly(from);
+      if (!parsedFrom) return reply.status(400).send({ error: 'Ogiltigt från-datum' });
+      where.date = { ...where.date, gte: parsedFrom };
+    }
+    if (to) {
+      const parsedTo = parseDateOnly(to);
+      if (!parsedTo) return reply.status(400).send({ error: 'Ogiltigt till-datum' });
+      where.date = { ...where.date, lte: endOfUtcDay(parsedTo) };
+    }
     if (projectId) where.projectId = projectId;
     if (status) where.status = status;
 
@@ -82,7 +105,8 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     const { weekStart } = request.params as { weekStart: string };
-    const startDate = new Date(weekStart);
+    const startDate = parseDateOnly(weekStart);
+    if (!startDate) return reply.status(400).send({ error: 'Ogiltigt veckodatum' });
     const endDate = getWeekEnd(startDate);
 
     const [activeUsers, entries, weekLocks] = await Promise.all([
@@ -305,7 +329,8 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
     const { weekStart } = request.params as { weekStart: string };
     const { userId } = request.query as { userId?: string };
 
-    const startDate = new Date(weekStart);
+    const startDate = parseDateOnly(weekStart);
+    if (!startDate) return reply.status(400).send({ error: 'Ogiltigt veckodatum' });
     const endDate = getWeekEnd(startDate);
 
     const targetUserId = request.user.role === 'EMPLOYEE'
@@ -353,7 +378,7 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
     let billableHours = 0;
 
     entries.forEach((entry) => {
-      const dateKey = entry.date.toISOString().split('T')[0];
+      const dateKey = toDateKey(entry.date);
       dailyTotals[dateKey] = (dailyTotals[dateKey] || 0) + entry.hours;
       totalHours += entry.hours;
       if (entry.billable) billableHours += entry.hours;
@@ -401,7 +426,7 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
 
   // Create time entry
   fastify.post('/', {
-    preHandler: [fastify.authenticate],
+    preHandler: [requireTimeWriter],
   }, async (request, reply) => {
     try {
       const body = timeEntrySchema.parse(request.body);
@@ -432,8 +457,8 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
         },
       });
 
-      if (weekLock && weekLock.status === 'APPROVED' && request.user.role === 'EMPLOYEE') {
-        return reply.status(400).send({ error: 'Veckan är låst för redigering' });
+      if (weekLock?.status === 'APPROVED') {
+        return reply.status(409).send({ error: 'Veckan är godkänd. Lås upp veckan innan den ändras.' });
       }
 
       const entry = await prisma.$transaction(async (tx) => {
@@ -479,7 +504,7 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
         }
 
         return created;
-      });
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
       return reply.status(201).send(entry);
     } catch (error) {
@@ -492,7 +517,7 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
 
   // Bulk sync (for offline support)
   fastify.post('/sync', {
-    preHandler: [fastify.authenticate],
+    preHandler: [requireTimeWriter],
   }, async (request, reply) => {
     try {
       const entries = bulkSyncSchema.parse(request.body);
@@ -500,12 +525,39 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
 
       for (const entry of entries) {
         const { localId, id, ...data } = entry;
+        const existing = id
+          ? await prisma.timeEntry.findFirst({
+              where: { id, user: { companyId: request.user.companyId } },
+            })
+          : null;
+
+        if (id && !existing) {
+          results.push({ localId, id, error: 'Tidrad hittades inte' });
+          continue;
+        }
+
+        const isManager = ['ADMIN', 'SUPERVISOR'].includes(request.user.role);
+        if (existing && !isManager && existing.userId !== request.user.id) {
+          results.push({ localId, id, error: 'Åtkomst nekad' });
+          continue;
+        }
+        if (existing?.status === 'APPROVED') {
+          results.push({ localId, id, error: 'Veckan måste låsas upp innan raden ändras' });
+          continue;
+        }
+
+        const targetUserId = isManager && data.userId
+          ? data.userId
+          : (existing?.userId || request.user.id);
 
         const validation = await validateEntryReferences({
           companyId: request.user.companyId,
-          targetUserId: request.user.id,
+          targetUserId,
           activityId: data.activityId,
           projectId: data.projectId,
+          allowInactiveUser: existing?.userId === targetUserId,
+          allowInactiveActivity: existing?.activityId === data.activityId,
+          allowInactiveProject: existing?.projectId === (data.projectId || null),
         });
 
         if (validation.error) {
@@ -518,69 +570,68 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
         const weekLock = await prisma.weekLock.findUnique({
           where: {
             userId_weekStartDate: {
-              userId: request.user.id,
+              userId: targetUserId,
               weekStartDate: weekStart,
             },
           },
         });
 
-        if (weekLock && ['APPROVED'].includes(weekLock.status)) {
-          results.push({ localId, error: 'Veckan är låst' });
+        if (weekLock?.status === 'APPROVED') {
+          results.push({ localId, error: 'Veckan måste låsas upp innan den ändras' });
           continue;
         }
 
+        const safeData = { ...data, userId: targetUserId };
+
         if (id) {
-          // Uppdatera befintlig
-          const existing = await prisma.timeEntry.findUnique({ where: { id } });
-          if (existing && existing.userId === request.user.id && existing.status !== 'APPROVED') {
-            const updated = await prisma.$transaction(async (tx) => {
-              const row = await tx.timeEntry.update({
-                where: { id },
-                data: {
-                  ...data,
-                  billable: data.billable ?? validation.activity?.billableDefault ?? true,
-                  status: 'SUBMITTED',
-                  submittedAt: new Date(),
-                  approvedAt: null,
-                  approverId: null,
-                  rejectNote: null,
-                },
-              });
-
-              await upsertSubmittedWeekLock(tx, request.user.id, weekStart);
-
-              const affectedProjectIds = new Set<string>();
-              if (existing.projectId) affectedProjectIds.add(existing.projectId);
-              if (row.projectId) affectedProjectIds.add(row.projectId);
-
-              for (const projectId of affectedProjectIds) {
-                await enqueueTimeEntryChanged(tx, {
-                  companyId: request.user.companyId,
-                  projectId,
-                  entityId: row.id,
-                  action: 'SYNC',
-                  payload: {
-                    oldProjectId: existing.projectId,
-                    newProjectId: row.projectId,
-                    hours: row.hours,
-                  },
-                });
-              }
-
-              return row;
+          const updated = await prisma.$transaction(async (tx) => {
+            const row = await tx.timeEntry.update({
+              where: { id },
+              data: {
+                ...safeData,
+                billable: data.billable ?? validation.activity?.billableDefault ?? true,
+                status: 'SUBMITTED',
+                submittedAt: new Date(),
+                approvedAt: null,
+                approverId: null,
+                rejectNote: null,
+              },
             });
 
-            results.push({ localId, id: updated.id, synced: true });
-          } else {
-            results.push({ localId, id, error: 'Kan inte uppdatera' });
-          }
+            await upsertSubmittedWeekLock(tx, targetUserId, weekStart);
+
+            const originalWeekStart = getWeekStart(existing!.date);
+            if (existing!.userId !== targetUserId || originalWeekStart.getTime() !== weekStart.getTime()) {
+              await reconcileWeekLock(tx, existing!.userId, originalWeekStart);
+            }
+
+            const affectedProjectIds = new Set<string>();
+            if (existing!.projectId) affectedProjectIds.add(existing!.projectId);
+            if (row.projectId) affectedProjectIds.add(row.projectId);
+
+            for (const projectId of affectedProjectIds) {
+              await enqueueTimeEntryChanged(tx, {
+                companyId: request.user.companyId,
+                projectId,
+                entityId: row.id,
+                action: 'SYNC',
+                payload: {
+                  oldProjectId: existing!.projectId,
+                  newProjectId: row.projectId,
+                  hours: row.hours,
+                },
+              });
+            }
+
+            return row;
+          }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+
+          results.push({ localId, id: updated.id, synced: true });
         } else {
-          // Skapa ny
           const created = await prisma.$transaction(async (tx) => {
             const row = await tx.timeEntry.create({
               data: {
-                ...data,
-                userId: request.user.id,
+                ...safeData,
                 billable: data.billable ?? validation.activity?.billableDefault ?? true,
                 status: 'SUBMITTED',
                 submittedAt: new Date(),
@@ -588,7 +639,7 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
               },
             });
 
-            await upsertSubmittedWeekLock(tx, request.user.id, weekStart);
+            await upsertSubmittedWeekLock(tx, targetUserId, weekStart);
 
             if (row.projectId) {
               await enqueueTimeEntryChanged(tx, {
@@ -604,7 +655,7 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
             }
 
             return row;
-          });
+          }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
           results.push({ localId, id: created.id, synced: true });
         }
@@ -621,7 +672,7 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
 
   // Update time entry
   fastify.put('/:id', {
-    preHandler: [fastify.authenticate],
+    preHandler: [requireTimeWriter],
   }, async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
@@ -640,8 +691,8 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       // Kontrollera status
-      if (entry.status === 'APPROVED' && request.user.role === 'EMPLOYEE') {
-        return reply.status(400).send({ error: 'Kan inte redigera godkänd tidrad' });
+      if (entry.status === 'APPROVED') {
+        return reply.status(409).send({ error: 'Veckan måste låsas upp innan raden ändras' });
       }
 
       const targetUserId = body.userId && ['ADMIN', 'SUPERVISOR'].includes(request.user.role)
@@ -649,11 +700,29 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
         : entry.userId;
       const effectiveActivityId = body.activityId ?? entry.activityId;
       const effectiveProjectId = body.projectId !== undefined ? body.projectId : entry.projectId;
+      const effectiveDate = body.date ?? entry.date;
+      const destinationWeekStart = getWeekStart(effectiveDate);
+
+      const destinationLock = await prisma.weekLock.findUnique({
+        where: {
+          userId_weekStartDate: {
+            userId: targetUserId,
+            weekStartDate: destinationWeekStart,
+          },
+        },
+      });
+      if (destinationLock?.status === 'APPROVED') {
+        return reply.status(409).send({ error: 'Målveckan måste låsas upp innan raden flyttas' });
+      }
+
       const validation = await validateEntryReferences({
         companyId: request.user.companyId,
         targetUserId,
         activityId: effectiveActivityId,
         projectId: effectiveProjectId,
+        allowInactiveUser: targetUserId === entry.userId,
+        allowInactiveActivity: effectiveActivityId === entry.activityId,
+        allowInactiveProject: effectiveProjectId === entry.projectId,
       });
 
       if (validation.error) {
@@ -683,7 +752,13 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
           },
         });
 
-        await upsertSubmittedWeekLock(tx, updated.userId, getWeekStart(updated.date));
+        const updatedWeekStart = getWeekStart(updated.date);
+        await upsertSubmittedWeekLock(tx, updated.userId, updatedWeekStart);
+
+        const originalWeekStart = getWeekStart(entry.date);
+        if (entry.userId !== updated.userId || originalWeekStart.getTime() !== updatedWeekStart.getTime()) {
+          await reconcileWeekLock(tx, entry.userId, originalWeekStart);
+        }
 
         await tx.auditLog.create({
           data: {
@@ -701,7 +776,7 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
         if (updated.projectId) affectedProjectIds.add(updated.projectId);
 
         for (const projectId of affectedProjectIds) {
-          await enqueueTimeEntryChanged(tx, {
+            await enqueueTimeEntryChanged(tx, {
             companyId: request.user.companyId,
             projectId,
             entityId: id,
@@ -716,7 +791,7 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
         }
 
         return updated;
-      });
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
       return updatedEntry;
     } catch (error) {
@@ -729,7 +804,7 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
 
   // Delete time entry
   fastify.delete('/:id', {
-    preHandler: [fastify.authenticate],
+    preHandler: [requireTimeWriter],
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
 
@@ -747,84 +822,47 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     // Kontrollera status
-    if (entry.status === 'APPROVED' && request.user.role === 'EMPLOYEE') {
-      return reply.status(400).send({ error: 'Kan inte ta bort godkänd tidrad' });
+    if (entry.status === 'APPROVED') {
+      return reply.status(409).send({ error: 'Veckan måste låsas upp innan raden tas bort' });
     }
-
-    await prisma.timeEntry.delete({ where: { id } });
-    deleteAttachmentFiles(entry.attachments, fastify.log);
 
     const weekStart = getWeekStart(entry.date);
-    const weekEnd = getWeekEnd(weekStart);
+    await prisma.$transaction(async (tx) => {
+      await tx.timeEntry.delete({ where: { id } });
+      await reconcileWeekLock(tx, entry.userId, weekStart);
 
-    const remainingCount = await prisma.timeEntry.count({
-      where: {
-        userId: entry.userId,
-        date: { gte: weekStart, lte: weekEnd },
-      },
-    });
-
-    if (remainingCount === 0) {
-      await prisma.weekLock.deleteMany({
-        where: {
-          userId: entry.userId,
-          weekStartDate: weekStart,
+      await tx.auditLog.create({
+        data: {
+          userId: request.user.id,
+          action: 'DELETE',
+          entityType: 'TimeEntry',
+          entityId: id,
+          oldValue: JSON.stringify({ date: entry.date, hours: entry.hours }),
         },
       });
-    } else {
-      await prisma.weekLock.upsert({
-        where: {
-          userId_weekStartDate: {
+
+      if (entry.projectId) {
+        await enqueueTimeEntryChanged(tx, {
+          companyId: request.user.companyId,
+          projectId: entry.projectId,
+          entityId: id,
+          action: 'DELETE',
+          payload: {
+            date: entry.date.toISOString(),
+            hours: entry.hours,
             userId: entry.userId,
-            weekStartDate: weekStart,
           },
-        },
-        update: {
-          status: 'SUBMITTED',
-          submittedAt: new Date(),
-          comment: null,
-          reviewedAt: null,
-          reviewerId: null,
-        },
-        create: {
-          userId: entry.userId,
-          weekStartDate: weekStart,
-          status: 'SUBMITTED',
-        },
-      });
-    }
-
-    // Audit log
-    await prisma.auditLog.create({
-      data: {
-        userId: request.user.id,
-        action: 'DELETE',
-        entityType: 'TimeEntry',
-        entityId: id,
-        oldValue: JSON.stringify({ date: entry.date, hours: entry.hours }),
-      },
-    });
-
-    if (entry.projectId) {
-      await enqueueTimeEntryChanged(prisma, {
-        companyId: request.user.companyId,
-        projectId: entry.projectId,
-        entityId: id,
-        action: 'DELETE',
-        payload: {
-          date: entry.date.toISOString(),
-          hours: entry.hours,
-          userId: entry.userId,
-        },
-      });
-    }
+        });
+      }
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    deleteAttachmentFiles(entry.attachments, fastify.log);
 
     return { message: 'Tidrad borttagen' };
   });
 
   // Upload attachment
   fastify.post('/:id/attachments', {
-    preHandler: [fastify.authenticate],
+    preHandler: [requireTimeWriter],
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
 
@@ -838,6 +876,9 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
     // Kontrollera behörighet
     if (request.user.role === 'EMPLOYEE' && entry.userId !== request.user.id) {
       return reply.status(403).send({ error: 'Åtkomst nekad' });
+    }
+    if (entry.status === 'APPROVED') {
+      return reply.status(409).send({ error: 'Veckan måste låsas upp innan bilagor ändras' });
     }
 
     const data = await request.file();
@@ -863,21 +904,32 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
       },
     });
 
-    // Spara fil och räkna verklig storlek under streamingen
-    await pipeline(data.file, countBytes, fs.createWriteStream(filepath));
+    try {
+      await pipeline(data.file, countBytes, fs.createWriteStream(filepath));
+      if (data.file.truncated) {
+        fs.rmSync(filepath, { force: true });
+        return reply.status(413).send({ error: 'Filen är större än 10 MB' });
+      }
 
-    const attachment = await prisma.attachment.create({
-      data: {
-        timeEntryId: id,
-        filename,
-        originalName,
-        mimeType: data.mimetype,
-        size,
-        path: filepath,
-      },
-    });
+      const attachment = await prisma.$transaction(async (tx) => {
+        await assertEntryEditable(tx, id);
+        return tx.attachment.create({
+          data: {
+            timeEntryId: id,
+            filename,
+            originalName,
+            mimeType: data.mimetype,
+            size,
+            path: filepath,
+          },
+        });
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
-    return reply.status(201).send(attachment);
+      return reply.status(201).send(attachment);
+    } catch (error) {
+      fs.rmSync(filepath, { force: true });
+      throw error;
+    }
   });
 
   // Download attachment via authenticated API instead of public /uploads URL
@@ -917,7 +969,7 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
 
   // Delete attachment
   fastify.delete('/:id/attachments/:attachmentId', {
-    preHandler: [fastify.authenticate],
+    preHandler: [requireTimeWriter],
   }, async (request, reply) => {
     const { id, attachmentId } = request.params as { id: string; attachmentId: string };
 
@@ -937,8 +989,14 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
     if (request.user.role === 'EMPLOYEE' && attachment.timeEntry.userId !== request.user.id) {
       return reply.status(403).send({ error: 'Åtkomst nekad' });
     }
+    if (attachment.timeEntry.status === 'APPROVED') {
+      return reply.status(409).send({ error: 'Veckan måste låsas upp innan bilagor ändras' });
+    }
 
-    await prisma.attachment.delete({ where: { id: attachmentId } });
+    await prisma.$transaction(async (tx) => {
+      await assertEntryEditable(tx, id);
+      await tx.attachment.delete({ where: { id: attachmentId } });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     deleteAttachmentFiles([{ path: attachment.path }], fastify.log);
 
     return { message: 'Bilaga borttagen' };
@@ -947,47 +1005,59 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
 
 // Hjälpfunktion för att få veckans startdatum (måndag)
 function getWeekStart(date: Date): Date {
-  const d = new Date(date);
-  const day = d.getDay();
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-  d.setDate(diff);
-  d.setHours(0, 0, 0, 0);
-  return d;
+  return getWeekStartUtc(date);
 }
 
 function getWeekEnd(date: Date): Date {
-  const d = new Date(date);
-  d.setDate(d.getDate() + 6);
-  d.setHours(23, 59, 59, 999);
-  return d;
+  return getWeekEndUtc(date);
 }
 
-function getDayEnd(date: string): Date {
-  const d = new Date(date);
-  d.setHours(23, 59, 59, 999);
-  return d;
-}
-
-function toDateKey(date: Date): string {
-  return date.toISOString().split('T')[0];
+async function assertEntryEditable(tx: any, id: string) {
+  const current = await tx.timeEntry.findUnique({ where: { id }, select: { status: true } });
+  if (!current) throw Object.assign(new Error('Tidrad hittades inte'), { statusCode: 404 });
+  if (current.status === 'APPROVED') {
+    throw Object.assign(new Error('Veckan måste låsas upp innan bilagor ändras'), { statusCode: 409 });
+  }
 }
 
 async function upsertSubmittedWeekLock(tx: any, userId: string, weekStartDate: Date) {
-  return tx.weekLock.upsert({
+  const existing = await tx.weekLock.findUnique({
+    where: { userId_weekStartDate: { userId, weekStartDate } },
+  });
+  if (existing?.status === 'APPROVED') {
+    throw Object.assign(new Error('Veckan godkändes medan ändringen sparades. Lås upp veckan och försök igen.'), { statusCode: 409 });
+  }
+
+  await tx.timeEntry.updateMany({
     where: {
-      userId_weekStartDate: {
-        userId,
-        weekStartDate,
-      },
+      userId,
+      date: { gte: weekStartDate, lte: getWeekEnd(weekStartDate) },
+      status: 'REJECTED',
     },
-    update: {
+    data: {
       status: 'SUBMITTED',
       submittedAt: new Date(),
-      comment: null,
-      reviewedAt: null,
-      reviewerId: null,
+      approvedAt: null,
+      approverId: null,
+      rejectNote: null,
     },
-    create: {
+  });
+
+  if (existing) {
+    return tx.weekLock.update({
+      where: { id: existing.id },
+      data: {
+        status: 'SUBMITTED',
+        submittedAt: new Date(),
+        comment: null,
+        reviewedAt: null,
+        reviewerId: null,
+      },
+    });
+  }
+
+  return tx.weekLock.create({
+    data: {
       userId,
       weekStartDate,
       status: 'SUBMITTED',
@@ -995,46 +1065,68 @@ async function upsertSubmittedWeekLock(tx: any, userId: string, weekStartDate: D
   });
 }
 
+async function reconcileWeekLock(tx: any, userId: string, weekStartDate: Date) {
+  const remainingCount = await tx.timeEntry.count({
+    where: {
+      userId,
+      date: { gte: weekStartDate, lte: getWeekEnd(weekStartDate) },
+    },
+  });
+
+  if (remainingCount === 0) {
+    await tx.weekLock.deleteMany({ where: { userId, weekStartDate } });
+    return;
+  }
+
+  await upsertSubmittedWeekLock(tx, userId, weekStartDate);
+}
+
 async function validateEntryReferences({
   companyId,
   targetUserId,
   activityId,
   projectId,
+  allowInactiveUser = false,
+  allowInactiveActivity = false,
+  allowInactiveProject = false,
 }: {
   companyId: string;
   targetUserId: string;
   activityId?: string;
   projectId?: string | null;
+  allowInactiveUser?: boolean;
+  allowInactiveActivity?: boolean;
+  allowInactiveProject?: boolean;
 }) {
   const [targetUser, activity, project] = await Promise.all([
     prisma.user.findFirst({
-      where: { id: targetUserId, companyId, active: true },
-      select: { id: true },
+      where: { id: targetUserId, companyId },
+      select: { id: true, active: true },
     }),
     activityId
       ? prisma.activity.findFirst({
           where: { id: activityId, companyId },
-          select: { id: true, billableDefault: true, category: true },
+          select: { id: true, active: true, billableDefault: true, category: true },
         })
       : Promise.resolve(null),
     projectId
       ? prisma.project.findFirst({
           where: { id: projectId, companyId },
-          select: { id: true },
+          select: { id: true, active: true },
         })
       : Promise.resolve(null),
   ]);
 
-  if (!targetUser) {
+  if (!targetUser || (!targetUser.active && !allowInactiveUser)) {
     return { error: 'Användaren tillhör inte företaget eller är inaktiv', activity: null };
   }
 
-  if (activityId && !activity) {
-    return { error: 'Aktiviteten tillhör inte företaget', activity: null };
+  if (activityId && (!activity || (!activity.active && !allowInactiveActivity))) {
+    return { error: 'Aktiviteten tillhör inte företaget eller är inaktiv', activity: null };
   }
 
-  if (projectId && !project) {
-    return { error: 'Projektet tillhör inte företaget', activity: null };
+  if (projectId && (!project || (!project.active && !allowInactiveProject))) {
+    return { error: 'Projektet tillhör inte företaget eller är inaktivt', activity: null };
   }
 
   if (activity && !projectId && !['ABSENCE', 'INTERNAL'].includes(activity.category)) {

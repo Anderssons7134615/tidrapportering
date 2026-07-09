@@ -2,10 +2,11 @@ import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../index.js';
 import { getCompanyProjectMetrics, getRate } from '../lib/projectMetrics.js';
+import { addUtcDays, dateOnlySchema, endOfUtcDay, getDateOnlyInTimeZone, getWeekEndUtc, getWeekStartUtc, startOfUtcDay, toDateKey } from '../lib/dateOnly.js';
 
 const drilldownQuerySchema = z.object({
   metric: z.enum(['weekly-hours', 'monthly-hours', 'pending-approval']),
-  date: z.string().optional(),
+  date: dateOnlySchema.optional(),
 });
 
 const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
@@ -16,7 +17,7 @@ const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
     },
     async (request) => {
       const isAdminOrSupervisor = ['ADMIN', 'SUPERVISOR'].includes(request.user.role);
-      const period = getPeriodBounds(new Date());
+      const period = getPeriodBounds(getDateOnlyInTimeZone());
       const userFilter = getUserFilter(request.user.id, request.user.companyId, isAdminOrSupervisor);
 
       if (isAdminOrSupervisor) {
@@ -145,11 +146,7 @@ const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
     async (request, reply) => {
       const { metric, date } = drilldownQuerySchema.parse(request.query);
       const isAdminOrSupervisor = ['ADMIN', 'SUPERVISOR'].includes(request.user.role);
-      const referenceDate = date ? new Date(date) : new Date();
-
-      if (Number.isNaN(referenceDate.getTime())) {
-        return reply.status(400).send({ error: 'Ogiltigt datum' });
-      }
+      const referenceDate = date || getDateOnlyInTimeZone();
 
       const period = getPeriodBounds(referenceDate);
       const userFilter = getUserFilter(request.user.id, request.user.companyId, isAdminOrSupervisor);
@@ -261,20 +258,16 @@ const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
       preHandler: [fastify.authenticate],
     },
     async (request) => {
-      const now = new Date();
-      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      const todayEnd = new Date(todayStart);
-      todayEnd.setDate(todayEnd.getDate() + 1);
-
-      const weekStart = getWeekStart(now);
-      const weekEnd = new Date(weekStart);
-      weekEnd.setDate(weekEnd.getDate() + 6);
+      const todayStart = getDateOnlyInTimeZone();
+      const todayEnd = endOfUtcDay(todayStart);
+      const weekStart = getWeekStartUtc(todayStart);
+      const weekEnd = getWeekEndUtc(weekStart);
 
       const [todayStats, weekStats] = await Promise.all([
         prisma.timeEntry.aggregate({
           where: {
             userId: request.user.id,
-            date: { gte: todayStart, lt: todayEnd },
+            date: { gte: todayStart, lte: todayEnd },
           },
           _sum: { hours: true },
         }),
@@ -302,26 +295,13 @@ function getUserFilter(userId: string, companyId: string, isAdminOrSupervisor: b
 }
 
 function getPeriodBounds(referenceDate: Date) {
-  const now = new Date(referenceDate);
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-  monthEnd.setHours(23, 59, 59, 999);
-
-  const weekStart = getWeekStart(now);
-  const weekEnd = new Date(weekStart);
-  weekEnd.setDate(weekEnd.getDate() + 6);
-  weekEnd.setHours(23, 59, 59, 999);
+  const now = startOfUtcDay(referenceDate);
+  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const monthEnd = endOfUtcDay(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0)));
+  const weekStart = getWeekStartUtc(now);
+  const weekEnd = getWeekEndUtc(weekStart);
 
   return { monthStart, monthEnd, weekStart, weekEnd };
-}
-
-function getWeekStart(date: Date): Date {
-  const d = new Date(date);
-  const day = d.getDay();
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-  d.setDate(diff);
-  d.setHours(0, 0, 0, 0);
-  return d;
 }
 
 function getMetricTitle(metric: z.infer<typeof drilldownQuerySchema>['metric']) {
@@ -354,13 +334,12 @@ function createDailyHoursMap(weekStart: Date, entries: { date: Date; hours: numb
   const dailyHours: Record<string, number> = {};
 
   for (let i = 0; i < 7; i++) {
-    const d = new Date(weekStart);
-    d.setDate(d.getDate() + i);
-    dailyHours[d.toISOString().split('T')[0]] = 0;
+    const d = addUtcDays(weekStart, i);
+    dailyHours[toDateKey(d)] = 0;
   }
 
   entries.forEach((entry) => {
-    const dateKey = entry.date.toISOString().split('T')[0];
+    const dateKey = toDateKey(entry.date);
     dailyHours[dateKey] = (dailyHours[dateKey] || 0) + entry.hours;
   });
 
@@ -387,10 +366,9 @@ function buildWeeklyUserSummary(weekStart: Date, entries: any[]) {
         userName: entry.user.name,
         totalHours: 0,
         days: Array.from({ length: 7 }, (_, index) => {
-          const day = new Date(weekStart);
-          day.setDate(day.getDate() + index);
+          const day = addUtcDays(weekStart, index);
           return {
-            date: day.toISOString().split('T')[0],
+            date: toDateKey(day),
             hours: 0,
             projectCodes: [],
             projectNames: [],
@@ -400,10 +378,8 @@ function buildWeeklyUserSummary(weekStart: Date, entries: any[]) {
     }
 
     const summary = users.get(entry.userId)!;
-    const entryDate = new Date(entry.date);
-    entryDate.setHours(0, 0, 0, 0);
-    const weekStartDate = new Date(weekStart);
-    weekStartDate.setHours(0, 0, 0, 0);
+    const entryDate = startOfUtcDay(entry.date);
+    const weekStartDate = startOfUtcDay(weekStart);
     const dayIndex = Math.round((entryDate.getTime() - weekStartDate.getTime()) / 86400000);
     const safeDayIndex = Math.max(0, Math.min(6, dayIndex));
     const day = summary.days[safeDayIndex];
@@ -431,9 +407,7 @@ async function getPendingApprovals(companyId: string, take?: number) {
 
   return Promise.all(
     locks.map(async (lock) => {
-      const weekEnd = new Date(lock.weekStartDate);
-      weekEnd.setDate(weekEnd.getDate() + 6);
-      weekEnd.setHours(23, 59, 59, 999);
+      const weekEnd = getWeekEndUtc(lock.weekStartDate);
 
       const [stats, billableStats] = await Promise.all([
         prisma.timeEntry.aggregate({
@@ -476,7 +450,7 @@ async function getMyPendingWeeks(userId: string, currentWeekStart: Date) {
       userId,
       status: 'DRAFT',
       date: {
-        gte: new Date(currentWeekStart.getFullYear(), currentWeekStart.getMonth() - 1, 1),
+        gte: new Date(Date.UTC(currentWeekStart.getUTCFullYear(), currentWeekStart.getUTCMonth() - 1, 1)),
       },
     },
     select: { date: true },
@@ -484,7 +458,7 @@ async function getMyPendingWeeks(userId: string, currentWeekStart: Date) {
 
   const weeks = new Set<string>();
   draftEntries.forEach((entry) => {
-    const weekStart = getWeekStart(entry.date);
+    const weekStart = getWeekStartUtc(entry.date);
     weeks.add(weekStart.toISOString());
   });
 
@@ -508,7 +482,7 @@ async function backfillDraftWeeksToSubmitted(companyId: string) {
   const weekPairs = new Map<string, { userId: string; weekStartDate: Date }>();
   const weekKeyByEntryId = new Map<string, string>();
   for (const entry of draftEntries) {
-    const weekStartDate = getWeekStart(entry.date);
+    const weekStartDate = getWeekStartUtc(entry.date);
     const key = `${entry.userId}_${weekStartDate.toISOString()}`;
     weekKeyByEntryId.set(entry.id, key);
     weekPairs.set(key, {

@@ -99,7 +99,7 @@ export interface ProjectMaterial {
   id: string;
   projectId: string;
   articleId: string;
-  createdByUserId: string;
+  createdByUserId?: string | null;
   createdByUser?: { id: string; name: string };
   articleName: string;
   articleNumber?: string | null;

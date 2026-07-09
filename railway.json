@@ -7,7 +7,7 @@
   "deploy": {
     "preDeployCommand": ["npm run db:push"],
     "startCommand": "npm start",
-    "healthcheckPath": "/api/health",
+    "healthcheckPath": "/api/ready",
     "healthcheckTimeout": 300,
     "restartPolicyType": "ON_FAILURE"
   }

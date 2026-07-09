@@ -16,6 +16,9 @@ const registerSchema = z.object({
   password: z.string().min(6),
 });
 
+const normalizeEmail = (email: string) => email.trim().toLowerCase();
+const publicRegistrationEnabled = () => process.env.ALLOW_PUBLIC_REGISTRATION === 'true';
+
 const DEFAULT_ACTIVITIES = [
   { name: 'Montage', code: 'MONT', category: 'WORK', billableDefault: true, sortOrder: 1 },
   { name: 'Rivning', code: 'RIV', category: 'WORK', billableDefault: true, sortOrder: 2 },
@@ -38,12 +41,14 @@ const DEFAULT_ACTIVITIES = [
 
 const authRoutes: FastifyPluginAsync = async (fastify) => {
   // Login
-  fastify.post('/login', async (request, reply) => {
+  fastify.post('/login', {
+    config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+  }, async (request, reply) => {
     try {
       const body = loginSchema.parse(request.body);
 
-      const user = await prisma.user.findUnique({
-        where: { email: body.email },
+      const user = await prisma.user.findFirst({
+        where: { email: { equals: normalizeEmail(body.email), mode: 'insensitive' } },
       });
 
       if (!user || !user.active) {
@@ -96,11 +101,12 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // Register new company
-  fastify.post('/register', async (request, reply) => {
-    const publicRegistrationEnabled =
-      process.env.ALLOW_PUBLIC_REGISTRATION === 'true' || process.env.NODE_ENV !== 'production';
+  fastify.get('/registration-status', async () => ({ enabled: publicRegistrationEnabled() }));
 
-    if (!publicRegistrationEnabled) {
+  fastify.post('/register', {
+    config: { rateLimit: { max: 5, timeWindow: '1 hour' } },
+  }, async (request, reply) => {
+    if (!publicRegistrationEnabled()) {
       return reply.status(403).send({ error: 'Registrering är avstängd. Kontakta administratör.' });
     }
 
@@ -108,8 +114,9 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
       const body = registerSchema.parse(request.body);
 
       // Kontrollera att e-post inte redan finns
-      const existingUser = await prisma.user.findUnique({
-        where: { email: body.email },
+      const email = normalizeEmail(body.email);
+      const existingUser = await prisma.user.findFirst({
+        where: { email: { equals: email, mode: 'insensitive' } },
       });
 
       if (existingUser) {
@@ -143,7 +150,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         const user = await tx.user.create({
           data: {
             companyId: company.id,
-            email: body.email,
+            email,
             password: hashedPassword,
             name: body.name,
             role: 'ADMIN',

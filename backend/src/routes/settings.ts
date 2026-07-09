@@ -1,27 +1,19 @@
 import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../index.js';
+import { requireRoles } from '../lib/authorization.js';
 
 const settingsSchema = z.object({
   companyName: z.string().optional(),
   vatRate: z.number().min(0).max(100).optional(),
   weekStartDay: z.number().min(0).max(6).optional(),
-  csvDelimiter: z.string().optional(),
+  csvDelimiter: z.enum([';', ',', '\\t']).optional(),
   defaultCurrency: z.string().optional(),
   reminderTime: z.string().optional(),
   reminderEnabled: z.boolean().optional(),
 });
 
-const requireAdmin = async (request: any, reply: any) => {
-  await request.jwtVerify();
-  const user = await prisma.user.findUnique({ where: { id: request.user.id }, select: { active: true, companyId: true } });
-  if (!user || !user.active || user.companyId !== request.user.companyId) {
-    return reply.status(401).send({ error: 'Unauthorized' });
-  }
-  if (request.user.role !== 'ADMIN') {
-    return reply.status(403).send({ error: 'Endast admin har åtkomst' });
-  }
-};
+const requireAdmin = requireRoles(['ADMIN'], 'Endast admin har åtkomst');
 
 const settingsRoutes: FastifyPluginAsync = async (fastify) => {
   // Get settings (per company)

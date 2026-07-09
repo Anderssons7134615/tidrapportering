@@ -19,6 +19,8 @@ import { timeEntriesApi } from '../services/api';
 import type { TeamWeekAttentionStatus, TeamWeekSummaryDay, TeamWeekSummaryUser } from '../types';
 import { AppShell, Card, EmptyState, KpiCard, PageHeader, StatusBadge } from '../components/ui/design';
 import { formatDate, formatHours } from '../utils/format';
+import { parseDateOnlyLocal } from '../utils/format';
+import { QueryError } from '../components/ui/QueryError';
 
 const weekStatusLabel: Record<string, string> = {
   DRAFT: 'Ej inskickad',
@@ -59,7 +61,7 @@ type FilterId = typeof filterTabs[number]['id'];
 export default function TeamWeekOverview() {
   const [searchParams, setSearchParams] = useSearchParams();
   const dateParam = searchParams.get('date');
-  const [selectedDate, setSelectedDate] = useState(() => startOfWeek(dateParam ? new Date(dateParam) : new Date(), { weekStartsOn: 1 }));
+  const [selectedDate, setSelectedDate] = useState(() => startOfWeek(dateParam ? parseDateOnlyLocal(dateParam) : new Date(), { weekStartsOn: 1 }));
   const [search, setSearch] = useState('');
   const [activeFilter, setActiveFilter] = useState<FilterId>('needs-action');
   const [expandedUsers, setExpandedUsers] = useState<Record<string, boolean>>({});
@@ -67,7 +69,7 @@ export default function TeamWeekOverview() {
   const weekStart = startOfWeek(selectedDate, { weekStartsOn: 1 });
   const weekStartStr = format(weekStart, 'yyyy-MM-dd');
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['team-week-summary', weekStartStr],
     queryFn: () => timeEntriesApi.getTeamWeekSummary(weekStartStr),
   });
@@ -210,6 +212,8 @@ export default function TeamWeekOverview() {
               <div key={item} className="h-28 animate-pulse rounded-xl bg-slate-100" />
             ))}
           </div>
+        ) : isError ? (
+          <QueryError title="Kunde inte hämta teamveckan" onRetry={() => void refetch()} />
         ) : !data?.users?.length ? (
           <EmptyState title="Inga anställda hittades" description="När aktiva användare finns i bolaget visas deras vecka här." />
         ) : !filteredUsers.length ? (

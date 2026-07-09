@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowRight, Clock, Loader2, ShieldCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { authApi } from '../services/api';
@@ -8,13 +8,21 @@ import { useAuthStore } from '../stores/authStore';
 
 export default function Login() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { setAuth } = useAuthStore();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const { data: registrationStatus } = useQuery({
+    queryKey: ['registration-status'],
+    queryFn: authApi.registrationStatus,
+    staleTime: Infinity,
+    retry: false,
+  });
 
   const loginMutation = useMutation({
     mutationFn: () => authApi.login(email, password),
     onSuccess: (data) => {
+      queryClient.clear();
       setAuth(data.token, data.user);
       toast.success(`Välkommen, ${data.user.name}!`);
       navigate('/');
@@ -106,12 +114,14 @@ export default function Login() {
               </p>
             </div>
 
-            <p className="mt-5 text-center text-sm text-graphite-500">
-              Nytt företag?{' '}
-              <Link to="/register" className="font-semibold text-primary-700 hover:text-primary-600">
-                Registrera er här
-              </Link>
-            </p>
+            {registrationStatus?.enabled && (
+              <p className="mt-5 text-center text-sm text-graphite-500">
+                Nytt företag?{' '}
+                <Link to="/register" className="font-semibold text-primary-700 hover:text-primary-600">
+                  Registrera er här
+                </Link>
+              </p>
+            )}
           </div>
         </section>
       </div>

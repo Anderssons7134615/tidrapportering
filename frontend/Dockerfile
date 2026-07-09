@@ -1,4 +1,4 @@
-FROM node:20-alpine as builder
+FROM node:22-alpine as builder
 
 WORKDIR /app
 
@@ -6,7 +6,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Installera dependencies
-RUN npm install
+RUN npm ci
 
 # Kopiera källkod
 COPY . .

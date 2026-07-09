@@ -4,7 +4,7 @@
   "private": true,
   "description": "Root package marker so Railway/Nixpacks detects Node.js for backend and frontend subdirectory builds.",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "build": "npm --prefix backend ci && npm --prefix backend run build",

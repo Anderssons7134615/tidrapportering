@@ -91,6 +91,7 @@ async function fetchBlob(endpoint: string, options: RequestInit = {}): Promise<B
 
 // Auth
 export const authApi = {
+  registrationStatus: () => fetchApi<{ enabled: boolean }>('/auth/registration-status'),
   login: (email: string, password: string) =>
     fetchApi<{ token: string; user: User }>('/auth/login', {
       method: 'POST',

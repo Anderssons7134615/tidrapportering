@@ -100,7 +100,7 @@ export default function Activities() {
         title="Aktiviteter"
         description="Standardaktiviteter för tidrapportering. Koder och kategorier används i rapporter och löneunderlag."
         action={
-          <button onClick={() => setIsModalOpen(true)} className="btn-primary">
+          <button type="button" onClick={() => setIsModalOpen(true)} className="btn-primary">
             <Plus className="h-4 w-4" />
             Ny aktivitet
           </button>
@@ -162,28 +162,33 @@ export default function Activities() {
 
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-graphite-950/45 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md overflow-hidden rounded-lg border border-graphite-200 bg-white shadow-md">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="activity-dialog-title"
+            className="w-full max-w-md overflow-hidden rounded-lg border border-graphite-200 bg-white shadow-md"
+          >
             <div className="flex items-center justify-between border-b border-graphite-200 px-4 py-3">
-              <h2 className="font-semibold text-graphite-950">
+              <h2 id="activity-dialog-title" className="font-semibold text-graphite-950">
                 {editingActivity ? 'Redigera aktivitet' : 'Ny aktivitet'}
               </h2>
-              <button onClick={closeModal} className="rounded-md p-1.5 text-graphite-500 hover:bg-graphite-100 hover:text-graphite-950">
+              <button type="button" onClick={closeModal} aria-label="Stäng" className="rounded-md p-1.5 text-graphite-500 hover:bg-graphite-100 hover:text-graphite-950">
                 <X className="h-5 w-5" />
               </button>
             </div>
             <form onSubmit={handleSubmit} className="space-y-4 p-4">
               <div>
-                <label className="label">Namn *</label>
-                <input name="name" defaultValue={editingActivity?.name} className="input" required />
+                <label htmlFor="activity-name" className="label">Namn *</label>
+                <input id="activity-name" name="name" defaultValue={editingActivity?.name} className="input" required autoFocus />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="label">Kod *</label>
-                  <input name="code" defaultValue={editingActivity?.code} className="input" placeholder="MONT" required />
+                  <label htmlFor="activity-code" className="label">Kod *</label>
+                  <input id="activity-code" name="code" defaultValue={editingActivity?.code} className="input" placeholder="MONT" required />
                 </div>
                 <div>
-                  <label className="label">Kategori</label>
-                  <select name="category" defaultValue={editingActivity?.category || 'WORK'} className="input">
+                  <label htmlFor="activity-category" className="label">Kategori</label>
+                  <select id="activity-category" name="category" defaultValue={editingActivity?.category || 'WORK'} className="input">
                     {Object.entries(categoryLabels).map(([value, label]) => (
                       <option key={value} value={value}>
                         {label}
@@ -193,8 +198,8 @@ export default function Activities() {
                 </div>
               </div>
               <div>
-                <label className="label">Sorteringsordning</label>
-                <input name="sortOrder" type="number" defaultValue={editingActivity?.sortOrder || 0} className="input" />
+                <label htmlFor="activity-sort-order" className="label">Sorteringsordning</label>
+                <input id="activity-sort-order" name="sortOrder" type="number" defaultValue={editingActivity?.sortOrder || 0} className="input" />
               </div>
               <div className="grid grid-cols-2 gap-3 pt-2">
                 <button type="button" onClick={closeModal} className="btn-secondary">

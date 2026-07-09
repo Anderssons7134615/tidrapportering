@@ -7,11 +7,12 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
+      includeAssets: ['anderssons-logo.svg', 'tidapp-icon.svg', 'apple-touch-icon.png', 'push-sw.js'],
       manifest: {
         name: 'TidApp - Tidrapportering',
         short_name: 'TidApp',
         description: 'Tidrapporteringsapp för hantverks- och byggföretag',
+        lang: 'sv',
         theme_color: '#0a0a0a',
         background_color: '#0a0a0a',
         display: 'standalone',
@@ -41,6 +42,7 @@ export default defineConfig({
         cleanupOutdatedCaches: true,
         skipWaiting: true,
         clientsClaim: true,
+        importScripts: ['/push-sw.js'],
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
         runtimeCaching: [
           {

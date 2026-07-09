@@ -15,9 +15,10 @@ import {
 import { dashboardApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
 import { DashboardSkeleton } from '../components/ui/Skeleton';
+import { QueryError } from '../components/ui/QueryError';
 import { StatusBadge } from '../components/ui/design';
 import type { DashboardActionItem, ProjectListItem, TimeEntry, WeekLock } from '../types';
-import { formatCurrency, formatDate, formatHours, formatPercent } from '../utils/format';
+import { formatCurrency, formatDate, formatHours, formatPercent, parseDateOnlyLocal, toDateInputValue } from '../utils/format';
 
 type StatusTone = 'blue' | 'green' | 'yellow' | 'red' | 'gray' | 'slate' | 'orange' | 'dark';
 
@@ -25,12 +26,19 @@ export default function Dashboard() {
   const { user } = useAuthStore();
   const isManager = user?.role === 'ADMIN' || user?.role === 'SUPERVISOR';
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['dashboard'],
     queryFn: dashboardApi.get,
   });
 
   if (isLoading) return <DashboardSkeleton />;
+  if (isError) {
+    return (
+      <div className="app-workspace">
+        <QueryError title="Kunde inte hämta översikten" onRetry={() => void refetch()} />
+      </div>
+    );
+  }
 
   const pendingCount = data?.summary.pendingApprovalCount || 0;
   const riskCount = data?.summary.riskProjectCount || 0;
@@ -461,9 +469,9 @@ function buildWeekRows(dailyHours?: Record<string, number>, weekStart?: string) 
 
   const labels = ['Mån', 'Tis', 'Ons', 'Tor', 'Fre'];
   return labels.map((label, index) => {
-    const date = new Date(weekStart);
+    const date = parseDateOnlyLocal(weekStart);
     date.setDate(date.getDate() + index);
-    const key = date.toISOString().slice(0, 10);
+    const key = toDateInputValue(date);
 
     return {
       label,
@@ -485,13 +493,13 @@ function getMissingReportedWeekdays(
   today.setHours(0, 0, 0, 0);
 
   for (let i = 0; i < 5; i += 1) {
-    const date = new Date(weekStart);
+    const date = parseDateOnlyLocal(weekStart);
     date.setDate(date.getDate() + i);
     date.setHours(0, 0, 0, 0);
 
     if (date > today) continue;
 
-    const key = date.toISOString().slice(0, 10);
+    const key = toDateInputValue(date);
     const hours = dailyHours[key] || 0;
     if (hours <= 0) missing.push(labels[i]);
   }
@@ -537,5 +545,5 @@ function formatPeriod(start?: string, end?: string) {
 
 function formatShortDate(value?: string) {
   if (!value) return '-';
-  return new Date(value).toLocaleDateString('sv-SE', { day: 'numeric', month: 'short' });
+  return parseDateOnlyLocal(value).toLocaleDateString('sv-SE', { day: 'numeric', month: 'short' });
 }

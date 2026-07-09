@@ -43,6 +43,8 @@ model User {
   auditLogs         AuditLog[]
   pushSubscriptions PushSubscription[]
   projectMaterials  ProjectMaterial[]
+
+  @@index([companyId, active])
 }
 
 model PushSubscription {
@@ -131,8 +133,8 @@ model ProjectMaterial {
   project          Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
   articleId        String
   article          MaterialArticle @relation(fields: [articleId], references: [id])
-  createdByUserId  String
-  createdByUser    User            @relation(fields: [createdByUserId], references: [id])
+  createdByUserId  String?
+  createdByUser    User?           @relation(fields: [createdByUserId], references: [id], onDelete: SetNull)
   articleName      String
   articleNumber    String?
   unit             String
@@ -199,6 +201,10 @@ model TimeEntry {
   updatedAt   DateTime  @updatedAt
 
   attachments Attachment[]
+
+  @@index([userId, date])
+  @@index([projectId, date])
+  @@index([status, date])
 }
 
 model Attachment {
@@ -227,6 +233,7 @@ model WeekLock {
   updatedAt     DateTime  @updatedAt
 
   @@unique([userId, weekStartDate])
+  @@index([status, weekStartDate])
 }
 
 model AuditLog {

@@ -37,6 +37,22 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function AdminOnlyRoute({ children }: { children: React.ReactNode }) {
+  const { user } = useAuthStore();
+  if (user?.role !== 'ADMIN') {
+    return <Navigate to="/" replace />;
+  }
+  return <>{children}</>;
+}
+
+function WorkRoute({ children }: { children: React.ReactNode }) {
+  const { user } = useAuthStore();
+  if (!user || !['ADMIN', 'SUPERVISOR', 'EMPLOYEE'].includes(user.role)) {
+    return <Navigate to="/reports" replace />;
+  }
+  return <>{children}</>;
+}
+
 function ReportRoute({ children }: { children: React.ReactNode }) {
   const { user } = useAuthStore();
   if (!user || !['ADMIN', 'SUPERVISOR', 'ACCOUNTANT'].includes(user.role)) {
@@ -81,9 +97,9 @@ export default function App() {
         }
       >
         <Route index element={<HomeRoute />} />
-        <Route path="overview/details/:metric" element={<PageLoader><DashboardDetail /></PageLoader>} />
-        <Route path="time-entry" element={<PageLoader><TimeEntry /></PageLoader>} />
-        <Route path="week" element={<PageLoader><WeekView /></PageLoader>} />
+        <Route path="overview/details/:metric" element={<WorkRoute><PageLoader><DashboardDetail /></PageLoader></WorkRoute>} />
+        <Route path="time-entry" element={<WorkRoute><PageLoader><TimeEntry /></PageLoader></WorkRoute>} />
+        <Route path="week" element={<WorkRoute><PageLoader><WeekView /></PageLoader></WorkRoute>} />
         <Route
           path="team-week"
           element={
@@ -135,17 +151,17 @@ export default function App() {
         <Route
           path="activities"
           element={
-            <AdminRoute>
+            <AdminOnlyRoute>
               <PageLoader><Activities /></PageLoader>
-            </AdminRoute>
+            </AdminOnlyRoute>
           }
         />
         <Route
           path="users"
           element={
-            <AdminRoute>
+            <AdminOnlyRoute>
               <PageLoader><Users /></PageLoader>
-            </AdminRoute>
+            </AdminOnlyRoute>
           }
         />
         <Route
@@ -157,7 +173,9 @@ export default function App() {
           }
         />
         <Route path="settings" element={<PageLoader><Settings /></PageLoader>} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }

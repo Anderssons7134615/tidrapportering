@@ -1,6 +1,7 @@
 import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../index.js';
+import { requireRoles } from '../lib/authorization.js';
 
 const customerSchema = z.object({
   name: z.string().min(2),
@@ -12,21 +13,13 @@ const customerSchema = z.object({
   defaultRate: z.number().optional().nullable(),
 });
 
-const requireAdminOrSupervisor = async (request: any, reply: any) => {
-  await request.jwtVerify();
-  const user = await prisma.user.findUnique({ where: { id: request.user.id }, select: { active: true, companyId: true } });
-  if (!user || !user.active || user.companyId !== request.user.companyId) {
-    return reply.status(401).send({ error: 'Unauthorized' });
-  }
-  if (!['ADMIN', 'SUPERVISOR'].includes(request.user.role)) {
-    return reply.status(403).send({ error: 'Åtkomst nekad' });
-  }
-};
+const requireAdminOrSupervisor = requireRoles(['ADMIN', 'SUPERVISOR']);
+const requireCustomerViewer = requireRoles(['ADMIN', 'SUPERVISOR', 'ACCOUNTANT']);
 
 const customerRoutes: FastifyPluginAsync = async (fastify) => {
   // List customers (same company)
   fastify.get('/', {
-    preHandler: [fastify.authenticate],
+    preHandler: [requireCustomerViewer],
   }, async (request) => {
     const { active } = request.query as { active?: string };
 
@@ -48,7 +41,7 @@ const customerRoutes: FastifyPluginAsync = async (fastify) => {
 
   // Get customer by ID
   fastify.get('/:id', {
-    preHandler: [fastify.authenticate],
+    preHandler: [requireCustomerViewer],
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
 

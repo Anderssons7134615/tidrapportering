@@ -11,6 +11,8 @@ import { WeekViewSkeleton } from '../components/ui/Skeleton';
 import { useHaptic } from '../hooks/useHaptic';
 import type { TimeEntry } from '../types';
 import { AppShell } from '../components/ui/design';
+import { QueryError } from '../components/ui/QueryError';
+import { parseDateOnlyLocal, toDateInputValue } from '../utils/format';
 
 function SwipeableEntry({
   entry,
@@ -117,14 +119,14 @@ export default function WeekView() {
   const dateParam = searchParams.get('date');
   const userIdParam = searchParams.get('userId');
   const [selectedDate, setSelectedDate] = useState(() => {
-    if (dateParam) return new Date(dateParam);
+    if (dateParam) return parseDateOnlyLocal(dateParam);
     return startOfWeek(new Date(), { weekStartsOn: 1 });
   });
 
   const weekStart = startOfWeek(selectedDate, { weekStartsOn: 1 });
   const weekStartStr = format(weekStart, 'yyyy-MM-dd');
 
-  const { data, isLoading, refetch } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['week', weekStartStr, userIdParam],
     queryFn: () => timeEntriesApi.getWeek(weekStartStr, userIdParam || undefined),
   });
@@ -183,7 +185,7 @@ export default function WeekView() {
 
   const getEntriesForDay = (day: Date) => {
     const dateStr = format(day, 'yyyy-MM-dd');
-    return data?.entries.filter((entry) => format(new Date(entry.date), 'yyyy-MM-dd') === dateStr) || [];
+    return data?.entries.filter((entry) => toDateInputValue(entry.date) === dateStr) || [];
   };
 
   const isLocked = data?.weekLock?.status === 'APPROVED';
@@ -206,6 +208,14 @@ export default function WeekView() {
 
   if (isLoading) {
     return <WeekViewSkeleton />;
+  }
+
+  if (isError) {
+    return (
+      <AppShell>
+        <QueryError title="Kunde inte hämta veckan" onRetry={() => void refetch()} />
+      </AppShell>
+    );
   }
 
   return (

@@ -10,7 +10,27 @@ import { useAuthStore } from '../stores/authStore';
 import { useOfflineStore } from '../stores/offlineStore';
 import { useHaptic } from '../hooks/useHaptic';
 import { AppShell, Button, Card, FormField, PageHeader } from '../components/ui/design';
-import { getDisabledReason, parseSwedishNumber } from '../utils/format';
+import { getDisabledReason, parseDateOnlyLocal, parseSwedishNumber, toDateInputValue } from '../utils/format';
+import type { Activity, Project, User } from '../types';
+
+function readReferenceCache<T>(key: string): T | undefined {
+  if (!key) return undefined;
+  try {
+    const value = localStorage.getItem(key);
+    return value ? JSON.parse(value) as T : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function writeReferenceCache(key: string, value: unknown) {
+  if (!key || !value) return;
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Offline-cachen är en bekvämlighet; formuläret fungerar fortfarande online.
+  }
+}
 
 export default function TimeEntry() {
   const queryClient = useQueryClient();
@@ -48,11 +68,30 @@ export default function TimeEntry() {
     return `/week?${params.toString()}`;
   }, [date, selectedUserId]);
   const defaultReturnUrl = returnTo || weekReturnUrl;
+  const projectsCacheKey = user?.id ? `tidapp-reference-projects:${user.id}` : '';
+  const activitiesCacheKey = user?.id ? `tidapp-reference-activities:${user.id}` : '';
+  const usersCacheKey = user?.id ? `tidapp-reference-users:${user.id}` : '';
 
-  const { data: projects } = useQuery({ queryKey: ['projects', 'active'], queryFn: () => projectsApi.list({ active: true }) });
-  const { data: activities } = useQuery({ queryKey: ['activities', 'active'], queryFn: () => activitiesApi.list(true) });
-  const { data: users } = useQuery({ queryKey: ['users'], queryFn: usersApi.list, enabled: canReportForOthers });
-  const yesterday = format(new Date(new Date(date).getTime() - 86400000), 'yyyy-MM-dd');
+  const { data: projects } = useQuery<Project[]>({
+    queryKey: ['projects', 'active', user?.id],
+    queryFn: () => projectsApi.list({ active: true }),
+    initialData: () => readReferenceCache<Project[]>(projectsCacheKey),
+  });
+  const { data: activities } = useQuery<Activity[]>({
+    queryKey: ['activities', 'active', user?.id],
+    queryFn: () => activitiesApi.list(true),
+    initialData: () => readReferenceCache<Activity[]>(activitiesCacheKey),
+  });
+  const { data: users } = useQuery<User[]>({
+    queryKey: ['users', user?.id],
+    queryFn: usersApi.list,
+    enabled: canReportForOthers,
+    initialData: () => readReferenceCache<User[]>(usersCacheKey),
+  });
+  const yesterdayDate = date ? parseDateOnlyLocal(date) : new Date();
+  yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+  const yesterday = toDateInputValue(yesterdayDate);
+  const selectedDateLabel = date ? format(parseDateOnlyLocal(date), 'EEEE d MMMM', { locale: sv }) : 'Välj datum';
   const { refetch: fetchYesterday } = useQuery({
     queryKey: ['copy-yesterday', yesterday, effectiveListUserId],
     queryFn: () => timeEntriesApi.list({ from: yesterday, to: yesterday, userId: effectiveListUserId }),
@@ -75,7 +114,7 @@ export default function TimeEntry() {
 
   useEffect(() => {
     if (!existingEntry) return;
-    setDate(format(new Date(existingEntry.date), 'yyyy-MM-dd'));
+    setDate(toDateInputValue(existingEntry.date));
     setProjectId(existingEntry.projectId || '');
     setActivityId(existingEntry.activityId);
     setSelectedUserId(existingEntry.userId);
@@ -85,6 +124,10 @@ export default function TimeEntry() {
     setStartTime(existingEntry.startTime || '');
     setEndTime(existingEntry.endTime || '');
   }, [existingEntry]);
+
+  useEffect(() => writeReferenceCache(projectsCacheKey, projects), [projects, projectsCacheKey]);
+  useEffect(() => writeReferenceCache(activitiesCacheKey, activities), [activities, activitiesCacheKey]);
+  useEffect(() => writeReferenceCache(usersCacheKey, users), [users, usersCacheKey]);
 
   useEffect(() => {
     const activity = activities?.find((item) => item.id === activityId);
@@ -225,7 +268,7 @@ export default function TimeEntry() {
 
     if (isOnline) createMutation.mutate(entryData);
     else {
-      addPendingEntry(entryData);
+      addPendingEntry({ ...entryData, ownerUserId: user!.id });
       rememberProject(projectId);
       haptic('success');
       toast.success('Sparad offline - synkas när du är online');
@@ -251,7 +294,7 @@ export default function TimeEntry() {
           action={
             <div className="hidden rounded-lg border border-primary-200 bg-primary-50 px-3 py-2 text-sm font-semibold text-primary-800 sm:flex sm:items-center sm:gap-2">
               <Clock className="h-4 w-4" />
-              {format(new Date(date), 'EEEE d MMMM', { locale: sv })}
+              {selectedDateLabel}
             </div>
           }
         />
@@ -262,7 +305,7 @@ export default function TimeEntry() {
               <div>
                 <p className="text-xs font-bold uppercase tracking-wide text-primary-700">Vald dag</p>
                 <h2 className="mt-1 text-lg font-black text-graphite-950">
-                  {format(new Date(date), 'EEEE d MMMM', { locale: sv })}
+                  {selectedDateLabel}
                 </h2>
                 <p className="text-sm font-semibold text-graphite-600">
                   {dailyEntries?.length ? `${dailyTotal.toFixed(1)} h rapporterat på dagen` : 'Ingen tid rapporterad på dagen ännu'}
@@ -359,7 +402,7 @@ export default function TimeEntry() {
               )}
               <FormField label="Datum">
                 <input type="date" value={date} onChange={(event) => setDate(event.target.value)} className="input" required />
-                <p className="mt-1 text-xs font-medium text-graphite-500">{format(new Date(date), 'EEEE d MMMM', { locale: sv })}</p>
+                <p className="mt-1 text-xs font-medium text-graphite-500">{selectedDateLabel}</p>
               </FormField>
               <FormField label="Projekt">
                 <select value={projectId} onChange={(event) => setProjectId(event.target.value)} className="input">

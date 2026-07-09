@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="TidApp">
+  <rect width="512" height="512" fill="#101817"/>
+  <path d="M148 142h216v62h-76v176h-64V204h-76z" fill="#f8faf9"/>
+  <rect x="316" y="316" width="48" height="64" fill="#36a269"/>
+</svg>

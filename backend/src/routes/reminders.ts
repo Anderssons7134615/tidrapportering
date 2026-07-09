@@ -1,15 +1,7 @@
 import { FastifyPluginAsync } from 'fastify';
 import { prisma } from '../index.js';
 import { isPushConfigured, sendPushNotification } from '../lib/push.js';
-
-function getWeekStart(date = new Date()) {
-  const d = new Date(date);
-  const day = d.getDay();
-  const diff = day === 0 ? -6 : 1 - day;
-  d.setDate(d.getDate() + diff);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
+import { getDateOnlyInTimeZone, getWeekStartUtc, toDateKey } from '../lib/dateOnly.js';
 
 const reminderRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post('/weekly-attestation', async (request, reply) => {
@@ -34,7 +26,7 @@ const reminderRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(503).send({ error: 'Push-notiser är inte konfigurerade (VAPID saknas)' });
     }
 
-    const weekStart = getWeekStart();
+    const weekStart = getWeekStartUtc(getDateOnlyInTimeZone());
 
     const employeeWhere = {
       active: true,
@@ -76,7 +68,7 @@ const reminderRoutes: FastifyPluginAsync = async (fastify) => {
               title: 'Påminnelse: attestera veckan',
               body: `Hej ${user.name}! Du har inte skickat in din vecka ännu.`,
               url: '/week',
-              tag: `week-attestation-${weekStart.toISOString().slice(0, 10)}`,
+              tag: `week-attestation-${toDateKey(weekStart)}`,
             }
           );
 

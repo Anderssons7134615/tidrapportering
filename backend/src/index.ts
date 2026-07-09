@@ -4,7 +4,8 @@ import jwt from '@fastify/jwt';
 import multipart from '@fastify/multipart';
 import rateLimit from '@fastify/rate-limit';
 import fastifyStatic from '@fastify/static';
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
+import { ZodError } from 'zod';
 import { ensureUploadDir } from './lib/uploads.js';
 
 // Routes
@@ -39,6 +40,8 @@ if (!jwtSecret) {
 const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:3000',
+  'https://tid.anderssonsisolering.se',
+  'https://tidrapportering.pages.dev',
   ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : []),
   ...(process.env.EXTRA_CORS_ORIGINS
     ? process.env.EXTRA_CORS_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean)
@@ -52,13 +55,10 @@ await fastify.register(cors, {
     const normalized = origin.replace(/\/$/, '');
     const isAllowed = allowedOrigins.some((o) => o.replace(/\/$/, '') === normalized);
 
-    // Tillåt även Cloudflare Pages-domäner under uppsättning
-    const isPagesDomain = /^https:\/\/[a-z0-9-]+\.pages\.dev$/i.test(normalized);
-
-    if (isAllowed || isPagesDomain) {
+    if (isAllowed) {
       cb(null, true);
     } else {
-      cb(new Error('Origin not allowed by CORS'), false);
+      cb(null, false);
     }
   },
   credentials: true,
@@ -119,6 +119,25 @@ fastify.decorate('authenticate', async function (request: any, reply: any) {
   }
 });
 
+fastify.setErrorHandler((error: any, request, reply) => {
+  if (error instanceof ZodError) {
+    return reply.status(400).send({ error: 'Ogiltig data', details: error.errors });
+  }
+  if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034') {
+    return reply.status(409).send({ error: 'Informationen ändrades samtidigt av någon annan. Försök igen.' });
+  }
+  if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+    return reply.status(409).send({ error: 'Det finns redan en post med samma unika värde.' });
+  }
+
+  const statusCode = error.statusCode && error.statusCode < 500 ? error.statusCode : 500;
+  if (statusCode >= 500) request.log.error(error);
+
+  return reply.status(statusCode).send({
+    error: statusCode >= 500 ? 'Ett internt serverfel uppstod' : error.message,
+  });
+});
+
 // Type augmentation
 declare module 'fastify' {
   interface FastifyInstance {
@@ -152,6 +171,16 @@ fastify.register(obsidianSyncRoutes, { prefix: '/api/obsidian-sync' });
 fastify.get('/api/health', async () => {
   return { status: 'ok', timestamp: new Date().toISOString() };
 });
+
+fastify.get('/api/ready', async (_request, reply) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    return { status: 'ready', timestamp: new Date().toISOString() };
+  } catch (error) {
+    fastify.log.error(error, 'Databasens readiness-kontroll misslyckades');
+    return reply.status(503).send({ status: 'not-ready' });
+  }
+});
 // Start server
 const start = async () => {
   try {
@@ -165,3 +194,22 @@ const start = async () => {
 };
 
 start();
+
+let isShuttingDown = false;
+const shutdown = async (signal: string) => {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+  fastify.log.info({ signal }, 'Stänger TidApp');
+
+  try {
+    await fastify.close();
+    await prisma.$disconnect();
+    process.exit(0);
+  } catch (error) {
+    fastify.log.error(error, 'Kunde inte stänga TidApp korrekt');
+    process.exit(1);
+  }
+};
+
+process.once('SIGTERM', () => void shutdown('SIGTERM'));
+process.once('SIGINT', () => void shutdown('SIGINT'));

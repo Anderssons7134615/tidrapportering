@@ -7,6 +7,7 @@ import { dashboardApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
 import { AppShell, EmptyState, PageHeader, StatusBadge } from '../components/ui/design';
 import type { DashboardMetric } from '../types';
+import { parseDateOnlyLocal, toDateInputValue } from '../utils/format';
 
 const validMetrics: DashboardMetric[] = ['weekly-hours', 'monthly-hours', 'pending-approval'];
 
@@ -47,8 +48,8 @@ export default function DashboardDetail() {
   }
 
   const isManager = ['ADMIN', 'SUPERVISOR'].includes(user?.role || '');
-  const periodStart = data.period?.start ? new Date(data.period.start) : new Date();
-  const periodEnd = data.period?.end ? new Date(data.period.end) : periodStart;
+  const periodStart = data.period?.start ? parseDateOnlyLocal(data.period.start) : new Date();
+  const periodEnd = data.period?.end ? parseDateOnlyLocal(data.period.end) : periodStart;
   const fallbackTitle =
     metric === 'weekly-hours' ? 'Veckans timmar' :
       metric === 'monthly-hours' ? 'Månadens timmar' :
@@ -122,7 +123,7 @@ function WeeklyUserSummary({ data, periodStart }: { data: any; periodStart: Date
                 {(Array.isArray(summary.days) ? summary.days : []).map((day: any) => (
                   <div key={`${summary.userId}-${day.date}`} className="min-h-16 border-l border-graphite-200 bg-graphite-50 px-2 py-2 text-center">
                     <p className="text-[11px] font-semibold uppercase text-graphite-500">
-                      {format(new Date(day.date), 'EEE', { locale: sv })}
+                      {format(parseDateOnlyLocal(day.date), 'EEE', { locale: sv })}
                     </p>
                     <p className="mt-1 text-sm font-semibold text-graphite-950">{Number(day.hours) > 0 ? formatDecimalHours(day.hours) : '-'}</p>
                     {(Array.isArray(day.projectCodes) ? day.projectCodes : []).length > 0 && (
@@ -169,7 +170,7 @@ function PendingApprovals({ data }: { data: any }) {
             <div className="min-w-0">
               <p className="font-semibold text-graphite-950">{approval.user?.name}</p>
               <p className="mt-1 text-graphite-500">
-                Vecka {format(new Date(approval.weekStartDate), 'w', { locale: sv })} · {format(new Date(approval.weekStartDate), 'd MMM', { locale: sv })}
+                Vecka {format(parseDateOnlyLocal(approval.weekStartDate), 'w', { locale: sv })} · {format(parseDateOnlyLocal(approval.weekStartDate), 'd MMM', { locale: sv })}
               </p>
             </div>
             <p className="text-graphite-700 sm:text-right">
@@ -203,7 +204,7 @@ function EntryList({ data, isManager }: { data: any; isManager: boolean }) {
               <div className="min-w-0">
                 <p className="inline-flex items-center gap-2 text-sm font-semibold text-graphite-950">
                   <CalendarClock className="h-4 w-4 text-primary-700" />
-                  {format(new Date(entry.date), 'EEEE d MMM', { locale: sv })}
+                  {format(parseDateOnlyLocal(entry.date), 'EEEE d MMM', { locale: sv })}
                 </p>
                 <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-graphite-600">
                   {isManager && entry.user?.name && (
@@ -228,7 +229,7 @@ function EntryList({ data, isManager }: { data: any; isManager: boolean }) {
                 {entry.note && <p className="mt-3 text-sm text-graphite-600">{entry.note}</p>}
               </div>
               <Link
-                to={`/week?date=${format(new Date(entry.date), 'yyyy-MM-dd')}`}
+                to={`/week?date=${toDateInputValue(entry.date)}`}
                 className="btn-secondary inline-flex shrink-0"
               >
                 Öppna veckan

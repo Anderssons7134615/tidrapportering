@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Building2, Loader2, ShieldCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { authApi } from '../services/api';
@@ -8,6 +8,7 @@ import { useAuthStore } from '../stores/authStore';
 
 export default function Register() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { setAuth } = useAuthStore();
   const [companyName, setCompanyName] = useState('');
   const [orgNumber, setOrgNumber] = useState('');
@@ -15,6 +16,12 @@ export default function Register() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const { data: registrationStatus, isLoading: isLoadingRegistrationStatus } = useQuery({
+    queryKey: ['registration-status'],
+    queryFn: authApi.registrationStatus,
+    staleTime: Infinity,
+    retry: false,
+  });
 
   const registerMutation = useMutation({
     mutationFn: () =>
@@ -26,6 +33,7 @@ export default function Register() {
         password,
       }),
     onSuccess: (data) => {
+      queryClient.clear();
       setAuth(data.token, data.user);
       toast.success(`Välkommen, ${data.user.name}! Ditt företag är registrerat.`);
       navigate('/');
@@ -43,6 +51,19 @@ export default function Register() {
     }
     registerMutation.mutate();
   };
+
+  if (!isLoadingRegistrationStatus && !registrationStatus?.enabled) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[#f4f6f8] px-4 text-graphite-900">
+        <section className="w-full max-w-lg border-y border-graphite-200 bg-white px-5 py-8 text-center sm:border">
+          <ShieldCheck className="mx-auto h-6 w-6 text-primary-700" />
+          <h1 className="mt-3 text-2xl font-semibold text-graphite-950">Registrering är avstängd</h1>
+          <p className="mt-2 text-sm leading-6 text-graphite-600">Nya konton skapas av administratören i TidApp.</p>
+          <Link to="/login" className="btn-primary mt-5 inline-flex">Till inloggningen</Link>
+        </section>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-[#f4f6f8] px-4 py-8 text-graphite-900">

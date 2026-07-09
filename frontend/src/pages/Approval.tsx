@@ -9,7 +9,7 @@ import { timeEntriesApi, weekLocksApi } from '../services/api';
 import { ApprovalSkeleton } from '../components/ui/Skeleton';
 import type { TimeEntry, WeekLock } from '../types';
 import { AppShell, Card, DataTable, EmptyState, KpiCard, PageHeader, StatusBadge } from '../components/ui/design';
-import { formatHours } from '../utils/format';
+import { formatHours, parseDateOnlyLocal, toDateInputValue } from '../utils/format';
 
 const weekdayLabels = ['Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör', 'Sön'];
 
@@ -30,7 +30,7 @@ export default function Approval() {
     queryKey: ['weekDetails', expandedId],
     queryFn: () => {
       if (!expandedLock) return null;
-      return timeEntriesApi.getWeek(format(new Date(expandedLock.weekStartDate), 'yyyy-MM-dd'), expandedLock.userId);
+      return timeEntriesApi.getWeek(toDateInputValue(expandedLock.weekStartDate), expandedLock.userId);
     },
     enabled: Boolean(expandedLock),
   });
@@ -87,12 +87,12 @@ export default function Approval() {
 
   const rows = useMemo(() => {
     return pendingLocks.map((lock) => {
-      const weekStart = new Date(lock.weekStartDate);
+      const weekStart = parseDateOnlyLocal(lock.weekStartDate);
       const details = expandedId === lock.id ? weekDetails?.entries || [] : [];
       const dayHours = Array.from({ length: 7 }, (_, index) => {
         const day = addDays(weekStart, index);
         const key = format(day, 'yyyy-MM-dd');
-        const entries = details.filter((entry) => format(new Date(entry.date), 'yyyy-MM-dd') === key);
+        const entries = details.filter((entry) => toDateInputValue(entry.date) === key);
         return {
           date: day,
           hours: entries.reduce((sum, entry) => sum + entry.hours, 0),
@@ -164,7 +164,7 @@ export default function Approval() {
                         <p className="text-xs text-slate-500">{format(weekStart, 'd/M')} - {format(addDays(weekStart, 6), 'd/M')}</p>
                       </td>
                       {dayHours.map((day) => (
-                        <td key={day.date.toISOString()} className="px-2 py-3 text-center">
+                        <td key={toDateInputValue(day.date)} className="px-2 py-3 text-center">
                           <div className={`rounded-lg border px-2 py-1.5 ${day.hours > 10 ? 'border-rose-200 bg-rose-50 text-rose-700' : day.hours === 0 ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-slate-200 bg-white text-slate-900'}`}>
                             <p className="font-semibold">{formatHours(day.hours)}</p>
                           </div>
@@ -227,7 +227,7 @@ export default function Approval() {
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="font-semibold text-slate-900">{lock.user?.name}</p>
-                    <p className="text-sm text-slate-500">Vecka {format(new Date(lock.weekStartDate), 'w', { locale: sv })} · {formatHours(lock.totalHours)}</p>
+                    <p className="text-sm text-slate-500">Vecka {format(parseDateOnlyLocal(lock.weekStartDate), 'w', { locale: sv })} · {formatHours(lock.totalHours)}</p>
                   </div>
                   <StatusBadge label={lock.status === 'APPROVED' ? 'Godkänd' : 'Nekad'} tone={lock.status === 'APPROVED' ? 'green' : 'red'} />
                 </div>
@@ -274,7 +274,7 @@ function renderWeekDetails({
           <p className="font-semibold text-slate-900">Tidrader för {lock.user?.name}</p>
           <p className="text-sm text-slate-500">Rätta datum, projekt, timmar eller ta bort felaktiga rader.</p>
         </div>
-        <Link to={`/time-entry?date=${format(new Date(lock.weekStartDate), 'yyyy-MM-dd')}&userId=${lock.userId}&return=/approval`} className="btn-secondary inline-flex">
+        <Link to={`/time-entry?date=${toDateInputValue(lock.weekStartDate)}&userId=${lock.userId}&return=/approval`} className="btn-secondary inline-flex">
           <Plus className="h-4 w-4" />
           Lägg till tid
         </Link>
@@ -288,7 +288,7 @@ function renderWeekDetails({
             <div key={entry.id} className="grid grid-cols-1 gap-3 rounded-lg border border-slate-200 bg-white p-3 text-sm lg:grid-cols-[1fr_auto] lg:items-center">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-semibold text-slate-900">{format(new Date(entry.date), 'EEE d/M', { locale: sv })}</span>
+                  <span className="font-semibold text-slate-900">{format(parseDateOnlyLocal(entry.date), 'EEE d/M', { locale: sv })}</span>
                   {!entry.projectId && <StatusBadge label="Saknar projekt" tone="yellow" />}
                   {!entry.activityId && <StatusBadge label="Saknar aktivitet" tone="red" />}
                 </div>
@@ -341,7 +341,7 @@ function getLockDeviations(lock: WeekLock, entries: TimeEntry[], hasDetails: boo
 
   const dayTotals = new Map<string, number>();
   entries.forEach((entry) => {
-    const key = format(new Date(entry.date), 'yyyy-MM-dd');
+    const key = toDateInputValue(entry.date);
     dayTotals.set(key, (dayTotals.get(key) || 0) + entry.hours);
     if (!entry.activityId) deviations.push('Saknar aktivitet');
     if (!entry.projectId) deviations.push('Saknar projekt');

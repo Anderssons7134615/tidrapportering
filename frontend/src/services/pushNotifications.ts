@@ -1,6 +1,20 @@
 import { pushSubscriptionsApi } from './api';
 
-const PUSH_SW_PATH = '/push-sw.js';
+const PUSH_SW_PATH = '/sw.js';
+
+function isPushRegistration(registration: ServiceWorkerRegistration) {
+  const scriptUrl = registration.active?.scriptURL || registration.waiting?.scriptURL || registration.installing?.scriptURL;
+  return scriptUrl ? new URL(scriptUrl).pathname === PUSH_SW_PATH : false;
+}
+
+async function getOrRegisterPushWorker() {
+  const registrations = await navigator.serviceWorker.getRegistrations();
+  const existing = registrations.find(isPushRegistration);
+  if (existing) return existing;
+
+  await navigator.serviceWorker.register(PUSH_SW_PATH, { scope: '/' });
+  return navigator.serviceWorker.ready;
+}
 
 function base64ToUint8Array(base64String: string): Uint8Array {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
@@ -17,7 +31,7 @@ export async function getPushStatus() {
   }
 
   const registrations = await navigator.serviceWorker.getRegistrations();
-  const registration = registrations.find((item) => item.active?.scriptURL.endsWith(PUSH_SW_PATH));
+  const registration = registrations.find(isPushRegistration);
   if (!registration) {
     return { supported: true, permission: Notification.permission, hasLocalSubscription: false };
   }
@@ -42,7 +56,7 @@ export async function enablePushNotifications() {
   }
 
   const keyResponse = await pushSubscriptionsApi.getPublicKey();
-  const registration = await navigator.serviceWorker.register(PUSH_SW_PATH);
+  const registration = await getOrRegisterPushWorker();
 
   let permission: NotificationPermission = Notification.permission;
   if (permission !== 'granted') {
@@ -75,7 +89,9 @@ export async function disablePushNotifications() {
     throw new Error('Din enhet stödjer inte push-notiser i webbläsaren');
   }
 
-  const registration = await navigator.serviceWorker.register(PUSH_SW_PATH);
+  const registrations = await navigator.serviceWorker.getRegistrations();
+  const registration = registrations.find(isPushRegistration);
+  if (!registration) return { removed: false };
   const subscription = await registration.pushManager.getSubscription();
 
   if (!subscription) {

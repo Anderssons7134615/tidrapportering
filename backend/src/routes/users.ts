@@ -1,8 +1,10 @@
 import { FastifyPluginAsync } from 'fastify';
+import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import { prisma } from '../index.js';
 import { deleteAttachmentFiles } from '../lib/attachments.js';
+import { requireRoles } from '../lib/authorization.js';
 
 const createUserSchema = z.object({
   email: z.string().email(),
@@ -20,33 +22,14 @@ const updateUserSchema = z.object({
   active: z.boolean().optional(),
 });
 
-// Middleware för att kontrollera admin/supervisor
-const requireAdminOrSupervisor = async (request: any, reply: any) => {
-  await request.jwtVerify();
-  const user = await prisma.user.findUnique({ where: { id: request.user.id }, select: { active: true, companyId: true } });
-  if (!user || !user.active || user.companyId !== request.user.companyId) {
-    return reply.status(401).send({ error: 'Unauthorized' });
-  }
-  if (!['ADMIN', 'SUPERVISOR', 'ACCOUNTANT'].includes(request.user.role)) {
-    return reply.status(403).send({ error: 'Åtkomst nekad' });
-  }
-};
-
-const requireAdmin = async (request: any, reply: any) => {
-  await request.jwtVerify();
-  const user = await prisma.user.findUnique({ where: { id: request.user.id }, select: { active: true, companyId: true } });
-  if (!user || !user.active || user.companyId !== request.user.companyId) {
-    return reply.status(401).send({ error: 'Unauthorized' });
-  }
-  if (request.user.role !== 'ADMIN') {
-    return reply.status(403).send({ error: 'Endast admin har åtkomst' });
-  }
-};
+const requireUserViewer = requireRoles(['ADMIN', 'SUPERVISOR', 'ACCOUNTANT']);
+const requireAdmin = requireRoles(['ADMIN'], 'Endast admin har åtkomst');
+const normalizeEmail = (email: string) => email.trim().toLowerCase();
 
 const userRoutes: FastifyPluginAsync = async (fastify) => {
   // List users (only same company)
   fastify.get('/', {
-    preHandler: [requireAdminOrSupervisor],
+    preHandler: [requireUserViewer],
   }, async (request) => {
     const users = await prisma.user.findMany({
       where: { companyId: request.user.companyId },
@@ -103,9 +86,10 @@ const userRoutes: FastifyPluginAsync = async (fastify) => {
   }, async (request, reply) => {
     try {
       const body = createUserSchema.parse(request.body);
+      const email = normalizeEmail(body.email);
 
-      const existingUser = await prisma.user.findUnique({
-        where: { email: body.email },
+      const existingUser = await prisma.user.findFirst({
+        where: { email: { equals: email, mode: 'insensitive' } },
       });
 
       if (existingUser) {
@@ -117,6 +101,7 @@ const userRoutes: FastifyPluginAsync = async (fastify) => {
       const user = await prisma.user.create({
         data: {
           ...body,
+          email,
           password: hashedPassword,
           companyId: request.user.companyId,
         },
@@ -164,22 +149,51 @@ const userRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(404).send({ error: 'Användare hittades inte' });
       }
 
+      if (id === request.user.id && body.active === false) {
+        return reply.status(400).send({ error: 'Du kan inte inaktivera ditt eget konto' });
+      }
+
+      const updateData = {
+        ...body,
+        ...(body.email ? { email: normalizeEmail(body.email) } : {}),
+      };
+
       // Spara gamla värden för audit
       const oldValue = { email: user.email, name: user.name, role: user.role, active: user.active };
 
-      const updatedUser = await prisma.user.update({
-        where: { id },
-        data: body,
-        select: {
-          id: true,
-          email: true,
-          name: true,
-          role: true,
-          hourlyCost: true,
-          active: true,
-          createdAt: true,
-        },
-      });
+      const updatedUser = await prisma.$transaction(async (tx) => {
+        const removesActiveAdmin = user.role === 'ADMIN' && user.active && (
+          (updateData.role !== undefined && updateData.role !== 'ADMIN') || updateData.active === false
+        );
+
+        if (removesActiveAdmin) {
+          const otherAdminCount = await tx.user.count({
+            where: {
+              companyId: request.user.companyId,
+              id: { not: id },
+              role: 'ADMIN',
+              active: true,
+            },
+          });
+          if (otherAdminCount === 0) {
+            throw Object.assign(new Error('Företaget måste ha minst en aktiv admin'), { statusCode: 400 });
+          }
+        }
+
+        return tx.user.update({
+          where: { id },
+          data: updateData,
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            role: true,
+            hourlyCost: true,
+            active: true,
+            createdAt: true,
+          },
+        });
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
       // Audit log
       await prisma.auditLog.create({
@@ -189,7 +203,7 @@ const userRoutes: FastifyPluginAsync = async (fastify) => {
           entityType: 'User',
           entityId: id,
           oldValue: JSON.stringify(oldValue),
-          newValue: JSON.stringify(body),
+          newValue: JSON.stringify(updateData),
         },
       });
 

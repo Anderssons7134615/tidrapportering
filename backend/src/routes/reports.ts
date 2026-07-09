@@ -1,20 +1,11 @@
 import { FastifyPluginAsync } from 'fastify';
 import ExcelJS from 'exceljs';
 import { prisma } from '../index.js';
+import { requireRoles } from '../lib/authorization.js';
+import { createCsvRow } from '../lib/csv.js';
+import { endOfUtcDay, getWeekStartUtc, parseDateOnly } from '../lib/dateOnly.js';
 
-const requireReportViewer = async (request: any, reply: any) => {
-  await request.jwtVerify();
-  const user = await prisma.user.findUnique({
-    where: { id: request.user.id },
-    select: { active: true, companyId: true },
-  });
-  if (!user || !user.active || user.companyId !== request.user.companyId) {
-    return reply.status(401).send({ error: 'Unauthorized' });
-  }
-  if (!['ADMIN', 'SUPERVISOR', 'ACCOUNTANT'].includes(request.user.role)) {
-    return reply.status(403).send({ error: 'Åtkomst nekad' });
-  }
-};
+const requireReportViewer = requireRoles(['ADMIN', 'SUPERVISOR', 'ACCOUNTANT']);
 
 const reportRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get('/time-backup.xlsx', {
@@ -22,15 +13,14 @@ const reportRoutes: FastifyPluginAsync = async (fastify) => {
   }, async (request, reply) => {
     const { from, to } = request.query as { from?: string; to?: string };
 
-    if (!from || !to) {
-      return reply.status(400).send({ error: 'from och to krävs' });
-    }
+    const range = parseReportRange(from, to);
+    if (!range) return reply.status(400).send({ error: 'Ange en giltig period som YYYY-MM-DD där from inte är efter to' });
 
     const entries = await prisma.timeEntry.findMany({
       where: {
         date: {
-          gte: new Date(from),
-          lte: getDayEnd(to),
+          gte: range.from,
+          lte: range.to,
         },
         status: 'APPROVED',
         user: { companyId: request.user.companyId },
@@ -49,7 +39,7 @@ const reportRoutes: FastifyPluginAsync = async (fastify) => {
 
     const entriesByWeek = new Map<string, typeof entries>();
     for (const entry of entries) {
-      const weekStart = getWeekStart(entry.date);
+      const weekStart = getWeekStartUtc(entry.date);
       const key = weekStart.toISOString();
       if (!entriesByWeek.has(key)) entriesByWeek.set(key, []);
       entriesByWeek.get(key)!.push(entry);
@@ -60,7 +50,7 @@ const reportRoutes: FastifyPluginAsync = async (fastify) => {
     } else {
       for (const [weekKey, weekEntries] of Array.from(entriesByWeek.entries()).sort(([a], [b]) => a.localeCompare(b))) {
         const weekStart = new Date(weekKey);
-        addBackupWorksheet(workbook, `v${getISOWeek(weekStart)} ${weekStart.getFullYear()}`, weekEntries);
+        addBackupWorksheet(workbook, `v${getISOWeek(weekStart)} ${weekStart.getUTCFullYear()}`, weekEntries);
       }
     }
 
@@ -89,15 +79,14 @@ const reportRoutes: FastifyPluginAsync = async (fastify) => {
       format?: string;
     };
 
-    if (!from || !to) {
-      return reply.status(400).send({ error: 'from och to krävs' });
-    }
+    const range = parseReportRange(from, to);
+    if (!range) return reply.status(400).send({ error: 'Ange en giltig period som YYYY-MM-DD där from inte är efter to' });
 
     const entries = await prisma.timeEntry.findMany({
       where: {
         date: {
-          gte: new Date(from),
-          lte: getDayEnd(to),
+          gte: range.from,
+          lte: range.to,
         },
         status: 'APPROVED',
         ...(userId ? { userId } : {}),
@@ -256,14 +245,13 @@ const reportRoutes: FastifyPluginAsync = async (fastify) => {
       format?: string;
     };
 
-    if (!from || !to) {
-      return reply.status(400).send({ error: 'from och to krävs' });
-    }
+    const range = parseReportRange(from, to);
+    if (!range) return reply.status(400).send({ error: 'Ange en giltig period som YYYY-MM-DD där from inte är efter to' });
 
     const where: any = {
       date: {
-        gte: new Date(from),
-        lte: getDayEnd(to),
+        gte: range.from,
+        lte: range.to,
       },
       status: 'APPROVED', // Endast attesterade
       user: { companyId: request.user.companyId },
@@ -363,11 +351,11 @@ const reportRoutes: FastifyPluginAsync = async (fastify) => {
         e.activity.code,
         e.hours.toString().replace('.', ','),
         e.project?.code || 'Intern',
-        (e.note || '').replace(/"/g, '""'),
+        e.note || '',
       ]);
 
-      const csv = BOM + headers.join(delimiter) + '\n' +
-        rows.map((row) => row.map((cell) => `"${cell}"`).join(delimiter)).join('\n');
+      const csv = BOM + createCsvRow(headers, delimiter) + '\n' +
+        rows.map((row) => createCsvRow(row, delimiter)).join('\n');
 
       // Audit log
       await prisma.auditLog.create({
@@ -423,8 +411,13 @@ const reportRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     const where: any = { projectId: id };
-    if (from) where.date = { ...where.date, gte: new Date(from) };
-    if (to) where.date = { ...where.date, lte: getDayEnd(to) };
+    const parsedFrom = from ? parseDateOnly(from) : null;
+    const parsedTo = to ? parseDateOnly(to) : null;
+    if ((from && !parsedFrom) || (to && !parsedTo) || (parsedFrom && parsedTo && parsedFrom > parsedTo)) {
+      return reply.status(400).send({ error: 'Ange giltiga datum som YYYY-MM-DD där from inte är efter to' });
+    }
+    if (parsedFrom) where.date = { ...where.date, gte: parsedFrom };
+    if (parsedTo) where.date = { ...where.date, lte: endOfUtcDay(parsedTo) };
 
     const entries = await prisma.timeEntry.findMany({
       where,
@@ -452,7 +445,9 @@ const reportRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     return {
-      project,
+      project: request.user.role === 'EMPLOYEE'
+        ? { ...project, customer: project.customer ? { id: project.customer.id, name: project.customer.name } : null }
+        : project,
       entries,
       summary: {
         totalHours,
@@ -466,23 +461,16 @@ const reportRoutes: FastifyPluginAsync = async (fastify) => {
   });
 };
 
-function getDayEnd(date: string): Date {
-  const d = new Date(date);
-  d.setHours(23, 59, 59, 999);
-  return d;
-}
-
-function getWeekStart(date: Date): Date {
-  const d = new Date(date);
-  const day = d.getDay();
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-  d.setDate(diff);
-  d.setHours(0, 0, 0, 0);
-  return d;
+function parseReportRange(from?: string, to?: string) {
+  if (!from || !to) return null;
+  const parsedFrom = parseDateOnly(from);
+  const parsedTo = parseDateOnly(to);
+  if (!parsedFrom || !parsedTo || parsedFrom > parsedTo) return null;
+  return { from: parsedFrom, to: endOfUtcDay(parsedTo) };
 }
 
 function getISOWeek(date: Date): number {
-  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
   const dayNumber = d.getUTCDay() || 7;
   d.setUTCDate(d.getUTCDate() + 4 - dayNumber);
   const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));

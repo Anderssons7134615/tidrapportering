@@ -5,8 +5,9 @@ import { CalendarDays, Download, FileSpreadsheet, Search, Umbrella, Users } from
 import toast from 'react-hot-toast';
 import { reportsApi, usersApi } from '../services/api';
 import { ReportsSkeleton } from '../components/ui/Skeleton';
+import { QueryError } from '../components/ui/QueryError';
 import { AppShell, Button, EmptyState, StatusBadge } from '../components/ui/design';
-import { formatDate, formatHours } from '../utils/format';
+import { formatDate, formatHours, parseDateOnlyLocal } from '../utils/format';
 
 type TimeKind = 'regular' | 'overtime' | 'vacation' | 'absence';
 
@@ -68,7 +69,7 @@ function currentPayrollPeriod(referenceDate = new Date()) {
 }
 
 function previousPayrollPeriod(fromDate: string) {
-  const currentStart = new Date(fromDate);
+  const currentStart = parseDateOnlyLocal(fromDate);
   const end = new Date(currentStart.getFullYear(), currentStart.getMonth(), 20);
   const start = new Date(end.getFullYear(), end.getMonth() - 1, 21);
   return { from: toDateInput(start), to: toDateInput(end) };
@@ -120,7 +121,7 @@ export default function Reports() {
   const [backupToDate, setBackupToDate] = useState(format(new Date(new Date().getFullYear(), 11, 31), 'yyyy-MM-dd'));
 
   const { data: users } = useQuery({ queryKey: ['users'], queryFn: usersApi.list });
-  const { data: reportData, isLoading } = useQuery<any>({
+  const { data: reportData, isLoading, isError, refetch } = useQuery<any>({
     queryKey: ['report', 'payroll', fromDate, toDate, selectedUserId],
     queryFn: () => reportsApi.salary(fromDate, toDate, selectedUserId || undefined),
   });
@@ -358,6 +359,8 @@ export default function Reports() {
 
       {isLoading ? (
         <ReportsSkeleton />
+      ) : isError ? (
+        <QueryError title="Kunde inte hämta rapporten" onRetry={() => void refetch()} />
       ) : (
         <main className="space-y-7">
           <section className="space-y-3 text-sm leading-7 text-graphite-700">
