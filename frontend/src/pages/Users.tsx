@@ -2,16 +2,16 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { usersApi } from '../services/api';
 import type { User } from '../types';
-import { Plus, Edit2, Trash2, Loader2, X, Shield } from 'lucide-react';
+import { Plus, Edit2, Trash2, Loader2, Shield } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ListSkeleton } from '../components/ui/Skeleton';
-import { AppShell, DataTable, PageHeader, StatusBadge } from '../components/ui/design';
+import { AppShell, ConfirmDialog, DataTable, Dialog, PageHeader, StatusBadge } from '../components/ui/design';
 
 const roleLabels: Record<string, string> = {
   ADMIN: 'Admin',
   SUPERVISOR: 'Arbetsledare',
   EMPLOYEE: 'Medarbetare',
-  ACCOUNTANT: 'Revisor',
+  ACCOUNTANT: 'Lön och ekonomi',
 };
 
 const roleTones: Record<string, 'red' | 'yellow' | 'blue' | 'green'> = {
@@ -25,6 +25,8 @@ export default function UsersPage() {
   const queryClient = useQueryClient();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [deletingUser, setDeletingUser] = useState<User | null>(null);
+  const [gdprDeletingUser, setGdprDeletingUser] = useState<User | null>(null);
 
   const { data: users, isLoading } = useQuery({
     queryKey: ['users'],
@@ -56,6 +58,7 @@ export default function UsersPage() {
     mutationFn: usersApi.delete,
     onSuccess: () => {
       toast.success('Användare inaktiverad');
+      setDeletingUser(null);
       queryClient.invalidateQueries({ queryKey: ['users'] });
     },
     onError: (error: Error) => toast.error(error.message),
@@ -65,6 +68,7 @@ export default function UsersPage() {
     mutationFn: usersApi.gdprDelete,
     onSuccess: () => {
       toast.success('Användare raderad permanent');
+      setGdprDeletingUser(null);
       queryClient.invalidateQueries({ queryKey: ['users'] });
     },
     onError: (error: Error) => toast.error(error.message),
@@ -147,7 +151,7 @@ export default function UsersPage() {
                     {user.active ? (
                       <button
                         onClick={() => {
-                          if (confirm('Inaktivera användare?')) deleteMutation.mutate(user.id);
+                          setDeletingUser(user);
                         }}
                         className="rounded-md p-2 text-graphite-500 hover:bg-rose-50 hover:text-rose-700"
                         aria-label="Inaktivera användare"
@@ -157,9 +161,7 @@ export default function UsersPage() {
                     ) : (
                       <button
                         onClick={() => {
-                          if (confirm('GDPR: Radera användare och ALL data permanent? Detta kan inte ångras.')) {
-                            gdprDeleteMutation.mutate(user.id);
-                          }
+                          setGdprDeletingUser(user);
                         }}
                         className="rounded-md p-2 text-rose-600 hover:bg-rose-50 hover:text-rose-700"
                         title="GDPR: Radera permanent"
@@ -175,18 +177,13 @@ export default function UsersPage() {
         </table>
       </DataTable>
 
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-graphite-950/45 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md overflow-hidden rounded-lg border border-graphite-200 bg-white shadow-md">
-            <div className="flex items-center justify-between border-b border-graphite-200 px-4 py-3">
-              <h2 className="font-semibold text-graphite-950">
-                {editingUser ? 'Redigera användare' : 'Ny användare'}
-              </h2>
-              <button onClick={closeModal} className="rounded-md p-1.5 text-graphite-500 hover:bg-graphite-100 hover:text-graphite-950">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <form onSubmit={handleSubmit} className="space-y-4 p-4">
+      <Dialog
+        open={isModalOpen}
+        onClose={closeModal}
+        title={editingUser ? 'Redigera användare' : 'Ny användare'}
+        footer={<div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><button type="button" onClick={closeModal} className="btn-secondary">Avbryt</button><button type="submit" form="user-form" disabled={createMutation.isPending || updateMutation.isPending} className="btn-primary">{createMutation.isPending || updateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : editingUser ? 'Spara' : 'Skapa'}</button></div>}
+      >
+            <form id="user-form" onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="label">Namn *</label>
                 <input name="name" defaultValue={editingUser?.name} className="input" required />
@@ -205,23 +202,15 @@ export default function UsersPage() {
                 <label className="label">Roll</label>
                 <select name="role" defaultValue={editingUser?.role || 'EMPLOYEE'} className="input">
                   <option value="EMPLOYEE">Medarbetare</option>
-                  <option value="ACCOUNTANT">Revisor</option>
+                  <option value="ACCOUNTANT">Lön och ekonomi</option>
                   <option value="SUPERVISOR">Arbetsledare</option>
                   <option value="ADMIN">Admin</option>
                 </select>
               </div>
-              <div className="grid grid-cols-2 gap-3 pt-2">
-                <button type="button" onClick={closeModal} className="btn-secondary">
-                  Avbryt
-                </button>
-                <button type="submit" disabled={createMutation.isPending || updateMutation.isPending} className="btn-primary">
-                  {createMutation.isPending || updateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : editingUser ? 'Spara' : 'Skapa'}
-                </button>
-              </div>
             </form>
-          </div>
-        </div>
-      )}
+      </Dialog>
+      <ConfirmDialog open={Boolean(deletingUser)} onClose={() => setDeletingUser(null)} onConfirm={() => deletingUser && deleteMutation.mutate(deletingUser.id)} title="Inaktivera användare" description={deletingUser ? `${deletingUser.name} kan inte längre logga in, men historik behålls.` : undefined} confirmLabel="Inaktivera" isLoading={deleteMutation.isPending} />
+      <ConfirmDialog open={Boolean(gdprDeletingUser)} onClose={() => setGdprDeletingUser(null)} onConfirm={() => gdprDeletingUser && gdprDeleteMutation.mutate(gdprDeletingUser.id)} title="Radera användare permanent" description={gdprDeletingUser ? `Radera ${gdprDeletingUser.name} och personens data permanent? Åtgärden kan inte ångras.` : undefined} confirmLabel="Radera permanent" isLoading={gdprDeleteMutation.isPending} />
     </AppShell>
   );
 }

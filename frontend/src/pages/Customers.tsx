@@ -1,17 +1,18 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Edit2, Loader2, Plus, Search, Trash2, X } from 'lucide-react';
+import { Edit2, Loader2, Plus, Search, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { customersApi } from '../services/api';
 import type { Customer } from '../types';
 import { ListSkeleton } from '../components/ui/Skeleton';
-import { AppShell, DataTable, EmptyState, FilterBar, KpiCard, PageHeader, StatusBadge } from '../components/ui/design';
+import { AppShell, ConfirmDialog, DataTable, Dialog, EmptyState, FilterBar, KpiCard, PageHeader, StatusBadge } from '../components/ui/design';
 
 export default function Customers() {
   const queryClient = useQueryClient();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+  const [deletingCustomer, setDeletingCustomer] = useState<Customer | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'active' | 'inactive' | 'all'>('active');
 
@@ -44,6 +45,7 @@ export default function Customers() {
     mutationFn: customersApi.delete,
     onSuccess: () => {
       toast.success('Kund inaktiverad');
+      setDeletingCustomer(null);
       queryClient.invalidateQueries({ queryKey: ['customers'] });
     },
     onError: (error: Error) => toast.error(error.message),
@@ -191,7 +193,7 @@ export default function Customers() {
                       {customer.active && (
                         <button
                           onClick={() => {
-                            if (confirm('Inaktivera kund?')) deleteMutation.mutate(customer.id);
+                          setDeletingCustomer(customer);
                           }}
                           className="rounded-md p-2 text-graphite-500 hover:bg-rose-50 hover:text-rose-700"
                           aria-label="Inaktivera kund"
@@ -208,16 +210,13 @@ export default function Customers() {
         </DataTable>
       )}
 
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-graphite-950/45 p-4 backdrop-blur-sm">
-          <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-lg border border-graphite-200 bg-white shadow-md">
-            <div className="flex items-center justify-between border-b border-graphite-200 px-4 py-3">
-              <h2 className="font-semibold text-graphite-950">{editingCustomer ? 'Redigera kund' : 'Ny kund'}</h2>
-              <button onClick={closeModal} className="rounded-md p-1.5 text-graphite-500 hover:bg-graphite-100 hover:text-graphite-950">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <form onSubmit={handleSubmit} className="space-y-4 p-4">
+      <Dialog
+        open={isModalOpen}
+        onClose={closeModal}
+        title={editingCustomer ? 'Redigera kund' : 'Ny kund'}
+        footer={<div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><button type="button" onClick={closeModal} className="btn-secondary">Avbryt</button><button type="submit" form="customer-form" disabled={createMutation.isPending || updateMutation.isPending} className="btn-primary">{createMutation.isPending || updateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : editingCustomer ? 'Spara' : 'Skapa'}</button></div>}
+      >
+            <form id="customer-form" onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="label">Namn *</label>
                 <input name="name" defaultValue={editingCustomer?.name} className="input" required />
@@ -244,18 +243,9 @@ export default function Customers() {
                   <input name="phone" defaultValue={editingCustomer?.phone || ''} className="input" />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3 pt-2">
-                <button type="button" onClick={closeModal} className="btn-secondary">
-                  Avbryt
-                </button>
-                <button type="submit" disabled={createMutation.isPending || updateMutation.isPending} className="btn-primary">
-                  {createMutation.isPending || updateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : editingCustomer ? 'Spara' : 'Skapa'}
-                </button>
-              </div>
             </form>
-          </div>
-        </div>
-      )}
+      </Dialog>
+      <ConfirmDialog open={Boolean(deletingCustomer)} onClose={() => setDeletingCustomer(null)} onConfirm={() => deletingCustomer && deleteMutation.mutate(deletingCustomer.id)} title="Inaktivera kund" description={deletingCustomer ? `${deletingCustomer.name} blir inaktiv och kan inte väljas för nya projekt.` : undefined} confirmLabel="Inaktivera" isLoading={deleteMutation.isPending} />
     </AppShell>
   );
 }

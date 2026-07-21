@@ -4,7 +4,7 @@ import { Download, Edit2, FileSpreadsheet, Plus, Power, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { projectsApi } from '../services/api';
 import type { MaterialArticle, MaterialCategory } from '../types';
-import { AppShell, Button, Card, DataTable, EmptyState, FormField, PageHeader, StatusBadge } from '../components/ui/design';
+import { AppShell, Button, ConfirmDialog, DataTable, EmptyState, FormField, PageHeader, StatusBadge, TaskSection } from '../components/ui/design';
 import { formatCurrency, parseSwedishNumber } from '../utils/format';
 
 const categories: MaterialCategory[] = ['Rörskål', 'Lamellmatta', 'Plåt', 'Tejp', 'Brandtätning', 'Skruv/nit', 'Övrigt'];
@@ -38,6 +38,7 @@ export default function Materials() {
   const [isExporting, setIsExporting] = useState(false);
   const [isDownloadingTemplate, setIsDownloadingTemplate] = useState(false);
   const [importErrors, setImportErrors] = useState<Array<{ row: number; message: string }>>([]);
+  const [deletingArticle, setDeletingArticle] = useState<MaterialArticle | null>(null);
 
   const { data: articles, isLoading } = useQuery({
     queryKey: ['material-articles', showInactive],
@@ -83,6 +84,7 @@ export default function Materials() {
     mutationFn: projectsApi.deleteMaterialArticle,
     onSuccess: () => {
       toast.success('Materialartikel inaktiverad');
+      setDeletingArticle(null);
       queryClient.invalidateQueries({ queryKey: ['material-articles'] });
     },
     onError: (error: Error) => toast.error(error.message),
@@ -196,15 +198,15 @@ export default function Materials() {
       />
 
       {importErrors.length > 0 && (
-        <Card className="border-rose-200 bg-rose-50">
+        <TaskSection className="border-rose-200 bg-rose-50">
           <h2 className="section-title text-rose-900">Importen innehåller fel</h2>
           <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-rose-800">
             {importErrors.map((error) => <li key={`${error.row}-${error.message}`}>Rad {error.row}: {error.message}</li>)}
           </ul>
-        </Card>
+        </TaskSection>
       )}
 
-      <Card>
+      <TaskSection title={editingId ? 'Redigera materialartikel' : 'Ny materialartikel'}>
         <form onSubmit={save} className="grid grid-cols-1 gap-3 md:grid-cols-4 xl:grid-cols-7">
           <FormField label="Artikel">
             <input className="input" value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} required />
@@ -241,9 +243,9 @@ export default function Materials() {
             )}
           </div>
         </form>
-      </Card>
+      </TaskSection>
 
-      <Card>
+      <TaskSection title="Materialartiklar">
         {isLoading ? (
           <p className="text-sm text-slate-500">Laddar material...</p>
         ) : !articles?.length ? (
@@ -276,11 +278,11 @@ export default function Materials() {
                     <td className="px-3 py-2"><StatusBadge label={article.active ? 'Aktiv' : 'Inaktiv'} tone={article.active ? 'green' : 'gray'} /></td>
                     <td className="px-3 py-2 text-right">
                       <div className="inline-flex gap-1">
-                        <button type="button" onClick={() => startEdit(article)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900" title="Redigera">
+                        <button type="button" onClick={() => startEdit(article)} className="icon-button border-0 text-graphite-500 hover:bg-primary-50 hover:text-primary-700" title="Redigera" aria-label="Redigera materialartikel">
                           <Edit2 className="h-4 w-4" />
                         </button>
                         {article.active && (
-                          <button type="button" onClick={() => window.confirm('Inaktivera artikeln?') && deleteMutation.mutate(article.id)} className="rounded-lg p-2 text-rose-600 hover:bg-rose-50" title="Inaktivera">
+                          <button type="button" onClick={() => setDeletingArticle(article)} className="icon-button border-0 text-rose-600 hover:bg-rose-50" title="Inaktivera" aria-label="Inaktivera materialartikel">
                             <Power className="h-4 w-4" />
                           </button>
                         )}
@@ -292,7 +294,8 @@ export default function Materials() {
             </table>
           </DataTable>
         )}
-      </Card>
+      </TaskSection>
+      <ConfirmDialog open={Boolean(deletingArticle)} onClose={() => setDeletingArticle(null)} onConfirm={() => deletingArticle && deleteMutation.mutate(deletingArticle.id)} title="Inaktivera materialartikel" description={deletingArticle ? `${deletingArticle.name} kan inte väljas på nya materialrader.` : undefined} confirmLabel="Inaktivera" isLoading={deleteMutation.isPending} />
     </AppShell>
   );
 }

@@ -2,10 +2,10 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { activitiesApi } from '../services/api';
 import type { Activity } from '../types';
-import { Plus, Edit2, Trash2, Loader2, X } from 'lucide-react';
+import { Plus, Edit2, Trash2, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ListSkeleton } from '../components/ui/Skeleton';
-import { AppShell, DataTable, PageHeader, StatusBadge } from '../components/ui/design';
+import { AppShell, ConfirmDialog, DataTable, Dialog, PageHeader, StatusBadge } from '../components/ui/design';
 
 const categoryLabels: Record<string, string> = {
   WORK: 'Arbete',
@@ -29,6 +29,7 @@ export default function Activities() {
   const queryClient = useQueryClient();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
+  const [deletingActivity, setDeletingActivity] = useState<Activity | null>(null);
 
   const { data: activities, isLoading } = useQuery({
     queryKey: ['activities'],
@@ -60,6 +61,7 @@ export default function Activities() {
     mutationFn: activitiesApi.delete,
     onSuccess: () => {
       toast.success('Aktivitet borttagen');
+      setDeletingActivity(null);
       queryClient.invalidateQueries({ queryKey: ['activities'] });
     },
     onError: (error: Error) => toast.error(error.message),
@@ -145,7 +147,7 @@ export default function Activities() {
                     </button>
                     <button
                       onClick={() => {
-                        if (confirm('Ta bort aktivitet?')) deleteMutation.mutate(activity.id);
+                        setDeletingActivity(activity);
                       }}
                       className="rounded-md p-2 text-graphite-500 hover:bg-rose-50 hover:text-rose-700"
                       aria-label="Ta bort aktivitet"
@@ -160,23 +162,13 @@ export default function Activities() {
         </table>
       </DataTable>
 
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-graphite-950/45 p-4 backdrop-blur-sm">
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="activity-dialog-title"
-            className="w-full max-w-md overflow-hidden rounded-lg border border-graphite-200 bg-white shadow-md"
-          >
-            <div className="flex items-center justify-between border-b border-graphite-200 px-4 py-3">
-              <h2 id="activity-dialog-title" className="font-semibold text-graphite-950">
-                {editingActivity ? 'Redigera aktivitet' : 'Ny aktivitet'}
-              </h2>
-              <button type="button" onClick={closeModal} aria-label="Stäng" className="rounded-md p-1.5 text-graphite-500 hover:bg-graphite-100 hover:text-graphite-950">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <form onSubmit={handleSubmit} className="space-y-4 p-4">
+      <Dialog
+        open={isModalOpen}
+        onClose={closeModal}
+        title={editingActivity ? 'Redigera aktivitet' : 'Ny aktivitet'}
+        footer={<div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><button type="button" onClick={closeModal} className="btn-secondary">Avbryt</button><button type="submit" form="activity-form" disabled={createMutation.isPending || updateMutation.isPending} className="btn-primary">{createMutation.isPending || updateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : editingActivity ? 'Spara' : 'Skapa'}</button></div>}
+      >
+            <form id="activity-form" onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label htmlFor="activity-name" className="label">Namn *</label>
                 <input id="activity-name" name="name" defaultValue={editingActivity?.name} className="input" required autoFocus />
@@ -201,18 +193,9 @@ export default function Activities() {
                 <label htmlFor="activity-sort-order" className="label">Sorteringsordning</label>
                 <input id="activity-sort-order" name="sortOrder" type="number" defaultValue={editingActivity?.sortOrder || 0} className="input" />
               </div>
-              <div className="grid grid-cols-2 gap-3 pt-2">
-                <button type="button" onClick={closeModal} className="btn-secondary">
-                  Avbryt
-                </button>
-                <button type="submit" disabled={createMutation.isPending || updateMutation.isPending} className="btn-primary">
-                  {createMutation.isPending || updateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : editingActivity ? 'Spara' : 'Skapa'}
-                </button>
-              </div>
             </form>
-          </div>
-        </div>
-      )}
+      </Dialog>
+      <ConfirmDialog open={Boolean(deletingActivity)} onClose={() => setDeletingActivity(null)} onConfirm={() => deletingActivity && deleteMutation.mutate(deletingActivity.id)} title="Ta bort aktivitet" description={deletingActivity ? `${deletingActivity.name} inaktiveras och kan inte väljas för ny tidrapportering.` : undefined} confirmLabel="Inaktivera" isLoading={deleteMutation.isPending} />
     </AppShell>
   );
 }

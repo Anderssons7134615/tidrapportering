@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, type HTMLAttributes, type ReactNode } from 'react';
+import { useId, useLayoutEffect, useRef, type HTMLAttributes, type ReactNode } from 'react';
 import { AlertCircle, Loader2, X } from 'lucide-react';
 
 type Tone = 'blue' | 'green' | 'yellow' | 'red' | 'gray' | 'slate' | 'orange' | 'dark';
@@ -244,14 +244,23 @@ export function Dialog({
   footer?: ReactNode;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
   const titleId = useId();
   const descriptionId = useId();
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
-    if (open && !dialog.open) dialog.showModal();
-    if (!open && dialog.open) dialog.close();
+    if (open && !dialog.open) {
+      previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      dialog.showModal();
+      dialog.querySelector<HTMLElement>('input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled])')?.focus();
+    }
+    if (!open && dialog.open) {
+      dialog.close();
+      previousFocusRef.current?.focus();
+      previousFocusRef.current = null;
+    }
   }, [open]);
 
   return (

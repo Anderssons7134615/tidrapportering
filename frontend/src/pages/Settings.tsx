@@ -112,9 +112,8 @@ export default function Settings() {
         description="Hantera konto, företag och notiser på ett sätt som fungerar lika bra i mobilen som på datorn."
         action={
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-            <div className="chip justify-center">{user?.role === 'ADMIN' ? 'Admin' : user?.role === 'SUPERVISOR' ? 'Arbetsledare' : user?.role === 'ACCOUNTANT' ? 'Revisor' : 'Medarbetare'}</div>
-            <div className="chip justify-center">{pushSubscriptions.length} enhet(er)</div>
-            <div className="chip justify-center">{pushStatus?.permission || 'standard'}</div>
+            <div className="chip justify-center">{user?.role === 'ADMIN' ? 'Admin' : user?.role === 'SUPERVISOR' ? 'Arbetsledare' : user?.role === 'ACCOUNTANT' ? 'Lön och ekonomi' : 'Medarbetare'}</div>
+            <div className="chip justify-center">Notiser på {pushSubscriptions.length} enhet(er)</div>
           </div>
         }
       />
@@ -237,12 +236,7 @@ export default function Settings() {
                   </div>
                 </div>
 
-                {pushSubscriptions.length > 0 && (
-                <div className="rounded-lg border border-graphite-200 bg-graphite-50 px-4 py-3 text-xs text-graphite-500">
-                    <p className="font-semibold uppercase tracking-[0.14em] text-slate-400">Senaste endpoint</p>
-                    <p className="mt-2 break-all">{pushSubscriptions[0].endpoint}</p>
-                  </div>
-                )}
+                <p className="text-sm leading-6 text-graphite-600">Notiser är kopplade till den här enheten. Tekniska uppgifter visas bara i administrativ felsökning.</p>
 
                 <div className="flex flex-col gap-2 sm:flex-row">
                   <button type="button" onClick={() => enablePushMutation.mutate()} disabled={enablePushMutation.isPending} className="btn-primary">
@@ -288,7 +282,7 @@ export default function Settings() {
               <div className="flex items-center justify-between gap-3 rounded-lg bg-graphite-50 px-4 py-3">
                 <span>Roll</span>
                 <span className="font-semibold text-slate-900">
-                  {user?.role === 'ADMIN' ? 'Admin' : user?.role === 'SUPERVISOR' ? 'Arbetsledare' : user?.role === 'ACCOUNTANT' ? 'Revisor' : 'Medarbetare'}
+                  {user?.role === 'ADMIN' ? 'Admin' : user?.role === 'SUPERVISOR' ? 'Arbetsledare' : user?.role === 'ACCOUNTANT' ? 'Lön och ekonomi' : 'Medarbetare'}
                 </span>
               </div>
             </div>
