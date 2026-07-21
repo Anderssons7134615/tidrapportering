@@ -1,0 +1,30 @@
+name: Weekly push reminders
+
+on:
+  schedule:
+    - cron: '*/15 * * * 5'
+  workflow_dispatch:
+
+concurrency:
+  group: weekly-push-reminders
+  cancel-in-progress: false
+
+jobs:
+  send-reminders:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Send due reminders
+        env:
+          REMINDER_JOB_TOKEN: ${{ secrets.REMINDER_JOB_TOKEN }}
+        run: |
+          if [ -z "$REMINDER_JOB_TOKEN" ]; then
+            echo "::error::REMINDER_JOB_TOKEN is not configured"
+            exit 1
+          fi
+
+          curl --silent --show-error --fail-with-body \
+            --retry 2 --retry-all-errors \
+            --request POST \
+            --header "Authorization: Bearer $REMINDER_JOB_TOKEN" \
+            https://api-tid.anderssonsisolering.se/api/reminders/weekly-attestation

@@ -2,6 +2,7 @@ import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../index.js';
 import { requireRoles } from '../lib/authorization.js';
+import { isValidReminderTime } from '../lib/weeklyReminder.js';
 
 const settingsSchema = z.object({
   companyName: z.string().optional(),
@@ -9,7 +10,7 @@ const settingsSchema = z.object({
   weekStartDay: z.number().min(0).max(6).optional(),
   csvDelimiter: z.enum([';', ',', '\\t']).optional(),
   defaultCurrency: z.string().optional(),
-  reminderTime: z.string().optional(),
+  reminderTime: z.string().refine(isValidReminderTime, 'Påminnelsetid måste anges som HH:mm').optional(),
   reminderEnabled: z.boolean().optional(),
 });
 

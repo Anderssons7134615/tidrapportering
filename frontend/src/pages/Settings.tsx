@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Bell, Building, Loader2, Lock, Settings as SettingsIcon } from 'lucide-react';
+import { Bell, BellOff, Building, CheckCircle2, Loader2, Lock, Send, Settings as SettingsIcon, Smartphone } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { authApi, pushSubscriptionsApi, settingsApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
@@ -22,14 +22,14 @@ export default function Settings() {
     queryFn: settingsApi.get,
   });
 
-  const { data: pushSubscriptions = [] } = useQuery({
+  const { data: pushSubscriptions = [], isLoading: isPushSubscriptionsLoading } = useQuery({
     queryKey: ['push-subscriptions'],
     queryFn: pushSubscriptionsApi.list,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   });
 
-  const { data: pushStatus } = useQuery({
+  const { data: pushStatus, isLoading: isPushStatusLoading } = useQuery({
     queryKey: ['push-status'],
     queryFn: getPushStatus,
     refetchOnWindowFocus: false,
@@ -73,8 +73,39 @@ export default function Settings() {
       queryClient.invalidateQueries({ queryKey: ['push-subscriptions'] });
       queryClient.invalidateQueries({ queryKey: ['push-status'] });
     },
-    onError: (error: Error) => toast.error(error.message),
+    onError: (error: Error) => {
+      toast.error(error.message);
+      queryClient.invalidateQueries({ queryKey: ['push-subscriptions'] });
+      queryClient.invalidateQueries({ queryKey: ['push-status'] });
+    },
   });
+
+  const testPushMutation = useMutation({
+    mutationFn: () => {
+      if (!pushStatus?.endpoint) throw new Error('Aktivera notiser på den här enheten först');
+      return pushSubscriptionsApi.test(pushStatus.endpoint);
+    },
+    onSuccess: () => {
+      toast.success('Provnotisen är skickad');
+      queryClient.invalidateQueries({ queryKey: ['push-subscriptions'] });
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+      queryClient.invalidateQueries({ queryKey: ['push-subscriptions'] });
+      queryClient.invalidateQueries({ queryKey: ['push-status'] });
+    },
+  });
+
+  const permissionLabel = pushStatus?.permission === 'granted'
+    ? 'Tillåtet'
+    : pushStatus?.permission === 'denied'
+      ? 'Blockerat'
+      : 'Inte valt';
+  const isPushLoading = isPushSubscriptionsLoading || isPushStatusLoading;
+  const currentDeviceActive = Boolean(
+    pushStatus?.endpoint
+    && pushSubscriptions.some((subscription) => subscription.endpoint === pushStatus.endpoint)
+  );
 
   const handleSettingsSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -187,16 +218,22 @@ export default function Settings() {
 
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div>
-                    <label className="label">Påminnelsetid</label>
+                    <label className="label">Fredagspåminnelse</label>
                     <input name="reminderTime" type="time" defaultValue={settings.reminderTime} className="input" />
                   </div>
-                  <div>
-                    <label className="label">Påminnelser</label>
-                    <select name="reminderEnabled" defaultValue={settings.reminderEnabled ? 'true' : 'false'} className="input">
-                      <option value="true">Aktiverade</option>
-                      <option value="false">Avaktiverade</option>
-                    </select>
-                  </div>
+                  <label className="flex min-h-11 cursor-pointer items-center justify-between gap-4 rounded-md border border-graphite-200 bg-white px-3.5 py-2.5">
+                    <span>
+                      <span className="block text-sm font-semibold text-graphite-900">Automatisk påminnelse</span>
+                      <span className="block text-xs leading-5 text-graphite-600">Skickas på fredagar efter vald tid.</span>
+                    </span>
+                    <input
+                      name="reminderEnabled"
+                      type="checkbox"
+                      value="true"
+                      defaultChecked={settings.reminderEnabled}
+                      className="h-5 w-5 shrink-0 accent-primary-700"
+                    />
+                  </label>
                 </div>
 
                 <button type="submit" disabled={updateSettingsMutation.isPending} className="btn-primary">
@@ -219,37 +256,64 @@ export default function Settings() {
               </div>
             </div>
 
-            {!pushStatus?.supported ? (
-              <p className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                Din webbläsare stödjer inte push-notiser.
+            {isPushLoading ? (
+              <p className="border-y border-graphite-200 py-4 text-sm text-graphite-600">Kontrollerar notisstatus...</p>
+            ) : pushStatus?.requiresHomeScreenInstall ? (
+              <div className="border-y border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
+                På iPhone behöver TidApp ligga på hemskärmen. Öppna sidan i Safari, välj Dela och sedan Lägg till på hemskärmen. Öppna därefter TidApp från hemskärmen.
+              </div>
+            ) : !pushStatus?.supported ? (
+              <p className="border-y border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                Den här webbläsaren kan inte ta emot push-notiser.
               </p>
             ) : (
               <div className="space-y-4">
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div className="soft-panel p-4">
-                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Behörighet</p>
-                    <p className="mt-2 text-lg font-semibold text-slate-900">{pushStatus.permission}</p>
+                <div className="divide-y divide-graphite-200 border-y border-graphite-200">
+                  <div className="flex min-h-14 items-center justify-between gap-4 py-3">
+                    <span className="flex items-center gap-3 text-sm text-graphite-700">
+                      <Smartphone className="h-4 w-4 text-graphite-500" aria-hidden="true" />
+                      Den här enheten
+                    </span>
+                    <span className="flex items-center gap-2 text-sm font-semibold text-graphite-950">
+                      {currentDeviceActive && <CheckCircle2 className="h-4 w-4 text-emerald-700" aria-hidden="true" />}
+                      {currentDeviceActive ? 'Aktiv' : 'Inte aktiv'}
+                    </span>
                   </div>
-                  <div className="soft-panel p-4">
-                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Registrerade enheter</p>
-                    <p className="mt-2 text-lg font-semibold text-slate-900">{pushSubscriptions.length}</p>
+                  <div className="flex min-h-14 items-center justify-between gap-4 py-3">
+                    <span className="text-sm text-graphite-700">Tillstånd i webbläsaren</span>
+                    <span className="text-sm font-semibold text-graphite-950">{permissionLabel}</span>
+                  </div>
+                  <div className="flex min-h-14 items-center justify-between gap-4 py-3">
+                    <span className="text-sm text-graphite-700">Dina registrerade enheter</span>
+                    <span className="text-sm font-semibold tabular-nums text-graphite-950">{pushSubscriptions.length}</span>
                   </div>
                 </div>
 
-                <p className="text-sm leading-6 text-graphite-600">Notiser är kopplade till den här enheten. Tekniska uppgifter visas bara i administrativ felsökning.</p>
+                <p className="max-w-[65ch] text-sm leading-6 text-graphite-600">TidApp påminner på fredagar när veckan ännu inte har skickats in. Varje mobil och dator aktiveras separat.</p>
 
                 <div className="flex flex-col gap-2 sm:flex-row">
-                  <button type="button" onClick={() => enablePushMutation.mutate()} disabled={enablePushMutation.isPending} className="btn-primary">
-                    {enablePushMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Aktivera notiser'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => disablePushMutation.mutate()}
-                    disabled={disablePushMutation.isPending || pushSubscriptions.length === 0}
-                    className="btn-secondary"
-                  >
-                    {disablePushMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Avaktivera'}
-                  </button>
+                  {!currentDeviceActive ? (
+                    <button type="button" onClick={() => enablePushMutation.mutate()} disabled={enablePushMutation.isPending} className="btn-primary">
+                      {enablePushMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Bell className="h-4 w-4" aria-hidden="true" />}
+                      Aktivera notiser
+                    </button>
+                  ) : (
+                    <>
+                      <button type="button" onClick={() => testPushMutation.mutate()} disabled={testPushMutation.isPending} className="btn-primary">
+                        {testPushMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Send className="h-4 w-4" aria-hidden="true" />}
+                        Skicka provnotis
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => disablePushMutation.mutate()}
+                        disabled={disablePushMutation.isPending}
+                        className="btn-secondary"
+                      >
+                        {disablePushMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <BellOff className="h-4 w-4" aria-hidden="true" />}
+                        Stäng av på enheten
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             )}

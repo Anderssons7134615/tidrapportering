@@ -1,10 +1,17 @@
 import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../index.js';
-import { pushConfig } from '../lib/push.js';
+import { isPushConfigured, pushConfig } from '../lib/push.js';
+import { isAllowedPushEndpoint } from '../lib/pushEndpoint.js';
+import { deliverPushNotification } from '../services/pushDelivery.js';
+
+const pushEndpointSchema = z.string()
+  .url()
+  .max(2048)
+  .refine(isAllowedPushEndpoint, 'Push-adressen kommer inte från en godkänd leverantör');
 
 const subscriptionSchema = z.object({
-  endpoint: z.string().url(),
+  endpoint: pushEndpointSchema,
   keys: z.object({
     p256dh: z.string().min(1),
     auth: z.string().min(1),
@@ -18,7 +25,11 @@ const subscriptionSchema = z.object({
 });
 
 const removeSchema = z.object({
-  endpoint: z.string().url(),
+  endpoint: pushEndpointSchema,
+});
+
+const testSchema = z.object({
+  endpoint: pushEndpointSchema,
 });
 
 const pushSubscriptionRoutes: FastifyPluginAsync = async (fastify) => {
@@ -78,6 +89,50 @@ const pushSubscriptionRoutes: FastifyPluginAsync = async (fastify) => {
 
       request.log.error(error, 'Kunde inte spara push-subscription');
       return reply.status(500).send({ error: 'Kunde inte spara push-subscription' });
+    }
+  });
+
+  fastify.post('/test', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    try {
+      const body = testSchema.parse(request.body);
+
+      if (!isPushConfigured()) {
+        return reply.status(503).send({ error: 'Push-notiser är inte konfigurerade ännu' });
+      }
+
+      const subscription = await prisma.pushSubscription.findFirst({
+        where: {
+          userId: request.user.id,
+          endpoint: body.endpoint,
+        },
+      });
+
+      if (!subscription) {
+        return reply.status(404).send({ error: 'Den här enheten är inte registrerad för notiser' });
+      }
+
+      const result = await deliverPushNotification(prisma, subscription, {
+        title: 'TidApp fungerar',
+        body: 'Provnotisen kom fram. Påminnelser är aktiverade på den här enheten.',
+        url: '/week',
+        tag: `push-test-${request.user.id}`,
+      });
+
+      if (!result.sent) {
+        const message = result.removed
+          ? 'Enhetens registrering hade gått ut. Aktivera notiser igen.'
+          : 'Provnotisen kunde inte skickas. Försök igen om en stund.';
+        return reply.status(result.removed ? 410 : 502).send({ error: message });
+      }
+
+      return { sent: true };
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return reply.status(400).send({ error: 'Ogiltigt request-format', details: error.errors });
+      }
+
+      request.log.error(error, 'Kunde inte skicka provnotis');
+      return reply.status(500).send({ error: 'Kunde inte skicka provnotis' });
     }
   });
 

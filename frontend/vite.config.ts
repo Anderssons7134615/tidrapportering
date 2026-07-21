@@ -19,6 +19,7 @@ export default defineConfig({
         orientation: 'portrait',
         scope: '/',
         start_url: '/',
+        id: '/',
         icons: [
           {
             src: 'pwa-192x192.png',

@@ -43,6 +43,11 @@ export async function sendPushNotification(
         auth: subscription.auth,
       },
     },
-    serialized
+    serialized,
+    {
+      TTL: 12 * 60 * 60,
+      urgency: 'normal',
+      timeout: 10_000,
+    }
   );
 }

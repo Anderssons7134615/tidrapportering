@@ -45,15 +45,18 @@ Rekommendationer:
 
 ## Pushnotiser / reminders
 
-Om pushnotiser används krävs VAPID-konfiguration enligt backendens push-inställningar.
+Om pushnotiser används krävs ett beständigt VAPID-nyckelpar. Byt inte nyckelparet efter att användare har aktiverat notiser, eftersom befintliga registreringar då slutar fungera.
 
-Sätt även:
+Sätt i Railway:
 
 ```env
+WEB_PUSH_PUBLIC_KEY=publik-vapid-nyckel
+WEB_PUSH_PRIVATE_KEY=privat-vapid-nyckel
+WEB_PUSH_CONTACT=https://din-appdomän.se
 REMINDER_JOB_TOKEN=långt-slumpat-job-token
 ```
 
-Använd job-token endast för schemalagda jobb. Vanlig admin/supervisor-trigger scannar bara det egna företaget.
+Spara samma `REMINDER_JOB_TOKEN` som en GitHub Actions-secret. Workflowen `Weekly push reminders` kör var femtonde minut på fredagar; backend skickar först när företagets påminnelsetid har passerat och loggar utskicket så att veckan inte skickas dubbelt. Vanlig admin/supervisor-trigger scannar bara det egna företaget.
 
 ## Railway backend
 

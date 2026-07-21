@@ -382,6 +382,11 @@ export const pushSubscriptionsApi = {
       method: 'POST',
       body: JSON.stringify(subscription),
     }),
+  test: (endpoint: string) =>
+    fetchApi<{ sent: true }>('/push-subscriptions/test', {
+      method: 'POST',
+      body: JSON.stringify({ endpoint }),
+    }),
   unregister: (endpoint: string) =>
     fetchApi<{ message: string }>('/push-subscriptions', {
       method: 'DELETE',
