@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { addDays, addWeeks, format, startOfWeek, subWeeks } from 'date-fns';
 import { sv } from 'date-fns/locale';
 import { AnimatePresence, motion, PanInfo, useMotionValue, useTransform } from 'framer-motion';
@@ -9,8 +9,9 @@ import toast from 'react-hot-toast';
 import { timeEntriesApi } from '../services/api';
 import { WeekViewSkeleton } from '../components/ui/Skeleton';
 import { useHaptic } from '../hooks/useHaptic';
+import { useOfflineStore } from '../stores/offlineStore';
 import type { TimeEntry } from '../types';
-import { AppShell } from '../components/ui/design';
+import { AppShell, ConfirmDialog } from '../components/ui/design';
 import { QueryError } from '../components/ui/QueryError';
 import { parseDateOnlyLocal, toDateInputValue } from '../utils/format';
 
@@ -19,40 +20,50 @@ function SwipeableEntry({
   onDelete,
   isDeleting,
   editUrl,
+  canDelete,
 }: {
   entry: TimeEntry;
   onDelete: () => void;
   isDeleting: boolean;
   editUrl: string;
+  canDelete: boolean;
 }) {
   const x = useMotionValue(0);
   const deleteOpacity = useTransform(x, [-80, -40, 0], [1, 0.5, 0]);
   const { trigger: haptic } = useHaptic();
-  const canModify = entry.status !== 'APPROVED';
+  const canModify = entry.status !== 'APPROVED' && canDelete;
+  const [revealed, setRevealed] = useState(false);
 
   const handleDragEnd = (_: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
-    if (canModify && info.offset.x < -80) {
+    if (canModify && info.offset.x < -40) {
       haptic('medium');
-      onDelete();
+      setRevealed(true);
     }
   };
 
   return (
     <div className="relative overflow-hidden rounded-lg">
       <motion.div
-        className="absolute inset-0 flex items-center justify-end rounded-lg bg-red-500 pr-4"
+        className="absolute inset-0 flex items-center justify-end rounded-lg bg-red-500 pr-2"
         style={{ opacity: deleteOpacity }}
       >
-        <Trash2 className="h-5 w-5 text-white" />
+        <button type="button" onClick={onDelete} className="btn-danger min-h-11 px-3" disabled={isDeleting}>
+          <Trash2 className="h-4 w-4" />
+          Ta bort
+        </button>
       </motion.div>
 
       <motion.div
-        drag={canModify ? 'x' : false}
-        dragConstraints={{ left: -100, right: 0 }}
+        drag={canModify && !revealed ? 'x' : false}
+        animate={{ x: revealed ? -88 : 0 }}
+        dragConstraints={{ left: -88, right: 0 }}
         dragElastic={0.1}
         onDragEnd={handleDragEnd}
         style={{ x }}
-        className="relative rounded-lg border border-slate-200 bg-white p-3"
+        className="relative rounded-md border border-graphite-200 bg-white p-3"
+        onClick={() => {
+          if (revealed) setRevealed(false);
+        }}
       >
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
@@ -82,20 +93,21 @@ function SwipeableEntry({
                 <Link
                   to={editUrl}
                   onClick={(event) => event.stopPropagation()}
-                  className="rounded-lg p-1 text-slate-500 transition hover:bg-slate-100 hover:text-primary-700"
+                  className="icon-button min-h-11 min-w-11 border-0 p-1 text-graphite-600 hover:bg-primary-50 hover:text-primary-700"
                   title="Redigera"
                 >
                   <PencilLine className="h-4 w-4" />
                 </Link>
                 <button
+                  type="button"
                   onClick={(event) => {
                     event.stopPropagation();
                     haptic('medium');
                     onDelete();
                   }}
-                  className="rounded-lg p-1 text-slate-500 transition hover:bg-slate-100 hover:text-red-500"
+                  className="icon-button min-h-11 min-w-11 border-0 p-1 text-rose-700 hover:bg-rose-50"
                   disabled={isDeleting}
-                  title="Ta bort"
+                  aria-label="Ta bort tidrad"
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
@@ -112,9 +124,10 @@ function SwipeableEntry({
 
 export default function WeekView() {
   const queryClient = useQueryClient();
-  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { trigger: haptic } = useHaptic();
+  const { isOnline } = useOfflineStore();
+  const [pendingDelete, setPendingDelete] = useState<TimeEntry | null>(null);
 
   const dateParam = searchParams.get('date');
   const userIdParam = searchParams.get('userId');
@@ -132,8 +145,9 @@ export default function WeekView() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => timeEntriesApi.delete(id),
+    mutationFn: (entry: TimeEntry) => timeEntriesApi.delete(entry.id),
     onSuccess: () => {
+      setPendingDelete(null);
       haptic('light');
       toast.success('Tidrad borttagen');
       refetch();
@@ -223,7 +237,7 @@ export default function WeekView() {
       <div className="flex items-center justify-between">
         <button
           onClick={() => navigateWeek('prev')}
-          className="rounded-lg p-2 transition-transform hover:bg-slate-100 active:scale-90"
+          className="icon-button"
           aria-label="Föregående vecka"
         >
           <ChevronLeft className="h-5 w-5" />
@@ -236,14 +250,14 @@ export default function WeekView() {
         </div>
         <button
           onClick={() => navigateWeek('next')}
-          className="rounded-lg p-2 transition-transform hover:bg-slate-100 active:scale-90"
+          className="icon-button"
           aria-label="Nästa vecka"
         >
           <ChevronRight className="h-5 w-5" />
         </button>
       </div>
 
-      <section className="filter-strip px-3">
+      <section className="review-summary">
         <div className="mb-3 flex items-center justify-between">
           <span className="text-sm text-slate-500">Summering</span>
           {getStatusBadge()}
@@ -263,11 +277,8 @@ export default function WeekView() {
         )}
       </section>
 
-      <motion.div
+      <div
         className="work-panel overflow-hidden divide-y divide-graphite-100"
-        initial="hidden"
-        animate="visible"
-        variants={{ visible: { transition: { staggerChildren: 0.04 } } }}
       >
         {weekDays.map((day) => {
           const entries = getEntriesForDay(day);
@@ -279,20 +290,7 @@ export default function WeekView() {
           return (
             <motion.div
               key={day.toISOString()}
-              role="button"
-              tabIndex={0}
-              onClick={() => navigate(dayReportUrl)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault();
-                  navigate(dayReportUrl);
-                }
-              }}
-              className={`cursor-pointer px-3 py-4 transition hover:bg-primary-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 ${isToday ? 'border-l-4 border-l-primary-700 bg-primary-50/40' : ''} ${isWeekend ? 'bg-graphite-50' : ''}`}
-              variants={{
-                hidden: { opacity: 0, y: 10 },
-                visible: { opacity: 1, y: 0 },
-              }}
+              className={`px-3 py-4 ${isToday ? 'bg-primary-50/40 ring-1 ring-inset ring-primary-200' : ''} ${isWeekend ? 'bg-graphite-50' : ''}`}
             >
               <div className="mb-2 flex items-center justify-between">
                 <div>
@@ -300,7 +298,7 @@ export default function WeekView() {
                   <span className="ml-2 text-slate-500">{format(day, 'd/M')}</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold text-primary-700">Rapportera</span>
+                  <Link to={dayReportUrl} className="inline-flex min-h-11 items-center text-xs font-semibold text-primary-700 hover:text-primary-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400">Rapportera</Link>
                   <span className="font-bold">{dayTotal.toFixed(1)}h</span>
                 </div>
               </div>
@@ -318,9 +316,10 @@ export default function WeekView() {
                       >
                         <SwipeableEntry
                           entry={entry}
-                          onDelete={() => deleteMutation.mutate(entry.id)}
+                          onDelete={() => setPendingDelete(entry)}
                           isDeleting={deleteMutation.isPending}
                           editUrl={getEntryEditUrl(entry.id)}
+                          canDelete={isOnline}
                         />
                       </motion.div>
                     ))}
@@ -330,7 +329,7 @@ export default function WeekView() {
             </motion.div>
           );
         })}
-      </motion.div>
+      </div>
 
       {!isLocked && (
         <Link
@@ -340,6 +339,15 @@ export default function WeekView() {
           + Lägg till tid
         </Link>
       )}
+      <ConfirmDialog
+        open={Boolean(pendingDelete)}
+        onClose={() => setPendingDelete(null)}
+        onConfirm={() => pendingDelete && deleteMutation.mutate(pendingDelete)}
+        title="Ta bort tidrad?"
+        description="Kontrollera att du har valt rätt tidrad. Borttagningen går inte att ångra."
+        confirmLabel="Ta bort"
+        isLoading={deleteMutation.isPending}
+      />
     </AppShell>
   );
 }

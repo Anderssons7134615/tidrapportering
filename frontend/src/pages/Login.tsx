@@ -12,6 +12,7 @@ export default function Login() {
   const { setAuth } = useAuthStore();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [formError, setFormError] = useState<string | null>(null);
   const { data: registrationStatus } = useQuery({
     queryKey: ['registration-status'],
     queryFn: authApi.registrationStatus,
@@ -22,12 +23,14 @@ export default function Login() {
   const loginMutation = useMutation({
     mutationFn: () => authApi.login(email, password),
     onSuccess: (data) => {
+      setFormError(null);
       queryClient.clear();
       setAuth(data.token, data.user);
       toast.success(`Välkommen, ${data.user.name}!`);
       navigate('/');
     },
     onError: (error: Error) => {
+      setFormError(error.message);
       toast.error(error.message);
     },
   });
@@ -40,10 +43,10 @@ export default function Login() {
   return (
     <main className="min-h-screen bg-[#f4f6f8] px-4 py-8 text-graphite-900">
       <div className="mx-auto grid min-h-[calc(100vh-4rem)] w-full max-w-6xl gap-8 lg:grid-cols-[1fr_420px] lg:items-center">
-        <section className="flex flex-col justify-center border-b border-graphite-200 pb-8 lg:border-b-0 lg:border-r lg:pb-0 lg:pr-12">
+        <section className="order-2 flex flex-col justify-center border-t border-graphite-200 pt-8 lg:order-1 lg:border-r lg:border-t-0 lg:pb-0 lg:pr-12 lg:pt-0">
           <img src="/anderssons-logo.svg" alt="Anderssons Isolering" className="h-14 w-fit object-contain" />
           <p className="mt-8 text-sm font-semibold uppercase tracking-wide text-primary-700">TidApp</p>
-          <h1 className="mt-2 max-w-3xl text-4xl font-semibold tracking-normal text-graphite-950 sm:text-5xl">
+          <h1 className="mt-2 max-w-3xl text-3xl font-semibold tracking-normal text-graphite-950 sm:text-5xl">
             Tidrapportering som känns rak, tydlig och lätt att lita på.
           </h1>
           <p className="mt-5 max-w-2xl text-base leading-7 text-graphite-600">
@@ -57,7 +60,7 @@ export default function Login() {
           </div>
         </section>
 
-        <section className="w-full">
+        <section className="order-1 w-full lg:order-2">
           <div className="border-y border-graphite-200 bg-white px-1 py-5 sm:border sm:p-6">
             <div className="mb-6">
               <p className="inline-flex items-center gap-2 text-sm font-semibold text-primary-800">
@@ -69,6 +72,7 @@ export default function Login() {
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
+              {formError && <p role="alert" className="border-y border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-800">{formError}</p>}
               <div>
                 <label htmlFor="email" className="label">E-post</label>
                 <input
@@ -80,6 +84,7 @@ export default function Login() {
                   placeholder="din@email.se"
                   required
                   autoComplete="email"
+                  aria-invalid={Boolean(formError)}
                 />
               </div>
 
@@ -94,6 +99,7 @@ export default function Login() {
                   placeholder="Minst 6 tecken"
                   required
                   autoComplete="current-password"
+                  aria-invalid={Boolean(formError)}
                 />
               </div>
 

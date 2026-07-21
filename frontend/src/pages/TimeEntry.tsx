@@ -9,7 +9,7 @@ import { activitiesApi, projectsApi, timeEntriesApi, usersApi } from '../service
 import { useAuthStore } from '../stores/authStore';
 import { useOfflineStore } from '../stores/offlineStore';
 import { useHaptic } from '../hooks/useHaptic';
-import { AppShell, Button, Card, FormField, PageHeader } from '../components/ui/design';
+import { AppShell, Button, DataList, DataRow, FormField, PageHeader, ReviewSummary, TaskSection } from '../components/ui/design';
 import { getDisabledReason, parseDateOnlyLocal, parseSwedishNumber, toDateInputValue } from '../utils/format';
 import type { Activity, Project, User } from '../types';
 
@@ -212,9 +212,10 @@ export default function TimeEntry() {
     [!activityId, 'Välj aktivitet'],
     [projectRequired && !projectId, 'Välj projekt'],
     [!hours || !Number.isFinite(hoursNumber) || hoursNumber <= 0, 'Ange antal timmar större än 0'],
+    [hoursNumber > 24, 'En tidrad kan högst vara 24 timmar'],
   ]);
   const isSaving = createMutation.isPending || updateMutation.isPending;
-  const canEditEntry = existingEntry?.status !== 'APPROVED' || canReportForOthers;
+  const canEditEntry = existingEntry?.status !== 'APPROVED';
   const recentProjects = projects
     ?.filter((project) => recentProjectIds.includes(project.id))
     .sort((a, b) => recentProjectIds.indexOf(a.id) - recentProjectIds.indexOf(b.id));
@@ -274,15 +275,17 @@ export default function TimeEntry() {
       toast.success('Sparad offline - synkas när du är online');
       setHours('');
       setNote('');
+      setStartTime('');
+      setEndTime('');
     }
   };
 
   if (isEditMode && isLoadingEntry) {
-    return <div className="card flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-graphite-500" /></div>;
+    return <div className="task-section flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-graphite-500" /></div>;
   }
 
   if (isEditMode && existingEntry && !canEditEntry) {
-    return <div className="card text-sm text-graphite-600">Godkända tidrader kan inte ändras.</div>;
+    return <div className="task-section text-sm text-graphite-600">Godkända tidrader kan inte ändras.</div>;
   }
 
   return (
@@ -300,7 +303,7 @@ export default function TimeEntry() {
         />
 
         {!isEditMode && (
-            <Card className="border-primary-100 bg-white/90">
+            <ReviewSummary>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <p className="text-xs font-bold uppercase tracking-wide text-primary-700">Vald dag</p>
@@ -317,14 +320,14 @@ export default function TimeEntry() {
             </div>
 
             {!!dailyEntries?.length && (
-              <div className="mt-4 space-y-2">
+              <DataList className="mt-4">
                 {dailyEntries.map((entry) => (
                   <Link
                     key={entry.id}
                     to={`/time-entry?id=${entry.id}&return=${encodeURIComponent(defaultReturnUrl)}`}
-                    className="block rounded-lg border border-primary-100 bg-white px-3 py-2.5 transition hover:border-primary-300 hover:bg-primary-50"
+                    className="block"
                   >
-                    <div className="flex items-start justify-between gap-3">
+                    <DataRow>
                       <div className="min-w-0">
                         <p className="truncate text-sm font-bold text-graphite-950">
                           {entry.project?.code ? `${entry.project.code} · ${entry.project.name}` : 'Intern tid'}
@@ -334,17 +337,17 @@ export default function TimeEntry() {
                         </p>
                       </div>
                       <span className="shrink-0 text-sm font-black text-primary-800">{entry.hours} h</span>
-                    </div>
+                    </DataRow>
                   </Link>
                 ))}
-              </div>
+              </DataList>
             )}
-          </Card>
+          </ReviewSummary>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-5 pb-16 lg:pb-0">
           {!isEditMode && (
-            <Card className="space-y-4">
+            <TaskSection className="space-y-4">
               <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
                 <div>
                   <div className="flex items-center gap-2 text-primary-700">
@@ -387,16 +390,16 @@ export default function TimeEntry() {
                   )}
                 </div>
               </div>
-            </Card>
+            </TaskSection>
           )}
 
-          <Card className="space-y-5">
+          <TaskSection className="space-y-5">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               {canReportForOthers && (
                 <FormField label="Anställd">
                   <select value={selectedUserId} onChange={(event) => setSelectedUserId(event.target.value)} className="input">
                     <option value="">Jag själv</option>
-                    {users?.map((entryUser) => <option key={entryUser.id} value={entryUser.id}>{entryUser.name}</option>)}
+                    {users?.filter((entryUser) => entryUser.role !== 'ACCOUNTANT').map((entryUser) => <option key={entryUser.id} value={entryUser.id}>{entryUser.name}</option>)}
                   </select>
                 </FormField>
               )}
@@ -477,7 +480,7 @@ export default function TimeEntry() {
             <Button type="submit" className="mobile-sticky-submit" isLoading={isSaving} variant={saved ? 'success' : 'primary'} disabledReason={disabledReason}>
               {saved ? <><Check className="h-5 w-5" /> Sparad!</> : <>{isEditMode ? <PencilLine className="h-5 w-5" /> : <Save className="h-5 w-5" />}{isEditMode ? 'Uppdatera tidrad' : 'Spara tidrad'}</>}
             </Button>
-          </Card>
+          </TaskSection>
         </form>
       </div>
     </AppShell>
