@@ -11,6 +11,7 @@ import { enqueueTimeEntryChanged } from '../lib/obsidianSync.js';
 import { ensureUploadDir } from '../lib/uploads.js';
 import { deleteAttachmentFiles } from '../lib/attachments.js';
 import { requireRoles } from '../lib/authorization.js';
+import { buildWeekVacationRows } from '../lib/weekVacation.js';
 import {
   dateOnlySchema,
   endOfUtcDay,
@@ -40,6 +41,12 @@ const bulkSyncSchema = z.array(
     id: z.string().uuid().optional(),
   })
 ).max(100);
+
+const weekVacationSchema = z.object({
+  weekStart: dateOnlySchema,
+  userId: z.string().uuid().optional(),
+  hoursPerDay: z.number().positive().max(24).default(8),
+});
 
 const requireTimeWriter = requireRoles(
   ['ADMIN', 'SUPERVISOR', 'EMPLOYEE'],
@@ -86,7 +93,7 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
       include: {
         user: { select: { id: true, name: true } },
         project: { select: { id: true, name: true, code: true, customer: { select: { id: true, name: true } } } },
-        activity: { select: { id: true, name: true, code: true } },
+        activity: { select: { id: true, name: true, code: true, category: true } },
         attachments: true,
         approver: { select: { id: true, name: true } },
       },
@@ -356,7 +363,7 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
       },
       include: {
         project: { select: { id: true, name: true, code: true, site: true } },
-        activity: { select: { id: true, name: true, code: true } },
+        activity: { select: { id: true, name: true, code: true, category: true } },
         attachments: true,
       },
       orderBy: [{ date: 'asc' }, { createdAt: 'asc' }],
@@ -393,6 +400,118 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
         dailyTotals,
       },
     };
+  });
+
+  fastify.post('/week-vacation', {
+    preHandler: [requireTimeWriter],
+  }, async (request, reply) => {
+    try {
+      const body = weekVacationSchema.parse(request.body);
+      const targetUserId = body.userId && ['ADMIN', 'SUPERVISOR'].includes(request.user.role)
+        ? body.userId
+        : request.user.id;
+      const rows = buildWeekVacationRows(body.weekStart, body.hoursPerDay);
+      const weekStart = rows[0].date;
+
+      const [targetUser, vacationActivity] = await Promise.all([
+        prisma.user.findFirst({
+          where: { id: targetUserId, companyId: request.user.companyId, active: true },
+          select: { id: true },
+        }),
+        prisma.activity.findFirst({
+          where: { companyId: request.user.companyId, code: 'SEM', category: 'ABSENCE', active: true },
+          select: { id: true },
+        }),
+      ]);
+
+      if (!targetUser) {
+        return reply.status(400).send({ error: 'Användaren tillhör inte företaget eller är inaktiv' });
+      }
+      if (!vacationActivity) {
+        return reply.status(409).send({ error: 'Aktiviteten Semester (SEM) måste vara aktiv innan hela veckan kan rapporteras' });
+      }
+
+      const entries = await prisma.$transaction(async (tx) => {
+        const weekLock = await tx.weekLock.findUnique({
+          where: { userId_weekStartDate: { userId: targetUserId, weekStartDate: weekStart } },
+          select: { status: true },
+        });
+        if (weekLock?.status === 'APPROVED') {
+          throw Object.assign(new Error('Veckan är godkänd. Lås upp veckan innan den ändras.'), { statusCode: 409 });
+        }
+
+        const existingEntries = await tx.timeEntry.findMany({
+          where: {
+            userId: targetUserId,
+            date: { gte: rows[0].date, lte: rows[rows.length - 1].date },
+          },
+          select: { date: true },
+        });
+        if (existingEntries.length > 0) {
+          const dates = [...new Set(existingEntries.map((entry) => toDateKey(entry.date)))];
+          throw Object.assign(
+            new Error(`Veckan har redan rapporterad vardagstid: ${dates.join(', ')}. Befintliga rader ändrades inte.`),
+            { statusCode: 409 }
+          );
+        }
+
+        const submittedAt = new Date();
+        const createdEntries = [];
+        for (const row of rows) {
+          createdEntries.push(await tx.timeEntry.create({
+            data: {
+              userId: targetUserId,
+              activityId: vacationActivity.id,
+              date: row.date,
+              hours: row.hours,
+              billable: false,
+              status: 'SUBMITTED',
+              submittedAt,
+            },
+            include: {
+              project: { select: { id: true, name: true, code: true, site: true } },
+              activity: { select: { id: true, name: true, code: true, category: true } },
+            },
+          }));
+        }
+
+        await upsertSubmittedWeekLock(tx, targetUserId, weekStart);
+        await tx.auditLog.create({
+          data: {
+            userId: request.user.id,
+            action: 'CREATE_WEEK_VACATION',
+            entityType: 'TimeEntry',
+            entityId: createdEntries[0].id,
+            newValue: JSON.stringify({
+              targetUserId,
+              weekStart: toDateKey(weekStart),
+              hoursPerDay: body.hoursPerDay,
+              days: rows.length,
+            }),
+          },
+        });
+
+        return createdEntries;
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+
+      return reply.status(201).send({
+        entries,
+        days: rows.length,
+        hoursPerDay: body.hoursPerDay,
+        totalHours: rows.length * body.hoursPerDay,
+      });
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return reply.status(400).send({ error: 'Ogiltig data', details: error.errors });
+      }
+      if (error?.code === 'P2034') {
+        return reply.status(409).send({ error: 'Veckan ändrades samtidigt. Kontrollera veckan och försök igen.' });
+      }
+      if (error?.statusCode) {
+        return reply.status(error.statusCode).send({ error: error.message });
+      }
+      throw error;
+    }
   });
 
   // Get single entry

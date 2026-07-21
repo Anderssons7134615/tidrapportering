@@ -254,7 +254,10 @@ export function Dialog({
     if (open && !dialog.open) {
       previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
       dialog.showModal();
-      dialog.querySelector<HTMLElement>('input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled])')?.focus();
+      const initialFocus = dialog.querySelector<HTMLElement>('[autofocus]')
+        ?? dialog.querySelector<HTMLElement>('input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled])')
+        ?? dialog.querySelector<HTMLElement>('button:not([disabled])');
+      initialFocus?.focus();
     }
     if (!open && dialog.open) {
       dialog.close();

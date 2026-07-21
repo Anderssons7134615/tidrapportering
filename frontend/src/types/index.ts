@@ -194,7 +194,7 @@ export interface TimeEntry {
   projectId?: string;
   project?: { id: string; name: string; code: string; site?: string; customer?: { id: string; name: string } };
   activityId: string;
-  activity?: { id: string; name: string; code: string };
+  activity?: { id: string; name: string; code: string; category?: Activity['category'] };
   date: string;
   startTime?: string;
   endTime?: string;

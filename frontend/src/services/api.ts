@@ -283,6 +283,11 @@ export const timeEntriesApi = {
   getTeamWeekSummary: (weekStart: string) =>
     fetchApi<TeamWeekSummary>(`/time-entries/week-summary/${weekStart}`),
   get: (id: string) => fetchApi<TimeEntry>(`/time-entries/${id}`),
+  createWeekVacation: (data: { weekStart: string; hoursPerDay: number; userId?: string }) =>
+    fetchApi<{ entries: TimeEntry[]; days: number; hoursPerDay: number; totalHours: number }>('/time-entries/week-vacation', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
   create: (data: Partial<TimeEntry>) =>
     fetchApi<TimeEntry>('/time-entries', { method: 'POST', body: JSON.stringify(data) }),
   update: (id: string, data: Partial<TimeEntry>) =>

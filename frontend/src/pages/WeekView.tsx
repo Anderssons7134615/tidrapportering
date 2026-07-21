@@ -4,14 +4,14 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { addDays, addWeeks, format, startOfWeek, subWeeks } from 'date-fns';
 import { sv } from 'date-fns/locale';
 import { AnimatePresence, motion, PanInfo, useMotionValue, useTransform } from 'framer-motion';
-import { CheckCircle, ChevronLeft, ChevronRight, PencilLine, Trash2, XCircle } from 'lucide-react';
+import { CalendarRange, CheckCircle, ChevronLeft, ChevronRight, PencilLine, Trash2, XCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { timeEntriesApi } from '../services/api';
 import { WeekViewSkeleton } from '../components/ui/Skeleton';
 import { useHaptic } from '../hooks/useHaptic';
 import { useOfflineStore } from '../stores/offlineStore';
 import type { TimeEntry } from '../types';
-import { AppShell, ConfirmDialog } from '../components/ui/design';
+import { AppShell, Button, ConfirmDialog, Dialog, FormField, StatusBadge } from '../components/ui/design';
 import { QueryError } from '../components/ui/QueryError';
 import { parseDateOnlyLocal, toDateInputValue } from '../utils/format';
 
@@ -33,6 +33,7 @@ function SwipeableEntry({
   const { trigger: haptic } = useHaptic();
   const canModify = entry.status !== 'APPROVED' && canDelete;
   const [revealed, setRevealed] = useState(false);
+  const isAbsence = entry.activity?.category === 'ABSENCE' || ['SEM', 'SJUK', 'VAB'].includes(entry.activity?.code || '');
 
   const handleDragEnd = (_: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
     if (canModify && info.offset.x < -40) {
@@ -69,12 +70,16 @@ function SwipeableEntry({
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <span className="truncate text-sm font-semibold text-slate-900">
-                {entry.project?.code ? `${entry.project.code} • ${entry.project.name}` : 'Intern tid'}
+                {isAbsence
+                  ? entry.activity?.name || 'Frånvaro'
+                  : entry.project?.code
+                    ? `${entry.project.code} • ${entry.project.name}`
+                    : 'Intern tid'}
               </span>
             </div>
 
             <p className="mt-1 text-xs text-slate-500">
-              {entry.activity?.name}
+              {isAbsence ? 'Frånvaro' : entry.activity?.name}
               {entry.project?.site ? ` • ${entry.project.site}` : ''}
             </p>
 
@@ -128,6 +133,8 @@ export default function WeekView() {
   const { trigger: haptic } = useHaptic();
   const { isOnline } = useOfflineStore();
   const [pendingDelete, setPendingDelete] = useState<TimeEntry | null>(null);
+  const [vacationDialogOpen, setVacationDialogOpen] = useState(false);
+  const [vacationHours, setVacationHours] = useState('8');
 
   const dateParam = searchParams.get('date');
   const userIdParam = searchParams.get('userId');
@@ -163,6 +170,28 @@ export default function WeekView() {
     },
   });
 
+  const vacationMutation = useMutation({
+    mutationFn: (hoursPerDay: number) => timeEntriesApi.createWeekVacation({
+      weekStart: weekStartStr,
+      hoursPerDay,
+      ...(userIdParam ? { userId: userIdParam } : {}),
+    }),
+    onSuccess: (result) => {
+      setVacationDialogOpen(false);
+      haptic('light');
+      toast.success(`Semester rapporterad: ${result.totalHours.toLocaleString('sv-SE')} h`);
+      refetch();
+      queryClient.invalidateQueries({ queryKey: ['timeEntries'] });
+      queryClient.invalidateQueries({ queryKey: ['weekLocks'] });
+      queryClient.invalidateQueries({ queryKey: ['team-week-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+    onError: (error: Error) => {
+      haptic('error');
+      toast.error(error.message);
+    },
+  });
+
   const navigateWeek = (direction: 'prev' | 'next') => {
     haptic('light');
     const newDate = direction === 'prev' ? subWeeks(weekStart, 1) : addWeeks(weekStart, 1);
@@ -173,6 +202,26 @@ export default function WeekView() {
   };
 
   const weekDays = Array.from({ length: 7 }, (_, index) => addDays(weekStart, index));
+  const isLocked = data?.weekLock?.status === 'APPROVED';
+  const isRejected = data?.weekLock?.status === 'REJECTED';
+  const weekdayKeys = new Set(weekDays.slice(0, 5).map((day) => format(day, 'yyyy-MM-dd')));
+  const hasWeekdayEntries = Boolean(data?.entries.some((entry) => weekdayKeys.has(toDateInputValue(entry.date))));
+  const vacationDateKeys = new Set(
+    data?.entries
+      .filter((entry) => entry.activity?.code === 'SEM')
+      .map((entry) => toDateInputValue(entry.date)) || []
+  );
+  const hasFullWeekVacation = weekDays.slice(0, 5).every((day) => vacationDateKeys.has(format(day, 'yyyy-MM-dd')));
+  const parsedVacationHours = Number(vacationHours);
+  const vacationHoursValid = Number.isFinite(parsedVacationHours) && parsedVacationHours > 0 && parsedVacationHours <= 24;
+  const vacationTotalHours = vacationHoursValid ? parsedVacationHours * 5 : 0;
+  const vacationDisabledReason = !isOnline
+    ? 'Semester för hela veckan kräver internetanslutning.'
+    : isLocked
+      ? 'Veckan är godkänd och måste låsas upp först.'
+      : hasWeekdayEntries
+        ? 'Veckan har redan rapporterad tid på en vardag.'
+        : null;
 
   const getDayReportUrl = (day: Date) => {
     const dateStr = format(day, 'yyyy-MM-dd');
@@ -201,9 +250,6 @@ export default function WeekView() {
     const dateStr = format(day, 'yyyy-MM-dd');
     return data?.entries.filter((entry) => toDateInputValue(entry.date) === dateStr) || [];
   };
-
-  const isLocked = data?.weekLock?.status === 'APPROVED';
-  const isRejected = data?.weekLock?.status === 'REJECTED';
 
   const getStatusBadge = () => {
     if (!data?.weekLock) return null;
@@ -275,6 +321,34 @@ export default function WeekView() {
             <p className="text-sm text-red-600">{data.weekLock.comment}</p>
           </div>
         )}
+
+        <div className="mt-4 flex flex-col gap-3 border-t border-graphite-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-semibold text-graphite-950">Semester hela veckan</p>
+            <p className="mt-0.5 text-sm text-graphite-600">
+              {hasFullWeekVacation ? 'Semester är rapporterad måndag till fredag.' : 'Fyll måndag till fredag på en gång.'}
+            </p>
+          </div>
+          {hasFullWeekVacation ? (
+            <div className="self-start sm:self-auto">
+              <StatusBadge label="Rapporterad" tone="green" />
+            </div>
+          ) : (
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                setVacationHours('8');
+                setVacationDialogOpen(true);
+              }}
+              disabledReason={vacationDisabledReason}
+              className="w-full sm:w-auto"
+            >
+              <CalendarRange aria-hidden="true" className="h-4 w-4" />
+              Rapportera hel vecka
+            </Button>
+          )}
+        </div>
       </section>
 
       <div
@@ -348,6 +422,54 @@ export default function WeekView() {
         confirmLabel="Ta bort"
         isLoading={deleteMutation.isPending}
       />
+      <Dialog
+        open={vacationDialogOpen}
+        onClose={() => {
+          if (!vacationMutation.isPending) setVacationDialogOpen(false);
+        }}
+        title="Rapportera semester hela veckan?"
+        description={`${format(weekStart, 'd MMMM', { locale: sv })} till ${format(addDays(weekStart, 4), 'd MMMM yyyy', { locale: sv })}. Helgen lämnas tom.`}
+        footer={
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              onClick={() => setVacationDialogOpen(false)}
+              className="btn-secondary"
+              disabled={vacationMutation.isPending}
+            >
+              Avbryt
+            </button>
+            <Button
+              type="button"
+              onClick={() => vacationHoursValid && vacationMutation.mutate(parsedVacationHours)}
+              disabled={!vacationHoursValid}
+              isLoading={vacationMutation.isPending}
+              className="w-full sm:w-auto"
+            >
+              Rapportera {vacationTotalHours.toLocaleString('sv-SE')} h
+            </Button>
+          </div>
+        }
+      >
+        <FormField label="Timmar per arbetsdag" hint="Samma antal timmar registreras måndag till fredag.">
+          <input
+            type="number"
+            autoFocus
+            min="0.25"
+            max="24"
+            step="0.25"
+            inputMode="decimal"
+            value={vacationHours}
+            onChange={(event) => setVacationHours(event.target.value)}
+            className="input"
+          />
+        </FormField>
+        <p className="mt-4 border-y border-graphite-200 bg-graphite-50 px-3 py-3 text-sm text-graphite-700" aria-live="polite">
+          {vacationHoursValid
+            ? `Fem semesterdagar skapas, totalt ${vacationTotalHours.toLocaleString('sv-SE')} timmar.`
+            : 'Ange mellan 0,25 och 24 timmar per arbetsdag.'}
+        </p>
+      </Dialog>
     </AppShell>
   );
 }
