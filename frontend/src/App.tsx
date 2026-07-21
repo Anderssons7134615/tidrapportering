@@ -73,7 +73,7 @@ function PageLoader({ children }: { children: React.ReactNode }) {
   return (
     <Suspense
       fallback={
-        <div className="card flex min-h-[260px] items-center justify-center">
+        <div className="task-section flex min-h-[260px] items-center justify-center">
           <LoadingSpinner />
         </div>
       }

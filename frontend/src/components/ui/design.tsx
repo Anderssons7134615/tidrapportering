@@ -1,5 +1,5 @@
-import type { HTMLAttributes, ReactNode } from 'react';
-import { AlertCircle, Loader2 } from 'lucide-react';
+import { useEffect, useId, useRef, type HTMLAttributes, type ReactNode } from 'react';
+import { AlertCircle, Loader2, X } from 'lucide-react';
 
 type Tone = 'blue' | 'green' | 'yellow' | 'red' | 'gray' | 'slate' | 'orange' | 'dark';
 
@@ -14,25 +14,14 @@ const toneClasses: Record<Tone, string> = {
   dark: 'border-graphite-800 bg-graphite-950 text-white',
 };
 
-const toneAccentClasses: Record<Tone, string> = {
-  blue: 'bg-sky-500',
-  green: 'bg-emerald-500',
-  yellow: 'bg-amber-500',
-  red: 'bg-rose-500',
-  gray: 'bg-graphite-400',
-  slate: 'bg-graphite-600',
-  orange: 'bg-primary-500',
-  dark: 'bg-primary-400',
-};
-
 const toneTextClasses: Record<Tone, string> = {
-  blue: 'text-sky-700',
-  green: 'text-emerald-700',
-  yellow: 'text-amber-800',
-  red: 'text-rose-700',
-  gray: 'text-graphite-600',
-  slate: 'text-graphite-800',
-  orange: 'text-primary-800',
+  blue: 'text-sky-800',
+  green: 'text-emerald-800',
+  yellow: 'text-amber-900',
+  red: 'text-rose-800',
+  gray: 'text-graphite-700',
+  slate: 'text-graphite-950',
+  orange: 'text-primary-900',
   dark: 'text-graphite-950',
 };
 
@@ -51,19 +40,64 @@ export function PageHeader({
 }) {
   return (
     <header className="app-header">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="page-title">{title}</h1>
           {description && <p className="app-description">{description}</p>}
         </div>
-        {action}
+        {action && <div className="shrink-0">{action}</div>}
       </div>
     </header>
   );
 }
 
+export function TaskSection({
+  children,
+  className = '',
+  title,
+  action,
+  ...props
+}: HTMLAttributes<HTMLElement> & {
+  children: ReactNode;
+  title?: ReactNode;
+  action?: ReactNode;
+}) {
+  return (
+    <section {...props} className={`task-section ${className}`}>
+      {(title || action) && (
+        <div className="task-section-header">
+          <div className="min-w-0">{typeof title === 'string' ? <h2 className="section-title">{title}</h2> : title}</div>
+          {action && <div className="shrink-0">{action}</div>}
+        </div>
+      )}
+      {children}
+    </section>
+  );
+}
+
+/** @deprecated Use TaskSection for new screens. Kept while legacy screens are migrated. */
 export function Card({ children, className = '', ...props }: HTMLAttributes<HTMLDivElement> & { children: ReactNode }) {
-  return <div {...props} className={`card ${className}`}>{children}</div>;
+  return <div {...props} className={`task-section ${className}`}>{children}</div>;
+}
+
+export function DataList({ children, className = '' }: { children: ReactNode; className?: string }) {
+  return <div className={`data-list ${className}`}>{children}</div>;
+}
+
+export function DataRow({
+  children,
+  className = '',
+  ...props
+}: HTMLAttributes<HTMLDivElement> & { children: ReactNode }) {
+  return <div {...props} className={`data-row ${className}`}>{children}</div>;
+}
+
+export function Toolbar({ children, className = '' }: { children: ReactNode; className?: string }) {
+  return <div className={`toolbar ${className}`}>{children}</div>;
+}
+
+export function ReviewSummary({ children, className = '' }: { children: ReactNode; className?: string }) {
+  return <div className={`review-summary ${className}`}>{children}</div>;
 }
 
 export function KpiCard({
@@ -78,8 +112,7 @@ export function KpiCard({
   tone?: Tone;
 }) {
   return (
-    <div className="relative border-y border-graphite-200 bg-white/70 px-4 py-3 shadow-none">
-      <div className={`absolute inset-y-0 left-0 w-0.5 ${toneAccentClasses[tone]}`} />
+    <div className="kpi-summary">
       <p className="text-[11px] font-semibold uppercase tracking-normal text-graphite-500">{label}</p>
       <p className={`mt-1 text-xl font-semibold tracking-normal tabular-nums sm:text-2xl ${toneTextClasses[tone]}`}>{value}</p>
       {hint && <p className="mt-1 text-xs font-medium text-graphite-500">{hint}</p>}
@@ -99,6 +132,7 @@ export function Button({
   disabledReason?: string | null;
   isLoading?: boolean;
 }) {
+  const reasonId = useId();
   const cls =
     variant === 'secondary'
       ? 'btn-secondary'
@@ -110,11 +144,17 @@ export function Button({
   const disabled = props.disabled || Boolean(disabledReason) || isLoading;
 
   return (
-    <div className={className} title={disabledReason || undefined}>
-      <button {...props} disabled={disabled} className={`${cls} w-full`}>
-        {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : children}
+    <div className={className}>
+      <button
+        {...props}
+        disabled={disabled}
+        aria-describedby={disabledReason ? reasonId : props['aria-describedby']}
+        title={disabledReason || props.title}
+        className={`${cls} w-full`}
+      >
+        {isLoading ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : children}
       </button>
-      {disabledReason && <p className="mt-1 text-xs font-medium text-amber-700">{disabledReason}</p>}
+      {disabledReason && <p id={reasonId} className="mt-1 text-xs font-medium text-amber-800">{disabledReason}</p>}
     </div>
   );
 }
@@ -129,10 +169,10 @@ export function DataTable({ children }: { children: ReactNode }) {
 
 export function EmptyState({ title, description }: { title: string; description?: string }) {
   return (
-    <div className="border-y border-dashed border-graphite-300 bg-white/60 px-4 py-7 text-left">
-      <AlertCircle className="h-5 w-5 text-primary-600" />
+    <div className="empty-state">
+      <AlertCircle className="h-5 w-5 text-primary-700" aria-hidden="true" />
       <p className="mt-2 font-semibold text-graphite-950">{title}</p>
-      {description && <p className="mt-1 text-sm text-graphite-500">{description}</p>}
+      {description && <p className="mt-1 text-sm text-graphite-600">{description}</p>}
     </div>
   );
 }
@@ -150,7 +190,7 @@ export function FormField({
     <label className="block">
       <span className="label">{label}</span>
       {children}
-      {hint && <span className="mt-1 block text-xs text-slate-500">{hint}</span>}
+      {hint && <span className="mt-1 block text-xs text-graphite-600">{hint}</span>}
     </label>
   );
 }
@@ -165,13 +205,15 @@ export function Tabs({
   onChange: (id: string) => void;
 }) {
   return (
-    <div className="flex gap-5 overflow-x-auto border-b border-graphite-200 bg-transparent">
+    <div role="tablist" className="flex gap-5 overflow-x-auto border-b border-graphite-200 bg-transparent">
       {tabs.map((tab) => (
         <button
           key={tab.id}
           type="button"
+          role="tab"
+          aria-selected={active === tab.id}
           onClick={() => onChange(tab.id)}
-          className={`whitespace-nowrap border-b-2 px-0 py-2 text-sm font-semibold transition ${
+          className={`whitespace-nowrap border-b-2 px-0 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2 ${
             active === tab.id ? 'border-primary-600 text-primary-800' : 'border-transparent text-graphite-600 hover:border-graphite-300 hover:text-graphite-950'
           }`}
         >
@@ -183,9 +225,98 @@ export function Tabs({
 }
 
 export function FilterBar({ children }: { children: ReactNode }) {
-  return <div className="work-panel p-3">{children}</div>;
+  return <div className="toolbar">{children}</div>;
 }
 
-export function ConfirmDialog() {
-  return null;
+export function Dialog({
+  open,
+  onClose,
+  title,
+  description,
+  children,
+  footer,
+}: {
+  open: boolean;
+  onClose: () => void;
+  title: string;
+  description?: string;
+  children: ReactNode;
+  footer?: ReactNode;
+}) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
+  const descriptionId = useId();
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    if (open && !dialog.open) dialog.showModal();
+    if (!open && dialog.open) dialog.close();
+  }, [open]);
+
+  return (
+    <dialog
+      ref={dialogRef}
+      aria-labelledby={titleId}
+      aria-describedby={description ? descriptionId : undefined}
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
+      onClick={(event) => {
+        if (event.target === dialogRef.current) onClose();
+      }}
+      className="dialog-surface"
+    >
+      <div className="dialog-header">
+        <div>
+          <h2 id={titleId} className="text-lg font-semibold text-graphite-950">{title}</h2>
+          {description && <p id={descriptionId} className="mt-1 text-sm leading-6 text-graphite-600">{description}</p>}
+        </div>
+        <button type="button" onClick={onClose} className="icon-button" aria-label="Stäng dialog">
+          <X aria-hidden="true" size={18} />
+        </button>
+      </div>
+      <div className="px-5 py-4">{children}</div>
+      {footer && <div className="dialog-footer">{footer}</div>}
+    </dialog>
+  );
+}
+
+export function ConfirmDialog({
+  open,
+  onClose,
+  onConfirm,
+  title,
+  description,
+  confirmLabel = 'Bekräfta',
+  isLoading,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  title: string;
+  description?: string;
+  confirmLabel?: string;
+  isLoading?: boolean;
+}) {
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title={title}
+      description={description}
+      footer={
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <button type="button" onClick={onClose} className="btn-secondary">Avbryt</button>
+          <button type="button" onClick={onConfirm} disabled={isLoading} className="btn-danger">
+            {isLoading && <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />}
+            {confirmLabel}
+          </button>
+        </div>
+      }
+    >
+      <p className="text-sm leading-6 text-graphite-700">Den här åtgärden går inte att ångra.</p>
+    </Dialog>
+  );
 }

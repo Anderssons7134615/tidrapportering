@@ -36,7 +36,7 @@ export function DashboardSkeleton() {
       {/* Stats grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[1, 2, 3, 4].map((i) => (
-          <div key={i} className="card">
+          <div key={i} className="kpi-summary">
             <div className="flex items-center gap-3">
               <Skeleton variant="rectangular" width={40} height={40} />
               <div className="space-y-2">
@@ -49,7 +49,7 @@ export function DashboardSkeleton() {
       </div>
 
       {/* Week overview */}
-      <div className="card">
+      <div className="task-section">
         <Skeleton width={140} height={20} className="mb-4" />
         <div className="grid grid-cols-7 gap-2">
           {[1, 2, 3, 4, 5, 6, 7].map((i) => (
@@ -81,7 +81,7 @@ export function WeekViewSkeleton() {
       </div>
 
       {/* Summary card */}
-      <div className="card">
+      <div className="review-summary">
         <Skeleton width={80} height={14} className="mb-3" />
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
@@ -97,7 +97,7 @@ export function WeekViewSkeleton() {
 
       {/* Day cards */}
       {[1, 2, 3, 4, 5, 6, 7].map((i) => (
-        <div key={i} className="card">
+        <div key={i} className="task-section">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
               <Skeleton width={70} height={16} />
@@ -134,13 +134,13 @@ export function ListSkeleton({ rows = 5 }: { rows?: number }) {
       {/* List items */}
       <div className="space-y-3">
         {Array.from({ length: rows }).map((_, i) => (
-          <div key={i} className="card">
+          <div key={i} className="data-row border-y border-graphite-200 bg-white">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <Skeleton variant="rectangular" width={36} height={36} />
                 <div className="space-y-2">
-                  <Skeleton width={140 + Math.random() * 60} height={16} />
-                  <Skeleton width={100 + Math.random() * 40} height={12} />
+                  <Skeleton width={180} height={16} />
+                  <Skeleton width={130} height={12} />
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -164,7 +164,7 @@ export function ApprovalSkeleton() {
         <Skeleton width={80} height={18} className="mb-3" />
         <div className="space-y-3">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="card">
+            <div key={i} className="data-row border-y border-graphite-200 bg-white">
               <div className="flex items-center justify-between">
                 <div className="space-y-2">
                   <Skeleton width={130} height={16} />
@@ -192,7 +192,7 @@ export function SettingsSkeleton() {
       <Skeleton width={160} height={28} />
 
       {/* Password card */}
-      <div className="card space-y-4">
+      <div className="task-section space-y-4">
         <Skeleton width={120} height={20} />
         <div className="space-y-3">
           <Skeleton variant="rectangular" height={40} />
@@ -203,7 +203,7 @@ export function SettingsSkeleton() {
       </div>
 
       {/* Company card */}
-      <div className="card space-y-4">
+      <div className="task-section space-y-4">
         <Skeleton width={180} height={20} />
         <Skeleton variant="rectangular" height={40} />
         <div className="grid grid-cols-2 gap-4">

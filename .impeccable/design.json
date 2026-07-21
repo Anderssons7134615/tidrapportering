@@ -1,0 +1,133 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-21T11:35:47.7211377+02:00",
+  "title": "Design System: TidApp",
+  "extensions": {
+    "colorMeta": {
+      "work-teal": {
+        "role": "primary",
+        "displayName": "Arbetsteal",
+        "canonical": "#185c56",
+        "tonalRamp": ["#153d3a", "#174a47", "#185c56", "#1b7169", "#248c80", "#46ad9d", "#82cdbf", "#d9f2ec"]
+      },
+      "workspace": {
+        "role": "neutral",
+        "displayName": "Arbetsyta",
+        "canonical": "#eef2f1",
+        "tonalRamp": ["#0b0f0e", "#171b1a", "#282d2b", "#51564e", "#696d62", "#b7b8ad", "#eeeeea", "#f7f7f5"]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Klar yta",
+        "canonical": "#ffffff",
+        "tonalRamp": ["#171b1a", "#3d423d", "#696d62", "#8b8e82", "#b7b8ad", "#d9d9d2", "#f7f7f5", "#ffffff"]
+      }
+    },
+    "typographyMeta": {
+      "headline": { "displayName": "Sidrubrik", "purpose": "Ett tydligt sidnamn per vy." },
+      "title": { "displayName": "Arbetsrubrik", "purpose": "Sektioner, rader och viktiga sammanfattningar." },
+      "body": { "displayName": "Arbetstext", "purpose": "Instruktioner och normal produkttext." },
+      "label": { "displayName": "Etikett", "purpose": "Fält, kolumner och status i normal meningsform." }
+    },
+    "shadows": [
+      { "name": "sticky-low", "value": "0 2px 8px rgba(15, 23, 42, 0.08)", "purpose": "Fast mobilnavigation och sticky spara-rad." },
+      { "name": "dialog", "value": "0 12px 28px rgba(11, 15, 14, 0.18)", "purpose": "Dialoger som faktiskt ligger ovanpå arbetsytan." }
+    ],
+    "motion": [
+      { "name": "state-fast", "value": "160ms cubic-bezier(0.25, 1, 0.5, 1)", "purpose": "Hover, fokus och lokala tillstånd." },
+      { "name": "panel-standard", "value": "220ms cubic-bezier(0.22, 1, 0.36, 1)", "purpose": "Meny, dialog och progressiv visning." }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "640px" },
+      { "name": "lg", "value": "1024px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Den enda visuellt primära handlingen i ett arbetssteg.",
+      "html": "<button class=\"ds-btn-primary\">Spara tid</button>",
+      "css": ".ds-btn-primary{min-height:44px;padding:10px 16px;border:0;border-radius:8px;background:#185c56;color:#fff;font:600 14px/1.3 Aptos,Segoe UI,sans-serif;transition:background 160ms cubic-bezier(.25,1,.5,1),transform 160ms cubic-bezier(.25,1,.5,1)}.ds-btn-primary:hover{background:#174a47}.ds-btn-primary:active{transform:translateY(1px)}.ds-btn-primary:focus-visible{outline:2px solid #1b7169;outline-offset:2px}"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Sekundärt kommando utan konkurrens med huvudhandlingen.",
+      "html": "<button class=\"ds-btn-secondary\">Avbryt</button>",
+      "css": ".ds-btn-secondary{min-height:44px;padding:10px 16px;border:1px solid #d9dfdc;border-radius:8px;background:#fff;color:#171b1a;font:600 14px/1.3 Aptos,Segoe UI,sans-serif;transition:background 160ms cubic-bezier(.25,1,.5,1),border-color 160ms cubic-bezier(.25,1,.5,1)}.ds-btn-secondary:hover{border-color:#82cdbf;background:#effaf7}.ds-btn-secondary:focus-visible{outline:2px solid #1b7169;outline-offset:2px}"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Lättläst fält med stabilt fokus och fältanpassad höjd.",
+      "html": "<label class=\"ds-field\"><span>Projekt</span><input value=\"0069 - Exempelprojekt\" /></label>",
+      "css": ".ds-field{display:grid;gap:6px;color:#282d2b;font:600 14px/1.3 Aptos,Segoe UI,sans-serif}.ds-field input{min-height:44px;padding:10px 14px;border:1px solid #d9dfdc;border-radius:8px;background:#fff;color:#0b0f0e;font:400 16px/1.4 Aptos,Segoe UI,sans-serif}.ds-field input:hover{border-color:#b7b8ad}.ds-field input:focus-visible{outline:2px solid #1b7169;outline-offset:1px;border-color:#1b7169}"
+    },
+    {
+      "name": "Status Pill",
+      "kind": "chip",
+      "refersTo": "status-pill",
+      "description": "Kort status med text, tonad yta och full ram.",
+      "html": "<span class=\"ds-status\">Behöver granskas</span>",
+      "css": ".ds-status{display:inline-flex;align-items:center;min-height:28px;padding:4px 10px;border:1px solid #fcd34d;border-radius:9999px;background:#fffbeb;color:#92400e;font:600 12px/1.3 Aptos,Segoe UI,sans-serif}"
+    },
+    {
+      "name": "Navigation Item",
+      "kind": "nav",
+      "description": "Aktiv position utan färgad sidrand.",
+      "html": "<a class=\"ds-nav-item\" href=\"#\" aria-current=\"page\">Rapportera</a>",
+      "css": ".ds-nav-item{display:flex;align-items:center;min-height:44px;padding:10px 12px;border-radius:8px;background:#effaf7;color:#153d3a;text-decoration:none;font:600 14px/1.3 Aptos,Segoe UI,sans-serif}.ds-nav-item:hover{background:#d9f2ec}.ds-nav-item:focus-visible{outline:2px solid #82cdbf;outline-offset:2px}"
+    },
+    {
+      "name": "Data Row",
+      "kind": "custom",
+      "description": "Skanningsbar projekt- eller veckorad med stabil kolumnstruktur.",
+      "html": "<div class=\"ds-data-row\"><strong>0069 · Exempelprojekt</strong><span>8 h</span><span class=\"ds-row-state\">Pågående</span></div>",
+      "css": ".ds-data-row{display:grid;grid-template-columns:minmax(0,1fr) 72px auto;align-items:center;gap:16px;min-height:52px;padding:12px 16px;border-bottom:1px solid #d9dfdc;background:#fff;color:#171b1a;font:400 14px/1.4 Aptos,Segoe UI,sans-serif}.ds-data-row:hover{background:#effaf7}.ds-data-row:focus-within{outline:2px solid #1b7169;outline-offset:-2px}.ds-row-state{color:#51564e;font-weight:600}"
+    },
+    {
+      "name": "Task Surface",
+      "kind": "card",
+      "description": "Ett verkligt avgränsat verktyg, inte ett dekorativt kort.",
+      "html": "<section class=\"ds-task-surface\"><h3>Veckans timmar</h3><p>Kontrollera rapporterad tid innan veckan skickas.</p></section>",
+      "css": ".ds-task-surface{padding:16px;border-top:1px solid #d9dfdc;border-bottom:1px solid #d9dfdc;background:#fff;color:#171b1a;font:400 14px/1.5 Aptos,Segoe UI,sans-serif}.ds-task-surface h3{margin:0 0 6px;font-size:16px;line-height:1.35}.ds-task-surface p{margin:0;color:#62666d}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Den välordnade arbetsdagen",
+    "overview": "TidApp ska kännas som ett lugnt, välorganiserat arbetsbord där rätt sak alltid ligger närmast. Systemet använder befintlig teal och grafit som identitet, men värmen kommer från språk, återkoppling och mänsklig prioritering.",
+    "keyCharacteristics": [
+      "Uppgiftsstyrd och rollmedveten.",
+      "Ljus, tät och lätt att skanna.",
+      "Flat som standard, med djup endast när lager faktiskt överlappar.",
+      "Tydlig svensk mikrokopia och synlig återkoppling.",
+      "Mobil först för rapportering, datorstark för granskning och export."
+    ],
+    "rules": [
+      { "name": "The Ten Percent Rule", "body": "Teal får bära högst cirka tio procent av en normal arbetsvy.", "section": "colors" },
+      { "name": "The No Color Alone Rule", "body": "Status ska alltid ha text eller ikon utöver färg.", "section": "colors" },
+      { "name": "The One Page Title Rule", "body": "Varje sida har en tydlig H1. Upprepade små uppercase-eyebrows är förbjudna.", "section": "typography" },
+      { "name": "The Flat Until Lifted Rule", "body": "En statisk lista, tabell eller sektion får ingen dekorativ skugga.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do forma varje sida efter en primär arbetsuppgift och en tydlig huvudhandling.",
+      "Do använda rader, tabeller, sektioner och sammanhang före generiska kort.",
+      "Do behålla Anderssons logotyp, arbetsteal och grafit som igenkännbara ankare.",
+      "Do använda minst 44 x 44px träffytor och verifiera 200 procent zoom.",
+      "Do visa konsekvens och avvikelser innan attest, radering eller export slutförs.",
+      "Do använda 150 till 250ms rörelse endast för tillstånd och återkoppling."
+    ],
+    "donts": [
+      "Don't bygga generiska kortraster där varje informationsbit ligger i en likadan ruta.",
+      "Don't använda AI-genererade dashboardmönster med dekorativa KPI-block, upprepade eyebrow-rubriker eller tillgjord premiumkänsla.",
+      "Don't lägga marknadsföringslayout inne i arbetsflöden eller låta budskap tränga undan den primära uppgiften.",
+      "Don't använda dekorativa gradienter, glassmorphism, färgade sidränder eller animationer utan funktion.",
+      "Don't använda kompakta kontroller, otydliga ikonknappar eller tabeller som endast fungerar på stor datorskärm.",
+      "Don't kapsla kort i kort eller kombinera dekorativ bred skugga med tunn ram."
+    ]
+  }
+}
