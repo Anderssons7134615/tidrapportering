@@ -6,7 +6,7 @@ import toast from 'react-hot-toast';
 import { reportsApi, usersApi } from '../services/api';
 import { ReportsSkeleton } from '../components/ui/Skeleton';
 import { QueryError } from '../components/ui/QueryError';
-import { AppShell, Button, EmptyState, StatusBadge } from '../components/ui/design';
+import { AppShell, Button, EmptyState, PageHeader, ReviewSummary, StatusBadge, Toolbar } from '../components/ui/design';
 import { formatDate, formatHours, parseDateOnlyLocal } from '../utils/format';
 
 type TimeKind = 'regular' | 'overtime' | 'vacation' | 'absence';
@@ -248,6 +248,15 @@ export default function Reports() {
     setToDate(range.to);
   };
 
+  const isQuickPeriodSelected = (period: 'closedPayroll' | 'currentPayroll' | 'previousPayroll') => {
+    const range = period === 'closedPayroll'
+      ? latestClosedPayrollPeriod()
+      : period === 'currentPayroll'
+        ? currentPayrollPeriod()
+        : previousPayrollPeriod(fromDate);
+    return fromDate === range.from && toDate === range.to;
+  };
+
   const handleSalaryExcelExport = async () => {
     setIsExportingExcel(true);
     try {
@@ -302,18 +311,13 @@ export default function Reports() {
 
   return (
     <AppShell>
-      <header className="flex flex-col gap-3 border-b border-graphite-200 pb-4 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <p className="text-sm font-semibold tracking-normal text-primary-700">Rapport</p>
-          <h1 className="page-title mt-1">Rapport för timmar</h1>
-          <p className="mt-2 max-w-4xl text-sm leading-6 text-graphite-600">
-            Läsbart löne- och revisorsunderlag med period, summering per person och alla attesterade tidrader.
-          </p>
-        </div>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+      <PageHeader
+        title="Rapport för timmar"
+        description="Attesterat löne- och revisorsunderlag för vald period."
+        action={<div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
           <Button type="button" onClick={handleSalaryExcelExport} isLoading={isExportingExcel}>
             <Download className="h-4 w-4" />
-            Excel
+            Löne-Excel
           </Button>
           <Button type="button" variant="secondary" onClick={handleSalaryCsvExport} isLoading={isExportingCsv}>
             <Download className="h-4 w-4" />
@@ -323,14 +327,14 @@ export default function Reports() {
             <Download className="h-4 w-4" />
             Revisor
           </Button>
-        </div>
-      </header>
+        </div>}
+      />
 
-      <section className="filter-strip">
-        <div className="grid grid-cols-1 gap-3 px-3 lg:grid-cols-[minmax(260px,1fr)_170px_170px_220px]">
+      <Toolbar className="grid grid-cols-1 lg:grid-cols-[minmax(260px,1fr)_170px_170px_220px]">
+        <div className="grid grid-cols-1 gap-3 lg:col-span-4 lg:grid-cols-[minmax(260px,1fr)_170px_170px_220px]">
           <label className="relative block">
             <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-graphite-400" />
-            <input className="input pl-9" placeholder="Sök person, arbetsmoment eller kod" value={search} onChange={(event) => setSearch(event.target.value)} />
+            <input className="input pl-9" placeholder="Filtrera visning" aria-label="Filtrera visning på person, arbetsmoment eller kod" value={search} onChange={(event) => setSearch(event.target.value)} />
           </label>
           <input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} className="input" aria-label="Från" />
           <input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} className="input" aria-label="Till" />
@@ -340,22 +344,22 @@ export default function Reports() {
           </select>
         </div>
 
-        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 px-3 text-sm">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm lg:col-span-4">
           <span className="inline-flex items-center gap-2 font-semibold text-graphite-700">
             <CalendarDays className="h-4 w-4 text-primary-600" />
             Brytdag 20:e
           </span>
-          <button type="button" onClick={() => setQuickPeriod('closedPayroll')} className="border-b border-transparent pb-1 font-semibold text-primary-800 hover:border-primary-500">
+          <button type="button" aria-pressed={isQuickPeriodSelected('closedPayroll')} onClick={() => setQuickPeriod('closedPayroll')} className="border-b border-transparent pb-1 font-semibold text-primary-800 hover:border-primary-500">
             Senaste löneperiod
           </button>
-          <button type="button" onClick={() => setQuickPeriod('currentPayroll')} className="border-b border-transparent pb-1 font-semibold text-primary-800 hover:border-primary-500">
+          <button type="button" aria-pressed={isQuickPeriodSelected('currentPayroll')} onClick={() => setQuickPeriod('currentPayroll')} className="border-b border-transparent pb-1 font-semibold text-primary-800 hover:border-primary-500">
             Pågående löneperiod
           </button>
-          <button type="button" onClick={() => setQuickPeriod('previousPayroll')} className="border-b border-transparent pb-1 font-semibold text-primary-800 hover:border-primary-500">
+          <button type="button" aria-pressed={isQuickPeriodSelected('previousPayroll')} onClick={() => setQuickPeriod('previousPayroll')} className="border-b border-transparent pb-1 font-semibold text-primary-800 hover:border-primary-500">
             Föregående
           </button>
         </div>
-      </section>
+      </Toolbar>
 
       {isLoading ? (
         <ReportsSkeleton />
@@ -376,7 +380,7 @@ export default function Reports() {
               <strong>{formatHours(payrollData.totals.absenceHours)}</strong>.
             </p>
             <p>
-              Revisorsunderlaget hämtas med knappen <strong>Revisor</strong>. Excel och CSV är löneunderlag för samma period och samma filter.
+              Revisorsunderlaget hämtas med knappen <strong>Revisor</strong>. Excel och CSV använder samma period och personurval. Sökningen ovan filtrerar bara visningen på sidan.
               {reviewHours > 0
                 ? <> Det finns <strong>{formatHours(reviewHours)}</strong> övertid eller frånvaro att granska innan export.</>
                 : <> Det finns ingen övertid eller frånvaro i urvalet.</>}
@@ -390,14 +394,14 @@ export default function Reports() {
             )}
           </section>
 
-          <section className="border-y border-graphite-200 bg-white/60 py-4">
+          <ReviewSummary>
             <div className="grid grid-cols-1 divide-y divide-graphite-200 text-sm leading-6 text-graphite-700 md:grid-cols-2 md:divide-x md:divide-y-0 xl:grid-cols-4">
               <ReportLine label="Personer med tid" value={`${payrollData.employees.length} personer`} />
               <ReportLine label="Saknar tid" value={`${missingUsers.length} personer`} warning={missingUsers.length > 0} />
               <ReportLine label="Semester" value={`${formatHours(payrollData.totals.vacationHours)} på ${vacationRows} rader`} />
               <ReportLine label="Granska före lön" value={reviewHours ? formatHours(reviewHours) : 'Inget särskilt'} warning={reviewHours > 0} />
             </div>
-          </section>
+          </ReviewSummary>
 
           <section className="space-y-3">
             <div className="flex items-center gap-2">
@@ -448,7 +452,7 @@ export default function Reports() {
             {!payrollData.entries.length ? (
               <EmptyState title="Inga rader att visa" />
             ) : (
-              <div className="overflow-x-auto border-y border-graphite-200 bg-white/90">
+              <div className="overflow-x-auto border-y border-graphite-200 bg-white/90" role="region" aria-label="Detaljrader för lön och revisor" tabIndex={0}>
                 <table className="min-w-[980px] w-full text-sm">
                   <thead className="sticky top-0 z-10 border-b border-graphite-200 bg-[#f3f6f4] text-left text-xs font-semibold uppercase tracking-normal text-graphite-500">
                     <tr>
@@ -490,7 +494,7 @@ export default function Reports() {
 
           <section className="border-t border-graphite-200 pt-4">
             <h2 className="text-xl font-semibold text-graphite-950">Excel-backup</h2>
-            <p className="mt-1 text-sm leading-6 text-graphite-600">Backupen laddar ner alla tidrader inom vald backup-period.</p>
+            <p className="mt-1 text-sm leading-6 text-graphite-600">Backupen laddar ner alla attesterade tidrader inom vald backup-period.</p>
             <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-[170px_170px_220px]">
               <input type="date" value={backupFromDate} onChange={(event) => setBackupFromDate(event.target.value)} className="input" aria-label="Backup från" />
               <input type="date" value={backupToDate} onChange={(event) => setBackupToDate(event.target.value)} className="input" aria-label="Backup till" />
@@ -534,7 +538,7 @@ function EmployeeSection({ row }: { row: EmployeePayrollRow }) {
         </p>
       </div>
 
-      <div className="mt-3 overflow-x-auto">
+      <div className="mt-3 overflow-x-auto" role="region" aria-label={`Arbetsmoment för ${row.userName}`} tabIndex={0}>
         <table className="min-w-[640px] w-full text-sm">
           <thead className="text-left text-xs font-semibold uppercase tracking-normal text-graphite-500">
             <tr>

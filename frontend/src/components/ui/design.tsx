@@ -57,7 +57,7 @@ export function TaskSection({
   title,
   action,
   ...props
-}: HTMLAttributes<HTMLElement> & {
+}: Omit<HTMLAttributes<HTMLElement>, 'title'> & {
   children: ReactNode;
   title?: ReactNode;
   action?: ReactNode;
@@ -113,7 +113,7 @@ export function KpiCard({
 }) {
   return (
     <div className="kpi-summary">
-      <p className="text-[11px] font-semibold uppercase tracking-normal text-graphite-500">{label}</p>
+      <p className="text-xs font-semibold uppercase tracking-normal text-graphite-500">{label}</p>
       <p className={`mt-1 text-xl font-semibold tracking-normal tabular-nums sm:text-2xl ${toneTextClasses[tone]}`}>{value}</p>
       {hint && <p className="mt-1 text-xs font-medium text-graphite-500">{hint}</p>}
     </div>
@@ -290,6 +290,7 @@ export function ConfirmDialog({
   title,
   description,
   confirmLabel = 'Bekräfta',
+  confirmVariant = 'danger',
   isLoading,
 }: {
   open: boolean;
@@ -298,6 +299,7 @@ export function ConfirmDialog({
   title: string;
   description?: string;
   confirmLabel?: string;
+  confirmVariant?: 'danger' | 'success' | 'primary';
   isLoading?: boolean;
 }) {
   return (
@@ -309,7 +311,7 @@ export function ConfirmDialog({
       footer={
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <button type="button" onClick={onClose} className="btn-secondary">Avbryt</button>
-          <button type="button" onClick={onConfirm} disabled={isLoading} className="btn-danger">
+          <button type="button" onClick={onConfirm} disabled={isLoading} className={confirmVariant === 'success' ? 'btn-success' : confirmVariant === 'primary' ? 'btn-primary' : 'btn-danger'}>
             {isLoading && <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />}
             {confirmLabel}
           </button>

@@ -438,7 +438,7 @@ const weekLockRoutes: FastifyPluginAsync = async (fastify) => {
 
     const { id } = request.params as { id: string };
     const schema = z.object({
-      comment: z.string().min(1),
+      comment: z.string().trim().min(1, 'Ange en anledning till nekandet'),
     });
 
     try {

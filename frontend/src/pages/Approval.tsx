@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { addDays, format } from 'date-fns';
@@ -8,7 +8,7 @@ import toast from 'react-hot-toast';
 import { timeEntriesApi, weekLocksApi } from '../services/api';
 import { ApprovalSkeleton } from '../components/ui/Skeleton';
 import type { TimeEntry, WeekLock } from '../types';
-import { AppShell, Card, DataTable, EmptyState, KpiCard, PageHeader, StatusBadge } from '../components/ui/design';
+import { AppShell, ConfirmDialog, DataList, DataRow, DataTable, EmptyState, PageHeader, ReviewSummary, StatusBadge, TaskSection } from '../components/ui/design';
 import { formatHours, parseDateOnlyLocal, toDateInputValue } from '../utils/format';
 
 const weekdayLabels = ['Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör', 'Sön'];
@@ -18,6 +18,8 @@ export default function Approval() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [rejectComment, setRejectComment] = useState('');
   const [rejectingId, setRejectingId] = useState<string | null>(null);
+  const [approvalCandidate, setApprovalCandidate] = useState<WeekLock | null>(null);
+  const [unlockCandidate, setUnlockCandidate] = useState<WeekLock | null>(null);
 
   const { data: weekLocks, isLoading } = useQuery({
     queryKey: ['weekLocks'],
@@ -47,6 +49,7 @@ export default function Approval() {
     mutationFn: (id: string) => weekLocksApi.approve(id),
     onSuccess: () => {
       toast.success('Vecka godkänd');
+      setApprovalCandidate(null);
       invalidateApprovalData();
     },
     onError: (error: Error) => toast.error(error.message),
@@ -67,6 +70,7 @@ export default function Approval() {
     mutationFn: (id: string) => weekLocksApi.unlock(id),
     onSuccess: () => {
       toast.success('Vecka upplåst');
+      setUnlockCandidate(null);
       invalidateApprovalData();
     },
     onError: (error: Error) => toast.error(error.message),
@@ -88,18 +92,19 @@ export default function Approval() {
   const rows = useMemo(() => {
     return pendingLocks.map((lock) => {
       const weekStart = parseDateOnlyLocal(lock.weekStartDate);
-      const details = expandedId === lock.id ? weekDetails?.entries || [] : [];
+      const detailsLoaded = expandedId === lock.id && Boolean(weekDetails);
+      const details = detailsLoaded ? weekDetails?.entries || [] : [];
       const dayHours = Array.from({ length: 7 }, (_, index) => {
         const day = addDays(weekStart, index);
         const key = format(day, 'yyyy-MM-dd');
         const entries = details.filter((entry) => toDateInputValue(entry.date) === key);
         return {
           date: day,
-          hours: entries.reduce((sum, entry) => sum + entry.hours, 0),
+          hours: detailsLoaded ? entries.reduce((sum, entry) => sum + entry.hours, 0) : null,
           entries,
         };
       });
-      return { lock, weekStart, dayHours, deviations: getLockDeviations(lock, details, Boolean(expandedId === lock.id && weekDetails)) };
+      return { lock, weekStart, dayHours, detailsLoaded, deviations: getLockDeviations(lock, details, detailsLoaded) };
     });
   }, [pendingLocks, expandedId, weekDetails]);
 
@@ -118,23 +123,63 @@ export default function Approval() {
         description="Granska veckor per anställd, hitta avvikelser och godkänn när allt stämmer."
       />
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <KpiCard label="Väntande veckor" value={pendingLocks.length} tone={pendingLocks.length ? 'yellow' : 'green'} />
-        <KpiCard label="Timmar att attestera" value={formatHours(pendingHours)} tone="blue" />
-      </div>
+      <ReviewSummary>
+        <p className="text-sm leading-6 text-graphite-700">
+          <strong className="text-graphite-950">{pendingLocks.length} veckor</strong> väntar på granskning, totalt{' '}
+          <strong className="tabular-nums text-graphite-950">{formatHours(pendingHours)}</strong>.
+        </p>
+      </ReviewSummary>
 
-      <Card>
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="section-title">Veckovy</h2>
-            <p className="text-sm text-slate-500">Klicka på en rad för att se tidrader och rätta detaljer.</p>
-          </div>
-          <StatusBadge label={`${pendingLocks.length} väntar`} tone={pendingLocks.length ? 'yellow' : 'green'} />
-        </div>
+      <TaskSection
+        title={<div><h2 className="section-title">Veckor att granska</h2><p className="mt-1 text-sm text-graphite-600">Öppna en rad för att läsa och rätta dess tidrader innan beslut.</p></div>}
+        action={<StatusBadge label={`${pendingLocks.length} väntar`} tone={pendingLocks.length ? 'yellow' : 'green'} />}
+      >
 
         {!pendingLocks.length ? (
           <EmptyState title="Inga veckor att attestera" description="När medarbetare rapporterar tid dyker veckorna upp här." />
         ) : (
+          <>
+          <div className="md:hidden">
+            <DataList>
+              {rows.map(({ lock, weekStart, detailsLoaded, deviations }) => (
+                <DataRow key={lock.id} className="items-start">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-graphite-950">{lock.user?.name}</p>
+                    <p className="mt-1 text-sm text-graphite-600">Vecka {format(weekStart, 'w', { locale: sv })} · {format(weekStart, 'd/M')} - {format(addDays(weekStart, 6), 'd/M')} · <strong>{formatHours(lock.totalHours)}</strong></p>
+                    <p className="mt-2 text-sm font-medium text-graphite-700">
+                      {deviations.length ? deviations.join(' · ') : detailsLoaded ? 'Inga avvikelser' : 'Öppna för att kontrollera avvikelser'}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => toggleLock(lock.id)}
+                    aria-expanded={expandedId === lock.id}
+                    aria-controls={`approval-details-${lock.id}`}
+                    className="btn-secondary shrink-0"
+                  >
+                    {expandedId === lock.id ? 'Stäng' : 'Granska'}
+                  </button>
+                  {expandedId === lock.id && (
+                    <div id={`approval-details-${lock.id}`} className="basis-full border-t border-graphite-200 pt-4">
+                      {renderWeekDetails({
+                        lock,
+                        entries: weekDetails?.entries || [],
+                        isLoading: isLoadingDetails,
+                        rejectingId,
+                        rejectComment,
+                        setRejectComment,
+                        setRejectingId,
+                        rejectMutation,
+                        deleteEntryMutation,
+                        onApprove: () => setApprovalCandidate(lock),
+                      })}
+                    </div>
+                  )}
+                </DataRow>
+              ))}
+            </DataList>
+          </div>
+          <div className="hidden md:block">
           <DataTable>
             <table className="min-w-[960px] w-full text-sm">
               <thead className="table-head">
@@ -149,41 +194,43 @@ export default function Approval() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map(({ lock, weekStart, dayHours, deviations }) => (
-                  <>
-                    <tr key={lock.id} className="border-b border-slate-100 align-middle hover:bg-slate-50">
+                {rows.map(({ lock, weekStart, dayHours, detailsLoaded, deviations }) => (
+                  <Fragment key={lock.id}>
+                    <tr className="border-b border-graphite-100 align-middle hover:bg-primary-50/60">
                       <td className="px-3 py-3">
-                        <button type="button" onClick={() => toggleLock(lock.id)} className="flex items-center gap-2 font-semibold text-slate-900">
+                        <button type="button" onClick={() => toggleLock(lock.id)} aria-expanded={expandedId === lock.id} aria-controls={`approval-details-${lock.id}`} className="flex min-h-11 items-center gap-2 font-semibold text-graphite-950">
                           <ChevronDown className={`h-4 w-4 transition ${expandedId === lock.id ? 'rotate-180' : ''}`} />
                           {lock.user?.name}
                         </button>
-                        <p className="text-xs text-slate-500">{lock.user?.email}</p>
+                        <p className="text-xs text-graphite-500">{lock.user?.email}</p>
                       </td>
                       <td className="px-3 py-3">
-                        <p className="font-medium text-slate-900">v{format(weekStart, 'w', { locale: sv })}</p>
-                        <p className="text-xs text-slate-500">{format(weekStart, 'd/M')} - {format(addDays(weekStart, 6), 'd/M')}</p>
+                        <p className="font-medium text-graphite-950">v{format(weekStart, 'w', { locale: sv })}</p>
+                        <p className="text-xs text-graphite-500">{format(weekStart, 'd/M')} - {format(addDays(weekStart, 6), 'd/M')}</p>
                       </td>
                       {dayHours.map((day) => (
                         <td key={toDateInputValue(day.date)} className="px-2 py-3 text-center">
-                          <div className={`rounded-lg border px-2 py-1.5 ${day.hours > 10 ? 'border-rose-200 bg-rose-50 text-rose-700' : day.hours === 0 ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-slate-200 bg-white text-slate-900'}`}>
-                            <p className="font-semibold">{formatHours(day.hours)}</p>
+                          <div className={`border-y px-2 py-1.5 ${day.hours == null ? 'border-graphite-100 text-graphite-500' : day.hours > 10 ? 'border-rose-200 bg-rose-50 text-rose-700' : day.hours === 0 ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-graphite-100 text-graphite-900'}`}>
+                            <p className="font-semibold">{day.hours == null ? '–' : formatHours(day.hours)}</p>
                           </div>
                         </td>
                       ))}
-                      <td className="px-3 py-3 text-right font-semibold text-slate-900">{formatHours(lock.totalHours)}</td>
+                      <td className="px-3 py-3 text-right font-semibold text-graphite-950">{formatHours(lock.totalHours)}</td>
                       <td className="px-3 py-3"><StatusBadge label="Väntar" tone="yellow" /></td>
                       <td className="px-3 py-3">
                         {deviations.length ? (
                           <div className="flex flex-wrap gap-1">
                             {deviations.slice(0, 2).map((deviation) => <StatusBadge key={deviation} label={deviation} tone="red" />)}
                           </div>
-                        ) : (
+                        ) : detailsLoaded ? (
                           <StatusBadge label="OK" tone="green" />
+                        ) : (
+                          <StatusBadge label="Granska" tone="slate" />
                         )}
                       </td>
                       <td className="px-3 py-3 text-right">
                         <button
-                          onClick={() => approveMutation.mutate(lock.id)}
+                          onClick={() => setApprovalCandidate(lock)}
                           disabled={approveMutation.isPending || lock.isCompleteForApproval === false}
                           className="btn-success disabled:cursor-not-allowed disabled:opacity-50"
                           title={lock.isCompleteForApproval === false ? 'Kan inte godkänna: veckan saknar tid måndag–fredag' : 'Godkänn vecka'}
@@ -194,8 +241,8 @@ export default function Approval() {
                       </td>
                     </tr>
                     {expandedId === lock.id && (
-                      <tr className="border-b border-slate-200 bg-slate-50/70">
-                        <td colSpan={13} className="px-3 py-4">
+                      <tr className="border-b border-graphite-200 bg-graphite-50">
+                        <td id={`approval-details-${lock.id}`} colSpan={13} className="px-3 py-4">
                           {renderWeekDetails({
                             lock,
                             entries: weekDetails?.entries || [],
@@ -206,40 +253,63 @@ export default function Approval() {
                             setRejectingId,
                             rejectMutation,
                             deleteEntryMutation,
+                            onApprove: () => setApprovalCandidate(lock),
                           })}
                         </td>
                       </tr>
                     )}
-                  </>
+                  </Fragment>
                 ))}
               </tbody>
             </table>
           </DataTable>
+          </div>
+          </>
         )}
-      </Card>
+      </TaskSection>
 
       {processedLocks.length > 0 && (
-        <Card>
-          <h2 className="section-title mb-3">Senaste historik</h2>
-          <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
+        <TaskSection title="Senaste historik">
+          <DataList>
             {processedLocks.slice(0, 12).map((lock) => (
-              <div key={lock.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <DataRow key={lock.id} className="min-h-0 flex-wrap">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="font-semibold text-slate-900">{lock.user?.name}</p>
-                    <p className="text-sm text-slate-500">Vecka {format(parseDateOnlyLocal(lock.weekStartDate), 'w', { locale: sv })} · {formatHours(lock.totalHours)}</p>
+                    <p className="font-semibold text-graphite-950">{lock.user?.name}</p>
+                    <p className="text-sm text-graphite-500">Vecka {format(parseDateOnlyLocal(lock.weekStartDate), 'w', { locale: sv })} · {formatHours(lock.totalHours)}{lock.reviewedAt ? ` · Granskad ${format(parseDateOnlyLocal(lock.reviewedAt), 'd/M')}` : ''}</p>
+                    {lock.comment && <p className="mt-1 text-sm text-graphite-600">{lock.comment}</p>}
                   </div>
                   <StatusBadge label={lock.status === 'APPROVED' ? 'Godkänd' : 'Nekad'} tone={lock.status === 'APPROVED' ? 'green' : 'red'} />
                 </div>
-                <button onClick={() => unlockMutation.mutate(lock.id)} disabled={unlockMutation.isPending} className="mt-3 inline-flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-semibold text-slate-600 hover:bg-white">
+                <button type="button" onClick={() => setUnlockCandidate(lock)} disabled={unlockMutation.isPending} className="btn-secondary">
                   <Unlock className="h-4 w-4" />
-                  Lås upp
+                  Öppna vecka
                 </button>
-              </div>
+              </DataRow>
             ))}
-          </div>
-        </Card>
+          </DataList>
+        </TaskSection>
       )}
+      <ConfirmDialog
+        open={Boolean(approvalCandidate)}
+        onClose={() => setApprovalCandidate(null)}
+        onConfirm={() => approvalCandidate && approveMutation.mutate(approvalCandidate.id)}
+        title="Godkänn vecka"
+        description={approvalCandidate ? `Godkänn ${approvalCandidate.user?.name || 'den här personen'}s vecka med ${formatHours(approvalCandidate.totalHours)} rapporterad tid?` : undefined}
+        confirmLabel="Godkänn vecka"
+        confirmVariant="success"
+        isLoading={approveMutation.isPending}
+      />
+      <ConfirmDialog
+        open={Boolean(unlockCandidate)}
+        onClose={() => setUnlockCandidate(null)}
+        onConfirm={() => unlockCandidate && unlockMutation.mutate(unlockCandidate.id)}
+        title="Öppna vecka för ändring"
+        description={unlockCandidate ? `Öppna vecka ${format(parseDateOnlyLocal(unlockCandidate.weekStartDate), 'w', { locale: sv })} för ${unlockCandidate.user?.name || 'medarbetaren'}? Godkännande eller nekande tas bort och tidraderna blir utkast igen.` : undefined}
+        confirmLabel="Öppna vecka"
+        confirmVariant="primary"
+        isLoading={unlockMutation.isPending}
+      />
     </AppShell>
   );
 }
@@ -254,6 +324,7 @@ function renderWeekDetails({
   setRejectingId,
   rejectMutation,
   deleteEntryMutation,
+  onApprove,
 }: {
   lock: WeekLock;
   entries: TimeEntry[];
@@ -264,15 +335,16 @@ function renderWeekDetails({
   setRejectingId: (value: string | null) => void;
   rejectMutation: any;
   deleteEntryMutation: any;
+  onApprove: () => void;
 }) {
-  if (isLoading) return <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-slate-500" /></div>;
+  if (isLoading) return <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-graphite-500" /></div>;
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <p className="font-semibold text-slate-900">Tidrader för {lock.user?.name}</p>
-          <p className="text-sm text-slate-500">Rätta datum, projekt, timmar eller ta bort felaktiga rader.</p>
+          <p className="font-semibold text-graphite-950">Tidrader för {lock.user?.name}</p>
+          <p className="text-sm text-graphite-500">Rätta datum, projekt, timmar eller ta bort felaktiga rader.</p>
         </div>
         <Link to={`/time-entry?date=${toDateInputValue(lock.weekStartDate)}&userId=${lock.userId}&return=/approval`} className="btn-secondary inline-flex">
           <Plus className="h-4 w-4" />
@@ -283,20 +355,20 @@ function renderWeekDetails({
       {!entries.length ? (
         <EmptyState title="Inga tidrader för veckan" />
       ) : (
-        <div className="space-y-2">
+        <DataList>
           {entries.map((entry) => (
-            <div key={entry.id} className="grid grid-cols-1 gap-3 rounded-lg border border-slate-200 bg-white p-3 text-sm lg:grid-cols-[1fr_auto] lg:items-center">
+            <DataRow key={entry.id} className="grid min-h-0 grid-cols-1 text-sm lg:grid-cols-[1fr_auto] lg:items-center">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-semibold text-slate-900">{format(parseDateOnlyLocal(entry.date), 'EEE d/M', { locale: sv })}</span>
+                  <span className="font-semibold text-graphite-950">{format(parseDateOnlyLocal(entry.date), 'EEE d/M', { locale: sv })}</span>
                   {!entry.projectId && <StatusBadge label="Saknar projekt" tone="yellow" />}
                   {!entry.activityId && <StatusBadge label="Saknar aktivitet" tone="red" />}
                 </div>
-                <p className="mt-1 truncate font-semibold text-slate-900">{entry.project?.name || 'Intern tid'}</p>
-                <p className="text-sm text-slate-500">{entry.activity?.name || 'Aktivitet saknas'} · {entry.note || 'Ingen kommentar'}</p>
+                <p className="mt-1 truncate font-semibold text-graphite-950">{entry.project?.name || 'Intern tid'}</p>
+                <p className="text-sm text-graphite-500">{entry.activity?.name || 'Aktivitet saknas'} · {entry.note || 'Ingen kommentar'}</p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <span className="mr-2 font-semibold text-slate-900">{formatHours(entry.hours)}</span>
+                <span className="mr-2 font-semibold text-graphite-950">{formatHours(entry.hours)}</span>
                 <Link to={`/time-entry?id=${entry.id}&return=/approval`} className="btn-secondary inline-flex">
                   <PencilLine className="h-4 w-4" />
                   Ändra
@@ -306,27 +378,33 @@ function renderWeekDetails({
                   Ta bort
                 </button>
               </div>
-            </div>
+            </DataRow>
           ))}
-        </div>
+        </DataList>
       )}
 
       {rejectingId === lock.id ? (
-        <div className="rounded-xl border border-rose-200 bg-rose-50 p-3">
+        <div className="border-y border-rose-200 bg-rose-50 p-3">
           <textarea value={rejectComment} onChange={(event) => setRejectComment(event.target.value)} placeholder="Ange anledning till nekande..." className="input" rows={2} />
           <div className="mt-3 flex gap-2">
             <button onClick={() => { setRejectingId(null); setRejectComment(''); }} className="btn-secondary flex-1">Avbryt</button>
-            <button onClick={() => rejectMutation.mutate({ id: lock.id, comment: rejectComment })} disabled={!rejectComment || rejectMutation.isPending} className="btn-danger flex-1">
+            <button onClick={() => rejectMutation.mutate({ id: lock.id, comment: rejectComment.trim() })} disabled={!rejectComment.trim() || rejectMutation.isPending} className="btn-danger flex-1">
               <XCircle className="h-4 w-4" />
               Neka vecka
             </button>
           </div>
         </div>
       ) : (
-        <button onClick={() => setRejectingId(lock.id)} className="btn-secondary">
-          <XCircle className="h-4 w-4" />
-          Neka eller skicka tillbaka
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={onApprove} disabled={lock.isCompleteForApproval === false} className="btn-success" title={lock.isCompleteForApproval === false ? 'Veckan saknar tid måndag-fredag' : 'Godkänn vecka'}>
+            <CheckCircle className="h-4 w-4" />
+            Godkänn vecka
+          </button>
+          <button type="button" onClick={() => setRejectingId(lock.id)} className="btn-secondary">
+            <XCircle className="h-4 w-4" />
+            Neka eller skicka tillbaka
+          </button>
+        </div>
       )}
     </div>
   );

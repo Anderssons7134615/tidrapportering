@@ -269,16 +269,18 @@ const reportRoutes: FastifyPluginAsync = async (fastify) => {
       orderBy: [{ user: { name: 'asc' } }, { date: 'asc' }],
     });
 
-    // Gruppera per användare och aktivitetskod
+    // Gruppera på användar-id så personer med samma visningsnamn inte blandas ihop.
     const grouped: Record<string, Record<string, { hours: number; activityName: string; activityCode: string; category: string; entries: typeof entries }>> = {};
+    const userNames = new Map<string, string>();
 
     entries.forEach((entry) => {
-      const userName = entry.user.name;
+      const userId = entry.user.id;
       const activityCode = entry.activity.code;
+      userNames.set(userId, entry.user.name);
 
-      if (!grouped[userName]) grouped[userName] = {};
-      if (!grouped[userName][activityCode]) {
-        grouped[userName][activityCode] = {
+      if (!grouped[userId]) grouped[userId] = {};
+      if (!grouped[userId][activityCode]) {
+        grouped[userId][activityCode] = {
           hours: 0,
           activityName: entry.activity.name,
           activityCode: entry.activity.code,
@@ -287,8 +289,8 @@ const reportRoutes: FastifyPluginAsync = async (fastify) => {
         };
       }
 
-      grouped[userName][activityCode].hours += entry.hours;
-      grouped[userName][activityCode].entries.push(entry);
+      grouped[userId][activityCode].hours += entry.hours;
+      grouped[userId][activityCode].entries.push(entry);
     });
 
     if (format === 'xlsx') {
@@ -373,8 +375,9 @@ const reportRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     // JSON-format
-    const summaryRows = Object.entries(grouped).map(([userName, activities]) => ({
-      userName,
+    const summaryRows = Object.entries(grouped).map(([userId, activities]) => ({
+      userId,
+      userName: userNames.get(userId) || 'Okänd användare',
       activities: Object.values(activities).sort((a, b) => a.activityName.localeCompare(b.activityName, 'sv')),
     }));
 
