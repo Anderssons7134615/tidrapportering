@@ -173,7 +173,7 @@ function SidebarNavigation({ items, onClick }: { items: NavigationItem[]; onClic
       {(Object.keys(groupLabels) as NavigationGroup[]).map((group) => {
         const groupItems = items.filter((item) => item.group === group);
         if (!groupItems.length) return null;
-        return <div key={group} className="mb-5 last:mb-0"><p className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-normal text-white/40">{groupLabels[group]}</p><div className="space-y-1">{groupItems.map((item) => <SideNavLink key={item.to} item={item} onClick={onClick} />)}</div></div>;
+        return <div key={group} className="mb-5 last:mb-0"><p className="px-3 pb-2 text-xs font-semibold uppercase tracking-normal text-white/40">{groupLabels[group]}</p><div className="space-y-1">{groupItems.map((item) => <SideNavLink key={item.to} item={item} onClick={onClick} />)}</div></div>;
       })}
     </nav>
   );
@@ -189,7 +189,7 @@ function SideNavLink({ item, onClick }: { item: NavigationItem; onClick?: () => 
 
 function MobileNavLink({ item }: { item: NavigationItem }) {
   const primary = item.to === '/time-entry';
-  return <NavLink to={item.to} end={item.to === '/'} className={({ isActive }) => primary ? `flex min-h-[58px] flex-col items-center justify-center rounded-md px-2 py-2 text-[11px] font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2 ${isActive ? 'bg-primary-800 text-white' : 'bg-primary-700 text-white hover:bg-primary-800'}` : `flex min-h-[56px] flex-col items-center justify-center rounded-md px-1.5 py-2 text-[11px] font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2 ${isActive ? 'bg-primary-50 text-primary-800' : 'text-graphite-500 hover:bg-graphite-50 hover:text-graphite-950'}`}><item.icon size={primary ? 22 : 20} /><span className="mt-0.5">{item.label}</span></NavLink>;
+  return <NavLink to={item.to} end={item.to === '/'} className={({ isActive }) => primary ? `flex min-h-[58px] flex-col items-center justify-center rounded-md px-2 py-2 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2 ${isActive ? 'bg-primary-800 text-white' : 'bg-primary-700 text-white hover:bg-primary-800'}` : `flex min-h-[56px] flex-col items-center justify-center rounded-md px-1.5 py-2 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2 ${isActive ? 'bg-primary-50 text-primary-800' : 'text-graphite-500 hover:bg-graphite-50 hover:text-graphite-950'}`}><item.icon size={primary ? 22 : 20} /><span className="mt-0.5">{item.label}</span></NavLink>;
 }
 
 function BrandMark({ compact = false, onDark = false }: { compact?: boolean; onDark?: boolean }) {
@@ -197,5 +197,5 @@ function BrandMark({ compact = false, onDark = false }: { compact?: boolean; onD
 }
 
 function TopStatus({ isOnline, pendingEntries, userName, onLogout }: { isOnline: boolean; pendingEntries: number; userName?: string; onLogout: () => void }) {
-  return <div className="top-status flex items-center gap-2 sm:gap-3"><div className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs font-semibold ${isOnline ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>{isOnline ? <Wifi size={14} /> : <WifiOff size={14} />}<span className="hidden sm:inline">{isOnline ? 'Online' : 'Offline'}</span>{pendingEntries > 0 && <span className="rounded-full bg-amber-200 px-1.5 py-0.5 text-[11px] font-semibold text-amber-900">{pendingEntries}</span>}</div><span className="hidden max-w-32 truncate text-sm font-medium text-graphite-700 sm:block">{userName}</span><button onClick={onLogout} className="icon-button" title="Logga ut" aria-label="Logga ut"><LogOut size={18} /></button></div>;
+  return <div className="top-status flex items-center gap-2 sm:gap-3"><div className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs font-semibold ${isOnline ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>{isOnline ? <Wifi size={14} /> : <WifiOff size={14} />}<span className="hidden sm:inline">{isOnline ? 'Online' : 'Offline'}</span>{pendingEntries > 0 && <span className="rounded-full bg-amber-200 px-1.5 py-0.5 text-xs font-semibold text-amber-900">{pendingEntries}</span>}</div><span className="hidden max-w-32 truncate text-sm font-medium text-graphite-700 sm:block">{userName}</span><button onClick={onLogout} className="icon-button" title="Logga ut" aria-label="Logga ut"><LogOut size={18} /></button></div>;
 }

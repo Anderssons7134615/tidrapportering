@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { timeEntriesApi } from '../services/api';
 import type { TeamWeekAttentionStatus, TeamWeekSummaryDay, TeamWeekSummaryUser } from '../types';
-import { AppShell, Card, EmptyState, KpiCard, PageHeader, StatusBadge } from '../components/ui/design';
+import { AppShell, EmptyState, PageHeader, ReviewSummary, StatusBadge, TaskSection } from '../components/ui/design';
 import { formatDate, formatHours } from '../utils/format';
 import { parseDateOnlyLocal } from '../utils/format';
 import { QueryError } from '../components/ui/QueryError';
@@ -151,9 +151,9 @@ export default function TeamWeekOverview() {
             <button onClick={() => navigateWeek('prev')} className="btn-secondary px-3" type="button" aria-label="Föregående vecka">
               <ChevronLeft className="h-4 w-4" />
             </button>
-            <div className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-center shadow-sm">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Vecka {format(weekStart, 'w', { locale: sv })}</p>
-              <p className="text-sm font-semibold text-slate-900">{format(weekStart, 'd MMM', { locale: sv })}</p>
+            <div className="border-y border-graphite-200 px-4 py-2 text-center">
+              <p className="text-xs font-semibold text-graphite-500">Vecka {format(weekStart, 'w', { locale: sv })}</p>
+              <p className="text-sm font-semibold text-graphite-950">{format(weekStart, 'd MMM', { locale: sv })}</p>
             </div>
             <button onClick={() => navigateWeek('next')} className="btn-secondary px-3" type="button" aria-label="Nästa vecka">
               <ChevronRight className="h-4 w-4" />
@@ -162,15 +162,13 @@ export default function TeamWeekOverview() {
         }
       />
 
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
-        <KpiCard label="Behöver åtgärd" value={totals.needsActionUsers} hint="Personer att följa upp" tone={totals.needsActionUsers ? 'red' : 'green'} />
-        <KpiCard label="Ej rapporterat" value={totals.missingUsers} hint="Saknar vardagar" tone={totals.missingUsers ? 'red' : 'green'} />
-        <KpiCard label="Väntar attest" value={totals.pendingUsers} hint="Inskickade veckor" tone={totals.pendingUsers ? 'blue' : 'slate'} />
-        <KpiCard label="Avvikelser" value={totals.deviationUsers} hint="Över 10 h eller nekad" tone={totals.deviationUsers ? 'yellow' : 'green'} />
-        <KpiCard label="Totalt" value={formatHours(totals.totalHours)} hint="Rapporterade timmar" tone="slate" />
-      </div>
+      <ReviewSummary>
+        <p className="text-sm leading-6 text-graphite-700">
+          <strong className="text-graphite-950">{totals.needsActionUsers} personer</strong> behöver följas upp. {totals.missingUsers} saknar tid, {totals.pendingUsers} väntar attest och {totals.deviationUsers} har avvikelse. Totalt <strong className="tabular-nums text-graphite-950">{formatHours(totals.totalHours)}</strong>.
+        </p>
+      </ReviewSummary>
 
-      <Card className="space-y-4">
+      <TaskSection className="space-y-4">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex min-w-0 items-center gap-2">
             <Users className="h-5 w-5 text-primary-700" />
@@ -191,14 +189,14 @@ export default function TeamWeekOverview() {
           </div>
         </div>
 
-        <div className="flex gap-2 overflow-x-auto pb-1">
+        <div className="flex flex-wrap gap-x-4 gap-y-2">
           {filterTabs.map((tab) => (
             <button
               key={tab.id}
               type="button"
               onClick={() => setActiveFilter(tab.id)}
-              className={`whitespace-nowrap rounded-xl px-3 py-2 text-sm font-semibold transition ${
-                activeFilter === tab.id ? 'bg-slate-900 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              className={`whitespace-nowrap border-b-2 px-1 py-2 text-sm font-semibold transition ${
+                activeFilter === tab.id ? 'border-primary-600 text-primary-800' : 'border-transparent text-graphite-600 hover:border-graphite-300 hover:text-graphite-950'
               }`}
             >
               {tab.label}
@@ -209,7 +207,7 @@ export default function TeamWeekOverview() {
         {isLoading ? (
           <div className="grid gap-3">
             {[1, 2, 3].map((item) => (
-              <div key={item} className="h-28 animate-pulse rounded-xl bg-slate-100" />
+              <div key={item} className="h-20 animate-pulse border-y border-graphite-100 bg-graphite-50" />
             ))}
           </div>
         ) : isError ? (
@@ -231,7 +229,7 @@ export default function TeamWeekOverview() {
             ))}
           </div>
         )}
-      </Card>
+      </TaskSection>
     </AppShell>
   );
 }
@@ -254,15 +252,15 @@ function TeamWeekUserRow({
     : 'Inga saknade vardagar';
 
   return (
-    <article className={`overflow-hidden rounded-xl border bg-white shadow-sm ${user.needsAction ? 'border-rose-200' : 'border-slate-200'}`}>
-      <button type="button" onClick={onToggle} className="w-full px-4 py-3 text-left transition hover:bg-slate-50">
+    <article className="overflow-hidden border-y border-graphite-200 bg-white">
+      <button type="button" onClick={onToggle} aria-expanded={expanded} aria-controls={`team-week-${user.userId}`} className="w-full px-4 py-3 text-left transition hover:bg-primary-50/60">
         <div className="grid gap-3 xl:grid-cols-[minmax(170px,0.75fr)_minmax(350px,1.35fr)_auto] xl:items-center">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <p className="truncate text-base font-semibold text-slate-950">{user.userName}</p>
+              <p className="truncate text-base font-semibold text-graphite-950">{user.userName}</p>
               <StatusBadge label={attention.label} tone={attention.tone} />
             </div>
-            <p className="mt-1 text-sm text-slate-500">
+            <p className="mt-1 text-sm text-graphite-500">
               {weekStatusLabel[user.status] || user.status} · {missingText}
             </p>
           </div>
@@ -275,7 +273,7 @@ function TeamWeekUserRow({
 
           <div className="flex items-center justify-between gap-3 text-sm xl:justify-end">
             <div className="flex items-center gap-2">
-              <span className="rounded-lg bg-slate-100 px-2 py-1 font-semibold text-slate-900">{formatHours(user.totalHours)}</span>
+              <span className="border-y border-graphite-200 px-2 py-1 font-semibold text-graphite-950">{formatHours(user.totalHours)}</span>
             </div>
             <ChevronDown className={`h-4 w-4 text-slate-500 transition-transform ${expanded ? 'rotate-180' : ''}`} />
           </div>
@@ -283,7 +281,7 @@ function TeamWeekUserRow({
       </button>
 
       {expanded && (
-        <div className="space-y-4 border-t border-slate-100 bg-slate-50/70 px-4 pb-4 pt-3">
+        <div id={`team-week-${user.userId}`} className="space-y-4 border-t border-graphite-200 bg-graphite-50 px-4 pb-4 pt-3">
           <ActionPanel user={user} weekStart={weekStart} />
 
           <div className="grid gap-4 xl:grid-cols-2">
@@ -353,9 +351,9 @@ function DayCell({ day }: { day: TeamWeekSummaryDay }) {
   return (
     <div
       title={`${day.dayName} ${day.date}: ${formatHours(day.hours)}${day.warnings.length ? ` - ${day.warnings.join(', ')}` : ''}`}
-      className={`min-h-[58px] rounded-lg border px-2 py-1.5 text-center ${dayClass[day.status] || dayClass.EMPTY}`}
+      className={`min-h-[58px] border px-2 py-1.5 text-center ${dayClass[day.status] || dayClass.EMPTY}`}
     >
-      <p className="text-[11px] font-semibold uppercase tracking-wide opacity-70">{day.dayName}</p>
+      <p className="text-xs font-semibold uppercase tracking-normal opacity-70">{day.dayName}</p>
       <p className="mt-1 text-sm font-bold">{day.hours > 0 ? formatHours(day.hours) : day.expected ? '0 h' : '-'}</p>
     </div>
   );
@@ -364,7 +362,7 @@ function DayCell({ day }: { day: TeamWeekSummaryDay }) {
 function ActionPanel({ user, weekStart }: { user: TeamWeekSummaryUser; weekStart: string }) {
   if (user.attentionStatus === 'APPROVED') {
     return (
-      <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+      <div className="flex items-center gap-2 border-y border-graphite-200 bg-white px-4 py-3 text-sm text-graphite-600">
         <CheckCircle2 className="h-4 w-4 text-emerald-600" />
         Veckan är godkänd och behöver ingen åtgärd.
       </div>
@@ -377,7 +375,7 @@ function ActionPanel({ user, weekStart }: { user: TeamWeekSummaryUser; weekStart
   ];
 
   return (
-    <div className="grid gap-3 rounded-xl border border-white bg-white p-3 shadow-sm lg:grid-cols-[1fr_auto] lg:items-center">
+    <div className="grid gap-3 border-y border-graphite-200 bg-white px-4 py-3 lg:grid-cols-[1fr_auto] lg:items-center">
       <div>
         <div className="flex items-center gap-2">
           {user.attentionStatus === 'MISSING' ? <UserX className="h-4 w-4 text-rose-600" /> : <AlertTriangle className="h-4 w-4 text-amber-600" />}

@@ -64,12 +64,10 @@
 
   .btn-danger {
     @apply btn bg-rose-600 text-white hover:bg-rose-700 focus:ring-rose-500;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 1px 2px rgba(136, 19, 55, 0.14);
   }
 
   .btn-success {
     @apply btn bg-emerald-600 text-white hover:bg-emerald-700 focus:ring-emerald-500;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 1px 2px rgba(6, 95, 70, 0.14);
   }
 
   .input {
@@ -144,7 +142,7 @@
   }
 
   .table-head {
-    @apply border-b border-graphite-200 bg-[#f3f6f4] text-left text-[11px] font-semibold uppercase tracking-normal text-graphite-500;
+    @apply border-b border-graphite-200 bg-[#f3f6f4] text-left text-xs font-semibold uppercase tracking-normal text-graphite-500;
   }
 
   .table-wrap tbody tr {
