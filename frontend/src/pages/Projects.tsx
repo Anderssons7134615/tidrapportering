@@ -1,13 +1,13 @@
 import { useMemo, useState } from 'react';
 import type { FormEvent, InputHTMLAttributes } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, ChevronRight, Edit2, MapPin, Plus, Search, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { customersApi, projectsApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
 import type { Project, ProjectListItem } from '../types';
-import { AppShell, EmptyState, StatusBadge } from '../components/ui/design';
+import { AppShell, Dialog, EmptyState, PageHeader, StatusBadge, Toolbar } from '../components/ui/design';
 import { formatCurrency, formatDate, formatHours, formatPercent, parseSwedishNumber } from '../utils/format';
 import { ListSkeleton } from '../components/ui/Skeleton';
 
@@ -19,48 +19,6 @@ const statusFilters = [
   { id: 'PLANNED', label: 'Planerade' },
   { id: 'COMPLETED', label: 'Avslutade' },
 ] as const;
-
-function suggestNextProjectCode(projects?: ProjectListItem[]) {
-  const matches: Array<{ prefix: string; number: number; width: number; digits: string }> = [];
-
-  for (const project of projects || []) {
-    const code = project.code?.trim();
-    const match = code?.match(/^(.*?)(\d+)$/);
-    if (!match) continue;
-
-    const number = Number.parseInt(match[2], 10);
-    if (!Number.isFinite(number)) continue;
-
-    matches.push({ prefix: match[1], number, width: match[2].length, digits: match[2] });
-  }
-
-  if (!matches.length) return '';
-
-  const fullPaddedNumbers = matches.filter((match) => match.prefix === '' && match.digits.length > 1 && match.digits.startsWith('0'));
-  const paddedSuffixes = matches.filter((match) => match.digits.length > 1 && match.digits.startsWith('0'));
-  const candidates = fullPaddedNumbers.length ? fullPaddedNumbers : paddedSuffixes.length ? paddedSuffixes : matches;
-  const preferredWidth = getPreferredCodeWidth(candidates);
-  const widthMatches = candidates.filter((match) => match.width === preferredWidth);
-  const bestMatch = widthMatches.reduce((best, match) => match.number > best.number ? match : best, widthMatches[0]);
-
-  if (!bestMatch) return '';
-  return `${bestMatch.prefix}${String(bestMatch.number + 1).padStart(bestMatch.width, '0')}`;
-}
-
-function getPreferredCodeWidth(matches: Array<{ number: number; width: number }>) {
-  const widths = new Map<number, { count: number; maxNumber: number }>();
-
-  for (const match of matches) {
-    const current = widths.get(match.width) || { count: 0, maxNumber: 0 };
-    widths.set(match.width, {
-      count: current.count + 1,
-      maxNumber: Math.max(current.maxNumber, match.number),
-    });
-  }
-
-  return Array.from(widths.entries())
-    .sort((a, b) => b[1].count - a[1].count || b[1].maxNumber - a[1].maxNumber || b[0] - a[0])[0][0];
-}
 
 export default function Projects() {
   const queryClient = useQueryClient();
@@ -95,8 +53,7 @@ export default function Projects() {
   });
 
   const projectItems = (projects || []) as ProjectListItem[];
-  const fallbackProjectCode = useMemo(() => suggestNextProjectCode(projectItems), [projectItems]);
-  const nextProjectCode = nextCodeResult?.code || fallbackProjectCode;
+  const nextProjectCode = nextCodeResult?.code || '';
 
   const createMutation = useMutation({
     mutationFn: projectsApi.create,
@@ -174,10 +131,11 @@ export default function Projects() {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
     const budgetHours = formData.get('budgetHours') as string;
+    const enteredCode = String(formData.get('code') || '').trim();
     const data = {
       customerId: (formData.get('customerId') as string) || undefined,
       name: formData.get('name') as string,
-      code: formData.get('code') as string,
+      code: editingProject || enteredCode !== nextProjectCode ? enteredCode : undefined,
       site: (formData.get('site') as string) || undefined,
       status: formData.get('status') as Project['status'],
       budgetHours: budgetHours ? parseSwedishNumber(budgetHours) : undefined,
@@ -193,24 +151,21 @@ export default function Projects() {
 
   return (
     <AppShell>
-      <header className="flex flex-col gap-3 border-b border-graphite-200 pb-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-sm font-semibold tracking-normal text-primary-700">Projektregister</p>
-          <h1 className="page-title mt-1">Projekt</h1>
-          <p className="mt-2 max-w-4xl text-sm leading-6 text-graphite-600">
-            Radlista för jobb, kund, projektnummer och timläge. Klicka på en rad för att öppna projektet.
-          </p>
-        </div>
-        {isManager && (
-          <button onClick={openCreateModal} className="btn-primary">
-            <Plus className="h-4 w-4" />
-            Nytt projekt
-          </button>
-        )}
-      </header>
-
-      <section className="filter-strip">
-        <div className="grid grid-cols-1 gap-3 px-3 lg:grid-cols-[minmax(260px,1fr)_220px_220px]">
+      <PageHeader
+        title="Projekt"
+        description="Sök, följ upp och öppna jobb i en gemensam radlista."
+        action={isManager ? (
+          <div className="flex flex-wrap items-center gap-3">
+            {nextProjectCode && <span className="text-sm text-graphite-600">Nästa nummer: <strong className="tabular-nums text-graphite-950">{nextProjectCode}</strong></span>}
+            <button type="button" onClick={openCreateModal} className="btn-primary">
+              <Plus className="h-4 w-4" />
+              Nytt projekt
+            </button>
+          </div>
+        ) : undefined}
+      />
+      <Toolbar className="grid grid-cols-1 lg:grid-cols-[minmax(260px,1fr)_220px_220px]">
+        <div className="grid grid-cols-1 gap-3 lg:col-span-3 lg:grid-cols-[minmax(260px,1fr)_220px_220px]">
           <label className="relative block">
             <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-graphite-400" />
             <input className="input pl-9" placeholder="Sök jobb, projektnummer, kund eller plats" value={search} onChange={(event) => setSearch(event.target.value)} />
@@ -230,7 +185,7 @@ export default function Projects() {
           </select>
         </div>
 
-        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 px-3 text-sm">
+        <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm lg:col-span-3">
           {statusFilters.map((filter) => (
             <button
               key={filter.id}
@@ -246,7 +201,7 @@ export default function Projects() {
             </button>
           ))}
         </div>
-      </section>
+      </Toolbar>
 
       <section className="space-y-3">
         <div className="flex flex-col gap-2 text-sm leading-6 text-graphite-700 lg:flex-row lg:items-center lg:justify-between">
@@ -256,9 +211,6 @@ export default function Projects() {
             {totals.risk > 0 && <span className="ml-1 font-semibold text-rose-700">{totals.risk} projekt behöver kollas.</span>}
             {totals.missingBudget > 0 && <span className="ml-1">{totals.missingBudget} löpande jobb saknar budget.</span>}
           </p>
-          {isManager && nextProjectCode && (
-            <p className="font-semibold text-graphite-900">Nästa projektnummer: {nextProjectCode}</p>
-          )}
         </div>
 
         {!filteredProjects.length ? (
@@ -365,33 +317,18 @@ function MobileProjectRow({
   onEdit: () => void;
   onDelete: () => void;
 }) {
-  const navigate = useNavigate();
   const metrics = project.metrics;
   const runningJob = !project.budgetHours && !['MISSING_BUDGET', 'ONGOING'].includes(metrics?.status.code || '');
   const usagePercent = metrics?.budgetUsagePercent ?? null;
-  const isRisk = metrics?.status.code === 'RISK' || (usagePercent ?? 0) >= 100;
-  const isWarning = !isRisk && (!project.budgetHours || (usagePercent ?? 0) >= 80);
-  const accentClass = isRisk ? 'border-l-rose-500' : isWarning ? 'border-l-amber-400' : 'border-l-emerald-500';
-
-  const openProject = () => navigate(`/projects/${project.id}`);
 
   return (
     <div
-      role="button"
-      tabIndex={0}
-      onClick={openProject}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault();
-          openProject();
-        }
-      }}
-      className={`border-l-4 ${accentClass} px-3 py-4 text-sm transition hover:bg-primary-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300 ${!project.active ? 'opacity-65' : ''}`}
+      className={`px-3 py-4 text-sm ${!project.active ? 'opacity-65' : ''}`}
       title="Ã–ppna projekt"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="font-semibold text-graphite-950">{project.code} - {project.name}</p>
+          <Link to={`/projects/${project.id}`} className="font-semibold text-graphite-950 hover:text-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400">{project.code} - {project.name}</Link>
           <p className="mt-1 text-graphite-600">{project.customer?.name || 'Intern'}{project.site ? ` · ${project.site}` : ''}</p>
         </div>
         <ChevronRight className="mt-1 h-5 w-5 shrink-0 text-graphite-400" />
@@ -406,10 +343,10 @@ function MobileProjectRow({
 
       {isManager && (
         <div className="mt-3 flex gap-2">
-          <button onClick={(event) => { event.stopPropagation(); onEdit(); }} className="rounded-md border border-graphite-200 bg-white px-3 py-2 text-sm font-semibold text-graphite-700" title="Redigera">
+          <button type="button" onClick={onEdit} className="icon-button text-graphite-700" title="Redigera" aria-label="Redigera projekt">
             <Edit2 className="h-4 w-4" />
           </button>
-          <button onClick={(event) => { event.stopPropagation(); onDelete(); }} className="rounded-md border border-rose-200 bg-white px-3 py-2 text-sm font-semibold text-rose-600" title="Inaktivera">
+          <button type="button" onClick={onDelete} className="icon-button border-rose-200 text-rose-600 hover:bg-rose-50" title="Inaktivera" aria-label="Inaktivera projekt">
             <Trash2 className="h-4 w-4" />
           </button>
         </div>
@@ -429,35 +366,22 @@ function ProjectRow({
   onEdit: () => void;
   onDelete: () => void;
 }) {
-  const navigate = useNavigate();
   const metrics = project.metrics;
   const runningJob = !project.budgetHours;
   const usagePercent = metrics?.budgetUsagePercent ?? null;
   const isRisk = metrics?.status.code === 'RISK' || (usagePercent ?? 0) >= 100;
   const isWarning = !isRisk && (runningJob || (usagePercent ?? 0) >= 80);
-  const accentClass = isRisk ? 'border-l-rose-500' : isWarning ? 'border-l-amber-400' : 'border-l-emerald-500';
   const progressClass = isRisk ? 'bg-rose-500' : isWarning ? 'bg-amber-500' : 'bg-emerald-500';
   const progressWidth = `${Math.max(0, Math.min(usagePercent || 0, 100))}%`;
 
-  const openProject = () => navigate(`/projects/${project.id}`);
-
   return (
     <tr
-      role="button"
-      tabIndex={0}
-      onClick={openProject}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault();
-          openProject();
-        }
-      }}
-      className={`cursor-pointer border-l-4 ${accentClass} transition hover:bg-primary-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300 ${!project.active ? 'opacity-65' : ''}`}
+      className={`transition hover:bg-primary-50/60 ${!project.active ? 'opacity-65' : ''}`}
       title="Öppna projekt"
     >
-      <td className="whitespace-nowrap px-3 py-3 font-semibold text-graphite-900 tabular-nums">{project.code}</td>
+      <td className="whitespace-nowrap px-3 py-3 font-semibold text-graphite-900 tabular-nums"><Link to={`/projects/${project.id}`} className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400">{project.code}</Link></td>
       <td className="px-3 py-3">
-        <p className="font-semibold text-graphite-950">{project.name}</p>
+        <Link to={`/projects/${project.id}`} className="font-semibold text-graphite-950 hover:text-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400">{project.name}</Link>
         {metrics?.warnings?.length ? (
           <p className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-amber-800">
             <AlertTriangle className="h-3.5 w-3.5" />
@@ -505,10 +429,10 @@ function ProjectRow({
         <div className="inline-flex items-center justify-end gap-1">
           {isManager && (
             <>
-              <button onClick={(event) => { event.stopPropagation(); onEdit(); }} className="rounded-md p-2 text-graphite-500 hover:bg-white hover:text-primary-700" title="Redigera">
+              <button type="button" onClick={onEdit} className="icon-button border-0 text-graphite-500 hover:bg-white hover:text-primary-700" title="Redigera" aria-label="Redigera projekt">
                 <Edit2 className="h-4 w-4" />
               </button>
-              <button onClick={(event) => { event.stopPropagation(); onDelete(); }} className="rounded-md p-2 text-rose-600 hover:bg-white" title="Inaktivera">
+              <button type="button" onClick={onDelete} className="icon-button border-0 text-rose-600 hover:bg-white" title="Inaktivera" aria-label="Inaktivera projekt">
                 <Trash2 className="h-4 w-4" />
               </button>
             </>
@@ -539,15 +463,21 @@ function ProjectModal({
   const codeDefault = editingProject?.code || suggestedCode;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-graphite-950/65 p-4 backdrop-blur-sm">
-      <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg border border-graphite-200 bg-white shadow-2xl">
-        <div className="border-b border-graphite-200 px-5 py-4">
-          <h2 className="text-lg font-semibold text-graphite-950">{isEditing ? 'Redigera projekt' : 'Nytt projekt'}</h2>
-          {!isEditing && suggestedCode && (
-            <p className="mt-1 text-sm text-graphite-600">Nästa lediga projektnummer är förifyllt: <strong>{suggestedCode}</strong>.</p>
-          )}
+    <Dialog
+      open
+      onClose={onClose}
+      title={isEditing ? 'Redigera projekt' : 'Nytt projekt'}
+      description={!isEditing && suggestedCode ? `Nästa lediga projektnummer är förifyllt: ${suggestedCode}.` : undefined}
+      footer={
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <button type="button" onClick={onClose} className="btn-secondary">Avbryt</button>
+          <button type="submit" form="project-form" className="btn-primary" disabled={isSaving}>
+            {isEditing ? 'Spara' : 'Skapa'}
+          </button>
         </div>
-        <form onSubmit={onSubmit} className="grid grid-cols-1 gap-4 p-5 md:grid-cols-2">
+      }
+    >
+        <form id="project-form" onSubmit={onSubmit} className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <label className="md:col-span-2">
             <span className="label">Kund</span>
             <select name="customerId" defaultValue={editingProject?.customerId || ''} className="input">
@@ -556,7 +486,14 @@ function ProjectModal({
             </select>
           </label>
           <Field name="name" label="Projektnamn" defaultValue={editingProject?.name} required />
-          <Field key={codeDefault || 'project-code'} name="code" label="Projektnummer" defaultValue={codeDefault} placeholder={suggestedCode || 'Ex. 1001'} required />
+          <Field
+            key={codeDefault || 'project-code'}
+            name="code"
+            label="Projektnummer"
+            defaultValue={codeDefault}
+            placeholder={suggestedCode || 'Skapas automatiskt'}
+            required={isEditing}
+          />
           <Field name="site" label="Arbetsplats" defaultValue={editingProject?.site} />
           <label>
             <span className="label">Status</span>
@@ -575,15 +512,8 @@ function ProjectModal({
             <input name="employeeCanSeeResults" type="checkbox" defaultChecked={editingProject?.employeeCanSeeResults || false} />
             Visa projekttimmar för anställda
           </label>
-          <div className="flex gap-3 md:col-span-2">
-            <button type="button" onClick={onClose} className="btn-secondary flex-1">Avbryt</button>
-            <button type="submit" className="btn-primary flex-1" disabled={isSaving}>
-              {isEditing ? 'Spara' : 'Skapa'}
-            </button>
-          </div>
         </form>
-      </div>
-    </div>
+    </Dialog>
   );
 }
 

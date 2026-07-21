@@ -6,14 +6,14 @@ import toast from 'react-hot-toast';
 import { projectsApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
 import type { MaterialArticle, Project, ProjectMaterial, ProjectSummary, TimeEntry } from '../types';
-import { AppShell, Button, Card, DataTable, EmptyState, FormField, KpiCard, PageHeader, StatusBadge, Tabs } from '../components/ui/design';
+import { AppShell, Button, DataList, DataRow, DataTable, EmptyState, FormField, KpiCard, PageHeader, StatusBadge, Tabs, TaskSection } from '../components/ui/design';
 import { formatCurrency, formatDate, formatHours, formatPercent, parseSwedishNumber, toDateInputValue } from '../utils/format';
 
 const tabs = [
   { id: 'overview', label: 'Översikt' },
   { id: 'materials', label: 'Material' },
-  { id: 'hours', label: 'Timmar' },
-  { id: 'summary', label: 'Sammanfattning' },
+  { id: 'hours', label: 'Tid' },
+  { id: 'summary', label: 'Ekonomi' },
   { id: 'notes', label: 'Anteckningar' },
 ];
 
@@ -179,7 +179,7 @@ export default function ProjectDetail() {
     else createMaterialMutation.mutate();
   };
 
-  if (isLoading) return <Card>Laddar projekt...</Card>;
+  if (isLoading) return <TaskSection>Laddar projekt...</TaskSection>;
 
   if (!p) {
     return (
@@ -220,7 +220,7 @@ export default function ProjectDetail() {
 
       {activeTab === 'overview' && (
         <div className="grid grid-cols-1 gap-5 xl:grid-cols-[1.1fr_0.9fr]">
-          <Card className="space-y-4">
+          <TaskSection className="space-y-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <h2 className="section-title">Projektläge</h2>
@@ -230,10 +230,9 @@ export default function ProjectDetail() {
             </div>
             <BudgetPanel budgetHours={p.budgetHours} totalHours={projectSummary?.totals.totalHours ?? metrics?.totalHours} usage={budgetUsage} />
             <WarningList warnings={[...(metrics?.warnings || []), ...(projectSummary?.warnings || [])]} />
-          </Card>
+          </TaskSection>
 
-          <Card>
-            <h2 className="section-title mb-3">Ekonomi</h2>
+          <TaskSection title="Ekonomi">
             {canSeeMoney ? (
               <div className="space-y-2 text-sm">
                 <Line label="Intäkt" value={formatCurrency(projectSummary?.totals.revenue)} />
@@ -244,36 +243,34 @@ export default function ProjectDetail() {
             ) : (
               <EmptyState title="Ekonomi är dold" description="Projektet visar inte kostnader eller resultat för din roll." />
             )}
-          </Card>
+          </TaskSection>
 
-          <Card>
-            <h2 className="section-title mb-3">Senaste tidrader</h2>
+          <TaskSection title="Senaste tidrader">
             <SimpleEntries entries={(projectSummary?.recentEntries?.length ? projectSummary.recentEntries : entries).slice(0, 6)} />
-          </Card>
+          </TaskSection>
 
-          <Card>
-            <h2 className="section-title mb-3">Team och veckor</h2>
+          <TaskSection title="Team och veckor">
             {managerSummary?.employeeBreakdown?.length ? (
-              <div className="space-y-2">
+              <DataList>
                 {managerSummary.employeeBreakdown.slice(0, 5).map((row) => (
-                  <div key={`${row.userId}-${row.weekStartDate || row.userName}`} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                  <DataRow key={`${row.userId}-${row.weekStartDate || row.userName}`} className="min-h-0">
                     <div className="flex items-center justify-between gap-3">
-                      <span className="font-semibold text-slate-900">{row.userName}</span>
+                      <span className="font-semibold text-graphite-950">{row.userName}</span>
                       <span className="text-sm font-semibold">{formatHours(row.totalHours)}</span>
                     </div>
-                    {row.weekNumber && <p className="mt-1 text-xs text-slate-500">Vecka {row.weekNumber}</p>}
-                  </div>
+                    {row.weekNumber && <p className="mt-1 text-xs text-graphite-500">Vecka {row.weekNumber}</p>}
+                  </DataRow>
                 ))}
-              </div>
+              </DataList>
             ) : (
               <EmptyState title="Ingen teamdata" description="När tid rapporteras visas personer och veckor här." />
             )}
-          </Card>
+          </TaskSection>
         </div>
       )}
 
       {activeTab === 'materials' && (
-        <Card>
+        <TaskSection>
           <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <h2 className="section-title">Material</h2>
@@ -346,12 +343,11 @@ export default function ProjectDetail() {
             onEdit={startEditMaterial}
             onDelete={(item) => deleteMaterialMutation.mutate(item.id)}
           />
-        </Card>
+        </TaskSection>
       )}
 
       {activeTab === 'hours' && (
-        <Card>
-          <h2 className="section-title mb-3">Timmar</h2>
+        <TaskSection title="Tid">
           <DataTable>
             <table className="min-w-full text-sm">
               <thead className="table-head">
@@ -377,7 +373,7 @@ export default function ProjectDetail() {
           <div className="mt-4 grid grid-cols-1 gap-2 md:grid-cols-3">
             {groupedByPerson.map((row) => <KpiCard key={row.name} label={row.name} value={formatHours(row.hours)} />)}
           </div>
-        </Card>
+        </TaskSection>
       )}
 
       {activeTab === 'summary' && (
@@ -385,10 +381,9 @@ export default function ProjectDetail() {
       )}
 
       {activeTab === 'notes' && (
-        <Card>
-          <h2 className="section-title mb-3">Anteckningar</h2>
+        <TaskSection title="Anteckningar">
           <p className="whitespace-pre-wrap text-sm text-slate-700">{p.notes || 'Inga anteckningar finns på projektet ännu.'}</p>
-        </Card>
+        </TaskSection>
       )}
     </AppShell>
   );
@@ -406,15 +401,15 @@ function BudgetPanel({ budgetHours, totalHours, usage }: { budgetHours?: number 
   const bounded = Math.max(0, Math.min(usage || 0, 100));
   const tone = (usage || 0) >= 100 ? 'bg-rose-500' : (usage || 0) >= 80 ? 'bg-amber-500' : 'bg-emerald-500';
   return (
-    <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+    <div className="border-y border-graphite-200 bg-graphite-50 px-4 py-4">
       <div className="mb-2 flex items-center justify-between text-sm">
-        <span className="font-semibold text-slate-900">Budgetförbrukning</span>
+        <span className="font-semibold text-graphite-950">Budgetförbrukning</span>
         <span className="font-semibold">{budgetHours ? formatPercent(usage) : 'Löpande jobb'}</span>
       </div>
       <div className="h-3 overflow-hidden rounded-full bg-white">
         <div className={`h-full rounded-full ${tone}`} style={{ width: budgetHours ? `${bounded}%` : '100%' }} />
       </div>
-      <p className="mt-2 text-xs text-slate-500">{formatHours(totalHours)} rapporterat {budgetHours ? `av ${formatHours(budgetHours)}` : 'utan timbudget'}</p>
+      <p className="mt-2 text-xs text-graphite-500">{formatHours(totalHours)} rapporterat {budgetHours ? `av ${formatHours(budgetHours)}` : 'utan timbudget'}</p>
     </div>
   );
 }
@@ -446,14 +441,14 @@ function Line({ label, value, strong, tone }: { label: string; value: string; st
 function SimpleEntries({ entries }: { entries: TimeEntry[] }) {
   if (!entries.length) return <EmptyState title="Inga tidrader" />;
   return (
-    <div className="space-y-2">
+    <DataList>
       {entries.map((entry) => (
-        <div key={entry.id} className="flex justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2 text-sm">
+        <DataRow key={entry.id} className="min-h-0 text-sm">
           <span>{formatDate(entry.date)} · {entry.user?.name} · {entry.activity?.name || 'Aktivitet saknas'}</span>
           <strong>{formatHours(entry.hours)}</strong>
-        </div>
+        </DataRow>
       ))}
-    </div>
+    </DataList>
   );
 }
 
@@ -519,7 +514,7 @@ function SummaryPanel({ summary, project, canSeeMoney }: { summary?: ProjectSumm
   const result = summary.totals.result;
   return (
     <div className="space-y-5">
-      <Card>
+      <TaskSection>
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="section-title">{isCompleted ? 'Slutsammanfattning' : 'Preliminär sammanfattning'}</h2>
@@ -533,25 +528,23 @@ function SummaryPanel({ summary, project, canSeeMoney }: { summary?: ProjectSumm
           <KpiCard label="Resultat" value={formatCurrency(result)} tone={result != null && result < 0 ? 'red' : 'green'} />
           <KpiCard label="Marginal" value={formatPercent(summary.totals.marginPercent)} tone="slate" />
         </div>
-      </Card>
+      </TaskSection>
 
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-        <Card>
-          <h2 className="section-title mb-3">Per person</h2>
+        <TaskSection title="Per person">
           {summary.byUser.length ? (
             <div className="space-y-2">
               {summary.byUser.map((row) => <Line key={row.userId} label={row.userName} value={formatHours(row.hours)} />)}
             </div>
           ) : <EmptyState title="Ingen attesterad tid" />}
-        </Card>
-        <Card>
-          <h2 className="section-title mb-3">Per arbetsmoment</h2>
+        </TaskSection>
+        <TaskSection title="Per arbetsmoment">
           {summary.byActivity.length ? (
             <div className="space-y-2">
               {summary.byActivity.map((row) => <Line key={row.activityId} label={row.activityName} value={formatHours(row.hours)} />)}
             </div>
           ) : <EmptyState title="Inga arbetsmoment" />}
-        </Card>
+        </TaskSection>
       </div>
     </div>
   );

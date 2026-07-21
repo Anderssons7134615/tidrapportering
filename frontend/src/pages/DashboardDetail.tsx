@@ -5,7 +5,7 @@ import { Link, Navigate, useParams } from 'react-router-dom';
 import { ArrowLeft, CalendarClock, ChevronRight, Clock, FolderKanban, Receipt, User2 } from 'lucide-react';
 import { dashboardApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
-import { AppShell, EmptyState, PageHeader, StatusBadge } from '../components/ui/design';
+import { AppShell, DataList, DataRow, EmptyState, PageHeader, ReviewSummary, StatusBadge, TaskSection } from '../components/ui/design';
 import type { DashboardMetric } from '../types';
 import { parseDateOnlyLocal, toDateInputValue } from '../utils/format';
 
@@ -32,7 +32,7 @@ export default function DashboardDetail() {
   if (isLoading) {
     return (
       <AppShell>
-        <div className="work-panel p-4 text-sm text-graphite-600">Laddar detaljer...</div>
+        <TaskSection className="text-sm text-graphite-600">Laddar detaljer...</TaskSection>
       </AppShell>
     );
   }
@@ -40,9 +40,9 @@ export default function DashboardDetail() {
   if (error || !data) {
     return (
       <AppShell>
-        <div className="work-panel border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+        <TaskSection className="border-rose-200 bg-rose-50 text-sm text-rose-700">
           Kunde inte hämta detaljer för översikten.
-        </div>
+        </TaskSection>
       </AppShell>
     );
   }
@@ -81,12 +81,12 @@ export default function DashboardDetail() {
         }
       />
 
-      <section className="filter-strip">
-        <div className="grid grid-cols-1 gap-3 px-3 text-sm leading-6 text-graphite-700 md:grid-cols-2">
+      <ReviewSummary>
+        <div className="grid grid-cols-1 gap-3 text-sm leading-6 text-graphite-700 md:grid-cols-2">
           <p><span className="font-semibold text-graphite-950">Totalt:</span> {totalLabel}</p>
           <p><span className="font-semibold text-graphite-950">Visning:</span> {scopeLabel}</p>
         </div>
-      </section>
+      </ReviewSummary>
 
       {data.kind === 'weekly-user-summary' ? (
         <WeeklyUserSummary data={data} periodStart={periodStart} />
@@ -107,13 +107,10 @@ function WeeklyUserSummary({ data, periodStart }: { data: any; periodStart: Date
   }
 
   return (
-    <section className="work-panel overflow-hidden">
-      <div className="work-panel-header">
-        <h2 className="section-title">Veckorader per person</h2>
-      </div>
-      <div className="divide-y divide-graphite-100">
+    <TaskSection title="Veckorader per person" className="overflow-hidden">
+      <DataList className="border-x-0">
         {users.map((summary: any) => (
-          <div key={summary.userId} className="px-3 py-4">
+          <DataRow key={summary.userId} className="block px-3 py-4">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div className="min-w-0 lg:w-48">
                 <p className="truncate font-semibold text-graphite-950">{summary.userName}</p>
@@ -122,12 +119,12 @@ function WeeklyUserSummary({ data, periodStart }: { data: any; periodStart: Date
               <div className="grid flex-1 grid-cols-7 gap-1">
                 {(Array.isArray(summary.days) ? summary.days : []).map((day: any) => (
                   <div key={`${summary.userId}-${day.date}`} className="min-h-16 border-l border-graphite-200 bg-graphite-50 px-2 py-2 text-center">
-                    <p className="text-[11px] font-semibold uppercase text-graphite-500">
+                    <p className="text-xs font-semibold uppercase text-graphite-500">
                       {format(parseDateOnlyLocal(day.date), 'EEE', { locale: sv })}
                     </p>
                     <p className="mt-1 text-sm font-semibold text-graphite-950">{Number(day.hours) > 0 ? formatDecimalHours(day.hours) : '-'}</p>
                     {(Array.isArray(day.projectCodes) ? day.projectCodes : []).length > 0 && (
-                      <p className="mt-1 truncate text-[11px] text-graphite-500" title={(Array.isArray(day.projectNames) ? day.projectNames : []).join(', ')}>
+                      <p className="mt-1 truncate text-xs text-graphite-500" title={(Array.isArray(day.projectNames) ? day.projectNames : []).join(', ')}>
                         {(Array.isArray(day.projectCodes) ? day.projectCodes : []).join(', ')}
                       </p>
                     )}
@@ -141,10 +138,10 @@ function WeeklyUserSummary({ data, periodStart }: { data: any; periodStart: Date
                 Öppna/rätta
               </Link>
             </div>
-          </div>
+          </DataRow>
         ))}
-      </div>
-    </section>
+      </DataList>
+    </TaskSection>
   );
 }
 
@@ -156,11 +153,8 @@ function PendingApprovals({ data }: { data: any }) {
   }
 
   return (
-    <section className="work-panel overflow-hidden">
-      <div className="work-panel-header">
-        <h2 className="section-title">Attestkö</h2>
-      </div>
-      <div className="divide-y divide-graphite-100">
+    <TaskSection title="Attestkö" className="overflow-hidden">
+      <DataList className="border-x-0">
         {approvals.map((approval: any) => (
           <Link
             key={approval.id}
@@ -180,8 +174,8 @@ function PendingApprovals({ data }: { data: any }) {
             <ChevronRight className="hidden h-4 w-4 text-graphite-400 sm:block" />
           </Link>
         ))}
-      </div>
-    </section>
+      </DataList>
+    </TaskSection>
   );
 }
 
@@ -193,13 +187,10 @@ function EntryList({ data, isManager }: { data: any; isManager: boolean }) {
   }
 
   return (
-    <section className="work-panel overflow-hidden">
-      <div className="work-panel-header">
-        <h2 className="section-title">Tidsrader</h2>
-      </div>
-      <div className="divide-y divide-graphite-100">
+    <TaskSection title="Tidsrader" className="overflow-hidden">
+      <DataList className="border-x-0">
         {entries.map((entry: any) => (
-          <div key={entry.id} className="px-3 py-4">
+          <DataRow key={entry.id} className="block px-3 py-4">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div className="min-w-0">
                 <p className="inline-flex items-center gap-2 text-sm font-semibold text-graphite-950">
@@ -235,9 +226,9 @@ function EntryList({ data, isManager }: { data: any; isManager: boolean }) {
                 Öppna veckan
               </Link>
             </div>
-          </div>
+          </DataRow>
         ))}
-      </div>
-    </section>
+      </DataList>
+    </TaskSection>
   );
 }

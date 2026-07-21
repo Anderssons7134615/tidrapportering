@@ -285,6 +285,41 @@
       bottom: calc(5.7rem + env(safe-area-inset-bottom, 0px));
     }
   }
+
+  @media (max-width: 280px) {
+    .safe-top .brand-mark,
+    .safe-top .top-status > div {
+      display: none;
+    }
+
+    .safe-bottom > div {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      max-width: 13rem;
+    }
+
+    .safe-bottom a:nth-child(2),
+    .safe-bottom a:nth-child(4) {
+      display: none;
+    }
+
+    .safe-bottom a {
+      min-height: 44px;
+      min-width: 44px;
+      padding: 0.25rem;
+    }
+
+    .safe-bottom a span {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border-width: 0;
+    }
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

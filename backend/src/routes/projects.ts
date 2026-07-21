@@ -1447,7 +1447,7 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
       let code = requestedCode || await getNextProjectCode(request.user.companyId);
       let project: any = null;
 
-      for (let attempt = 0; attempt < 5; attempt += 1) {
+      for (let attempt = 0; attempt < 10; attempt += 1) {
 
       // Kontrollera att projektkod är unik inom företaget
       const existing = await prisma.project.findUnique({

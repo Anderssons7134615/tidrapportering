@@ -1,15 +1,12 @@
-import type { ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import {
   AlertTriangle,
   ArrowRight,
   CalendarDays,
-  CheckCircle2,
   Clock,
   FileText,
   ListChecks,
-  TrendingUp,
   Users,
 } from 'lucide-react';
 import { dashboardApi } from '../services/api';
@@ -18,9 +15,7 @@ import { DashboardSkeleton } from '../components/ui/Skeleton';
 import { QueryError } from '../components/ui/QueryError';
 import { StatusBadge } from '../components/ui/design';
 import type { DashboardActionItem, ProjectListItem, TimeEntry, WeekLock } from '../types';
-import { formatCurrency, formatDate, formatHours, formatPercent, parseDateOnlyLocal, toDateInputValue } from '../utils/format';
-
-type StatusTone = 'blue' | 'green' | 'yellow' | 'red' | 'gray' | 'slate' | 'orange' | 'dark';
+import { formatDate, formatHours, formatPercent, parseDateOnlyLocal, toDateInputValue } from '../utils/format';
 
 export default function Dashboard() {
   const { user } = useAuthStore();
@@ -65,8 +60,7 @@ export default function Dashboard() {
       <header className="app-header">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
           <div className="min-w-0">
-            <p className="app-eyebrow">Arbetsläge</p>
-            <h1 className="mt-1 text-3xl font-semibold tracking-normal text-graphite-950 sm:text-4xl">
+            <h1 className="page-title">
               {isManager ? 'Dagens kontroll' : `God arbetsdag${firstName ? `, ${firstName}` : ''}`}
             </h1>
             <p className="app-description">
@@ -94,16 +88,7 @@ export default function Dashboard() {
         </div>
       </header>
 
-      <section className="overflow-hidden border-y border-graphite-900 bg-graphite-950 text-white">
-        <div className="grid grid-cols-2 divide-x divide-y divide-white/10 md:grid-cols-4 md:divide-y-0">
-          <StatusMetric label="Attest väntar" value={pendingCount} detail="veckor" tone={pendingCount ? 'yellow' : 'green'} icon={<CheckCircle2 className="h-4 w-4" />} />
-          <StatusMetric label="Budgetrisk" value={riskCount} detail="projekt" tone={riskCount ? 'red' : 'green'} icon={<AlertTriangle className="h-4 w-4" />} />
-          <StatusMetric label={isManager ? 'Löpande utan budget' : 'Saknade dagar'} value={isManager ? runningCount : missingWeekdays.length} detail={isManager ? 'projekt' : 'denna vecka'} tone={(isManager ? runningCount : missingWeekdays.length) ? 'yellow' : 'green'} icon={<ListChecks className="h-4 w-4" />} />
-          <StatusMetric label="Debiterbart vecka" value={formatCurrency(data?.summary.weeklyBillableValue)} detail={`${formatHours(data?.summary.weeklyBillableHours)} tid`} tone="blue" icon={<TrendingUp className="h-4 w-4" />} />
-        </div>
-      </section>
-
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.08fr)_minmax(360px,0.92fr)]">
+      <div className="space-y-5">
         <WorkQueue actionRows={actionRows} pendingApprovals={data?.pendingApprovals || []} isManager={isManager} />
         <WeekPulse rows={weekRows} maxHours={weekMaxHours} weeklyHours={data?.summary.weeklyHours || 0} monthlyHours={data?.summary.monthlyHours || 0} />
       </div>
@@ -115,33 +100,6 @@ export default function Dashboard() {
       )}
 
       <RecentEntriesSection entries={data?.recentEntries || []} isManager={isManager} />
-    </div>
-  );
-}
-
-function StatusMetric({
-  label,
-  value,
-  detail,
-  tone,
-  icon,
-}: {
-  label: string;
-  value: ReactNode;
-  detail: string;
-  tone: StatusTone;
-  icon: ReactNode;
-}) {
-  const color = tone === 'red' ? 'text-rose-300' : tone === 'yellow' ? 'text-amber-200' : tone === 'green' ? 'text-emerald-200' : 'text-primary-200';
-
-  return (
-    <div className="flex items-start gap-3 px-5 py-4">
-      <span className={`mt-1 ${color}`}>{icon}</span>
-      <div className="min-w-0">
-        <p className="text-[11px] font-semibold uppercase tracking-normal text-white/50">{label}</p>
-        <p className="mt-1 text-2xl font-semibold tracking-normal text-white tabular-nums">{value}</p>
-        <p className="mt-1 text-sm text-white/60">{detail}</p>
-      </div>
     </div>
   );
 }
@@ -229,16 +187,11 @@ function WeekPulse({
         <p className="text-sm font-semibold text-graphite-700">{formatHours(weeklyHours)}</p>
       </div>
 
-      <div className="grid grid-cols-2 divide-x divide-graphite-200 border-b border-graphite-200">
-        <div className="px-4 py-3">
-          <p className="text-[11px] font-semibold uppercase tracking-normal text-graphite-500">Vecka</p>
-          <p className="mt-1 text-2xl font-semibold text-graphite-950">{formatHours(weeklyHours)}</p>
-        </div>
-        <div className="px-4 py-3">
-          <p className="text-[11px] font-semibold uppercase tracking-normal text-graphite-500">Månad</p>
-          <p className="mt-1 text-2xl font-semibold text-graphite-950">{formatHours(monthlyHours)}</p>
-        </div>
-      </div>
+      <p className="border-b border-graphite-200 px-4 py-3 text-sm text-graphite-700">
+        Denna vecka <strong className="tabular-nums text-graphite-950">{formatHours(weeklyHours)}</strong>
+        <span className="px-2 text-graphite-400">·</span>
+        Denna månad <strong className="tabular-nums text-graphite-950">{formatHours(monthlyHours)}</strong>
+      </p>
 
       <div className="divide-y divide-graphite-100">
         {rows.length ? rows.map((day) => (
