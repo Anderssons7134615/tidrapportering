@@ -1,13 +1,15 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, ArrowLeft, Edit2, FileSpreadsheet, Plus, Trash2, Upload, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Check, Edit2, FileSpreadsheet, Plus, Search, Trash2, Upload, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { projectsApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
 import type { MaterialArticle, Project, ProjectMaterial, ProjectSummary, TimeEntry } from '../types';
 import { AppShell, Button, DataList, DataRow, DataTable, EmptyState, FormField, KpiCard, PageHeader, StatusBadge, Tabs, TaskSection } from '../components/ui/design';
+import { QueryError } from '../components/ui/QueryError';
 import { formatCurrency, formatDate, formatHours, formatPercent, parseSwedishNumber, toDateInputValue } from '../utils/format';
+import { searchMaterialArticles } from '../utils/materialSearch';
 
 const tabs = [
   { id: 'overview', label: 'Översikt' },
@@ -41,6 +43,8 @@ export default function ProjectDetail() {
   const [materialForm, setMaterialForm] = useState<MaterialForm>(emptyMaterialForm);
   const [editingMaterial, setEditingMaterial] = useState<ProjectMaterial | null>(null);
   const [importErrors, setImportErrors] = useState<Array<{ row: number; message: string }>>([]);
+  const [materialSearch, setMaterialSearch] = useState('');
+  const [materialPickerOpen, setMaterialPickerOpen] = useState(false);
 
   const { data: project, isLoading } = useQuery({
     queryKey: ['project', id],
@@ -66,7 +70,12 @@ export default function ProjectDetail() {
     enabled: !!id && isManager,
   });
 
-  const { data: materialArticles } = useQuery({
+  const {
+    data: materialArticles,
+    isLoading: isLoadingMaterialArticles,
+    isError: materialArticlesFailed,
+    refetch: refetchMaterialArticles,
+  } = useQuery({
     queryKey: ['material-articles', 'active'],
     queryFn: () => projectsApi.listMaterialArticles(true),
     enabled: !!id,
@@ -82,8 +91,32 @@ export default function ProjectDetail() {
   const metrics = p?.metrics;
   const entries = (timeEntries || []) as TimeEntry[];
   const materials = materialsResponse?.items || [];
+  const activeMaterialArticles = (materialArticles || []) as MaterialArticle[];
   const projectSummary = summary as ProjectSummary | undefined;
   const canSeeMoney = Boolean(p?.resultsVisibleToCurrentUser || materialsResponse?.costVisibleToCurrentUser || projectSummary?.resultsVisibleToCurrentUser);
+  const selectedMaterialArticle = activeMaterialArticles.find((article) => article.id === materialForm.articleId);
+
+  const recentMaterialArticles = useMemo(() => {
+    const seen = new Set<string>();
+    const recent: MaterialArticle[] = [];
+
+    for (const material of materials) {
+      if (seen.has(material.articleId)) continue;
+      const article = activeMaterialArticles.find((candidate) => candidate.id === material.articleId);
+      if (!article) continue;
+      seen.add(article.id);
+      recent.push(article);
+      if (recent.length === 6) break;
+    }
+
+    return recent;
+  }, [activeMaterialArticles, materials]);
+
+  const materialMatches = useMemo(() => (
+    materialSearch.trim()
+      ? searchMaterialArticles(activeMaterialArticles, materialSearch).slice(0, 12)
+      : recentMaterialArticles
+  ), [activeMaterialArticles, materialSearch, recentMaterialArticles]);
 
   const createMaterialMutation = useMutation({
     mutationFn: () => projectsApi.createMaterial(id, {
@@ -95,6 +128,8 @@ export default function ProjectDetail() {
     onSuccess: () => {
       toast.success('Material sparat');
       setMaterialForm(emptyMaterialForm());
+      setMaterialSearch('');
+      setMaterialPickerOpen(false);
       invalidateProjectData(queryClient, id);
     },
     onError: (error: Error) => toast.error(error.message),
@@ -113,6 +148,8 @@ export default function ProjectDetail() {
       toast.success('Materialrad uppdaterad');
       setEditingMaterial(null);
       setMaterialForm(emptyMaterialForm());
+      setMaterialSearch('');
+      setMaterialPickerOpen(false);
       invalidateProjectData(queryClient, id);
     },
     onError: (error: Error) => toast.error(error.message),
@@ -165,12 +202,22 @@ export default function ProjectDetail() {
       date: toDateInputValue(item.date),
       note: item.note || '',
     });
+    setMaterialSearch(item.articleName);
+    setMaterialPickerOpen(false);
     setActiveTab('materials');
   };
 
   const cancelEditMaterial = () => {
     setEditingMaterial(null);
     setMaterialForm(emptyMaterialForm());
+    setMaterialSearch('');
+    setMaterialPickerOpen(false);
+  };
+
+  const selectMaterialArticle = (article: MaterialArticle) => {
+    setMaterialForm((current) => ({ ...current, articleId: article.id }));
+    setMaterialSearch(article.name);
+    setMaterialPickerOpen(false);
   };
 
   const onMaterialSubmit = (event: React.FormEvent) => {
@@ -273,8 +320,8 @@ export default function ProjectDetail() {
         <TaskSection>
           <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <h2 className="section-title">Material</h2>
-              <p className="mt-1 text-sm text-slate-500">Lägg in rader manuellt eller importera en Excel-lista direkt på projektet.</p>
+              <h2 className="section-title">Registrera material</h2>
+              <p className="mt-1 text-sm text-slate-500">Sök fram artikeln, ange antal och spara. Datumet är förvalt till idag.</p>
             </div>
             {isManager && (
               <div className="flex flex-wrap gap-2">
@@ -312,31 +359,88 @@ export default function ProjectDetail() {
             </div>
           )}
 
-          <div className="mb-5 grid grid-cols-1 gap-3 md:grid-cols-3">
-            <KpiCard label="Materialrader" value={materials.length} />
-            <KpiCard label="Antal totalt" value={materialsResponse?.totals.quantity?.toLocaleString('sv-SE') || 0} tone="blue" />
-            <KpiCard label="Materialvärde" value={canSeeMoney ? formatCurrency(materialsResponse?.totals.amount) : 'Ej synligt'} tone="orange" />
+          <div className="material-inline-summary">
+            <span><strong>{materials.length.toLocaleString('sv-SE')}</strong> materialrader</span>
+            <span><strong>{(materialsResponse?.totals.quantity || 0).toLocaleString('sv-SE')}</strong> totalt antal</span>
+            {canSeeMoney && <span><strong>{formatCurrency(materialsResponse?.totals.amount)}</strong> materialvärde</span>}
           </div>
 
-          <form onSubmit={onMaterialSubmit} className="mb-5 grid grid-cols-1 gap-3 md:grid-cols-[1.2fr_0.5fr_0.6fr_1fr_auto]">
-            <FormField label="Artikel">
-              <select className="input" value={materialForm.articleId} onChange={(event) => setMaterialForm((current) => ({ ...current, articleId: event.target.value }))} required disabled={Boolean(editingMaterial)}>
-                <option value="">Välj artikel</option>
-                {(materialArticles as MaterialArticle[] | undefined)?.map((article) => <option key={article.id} value={article.id}>{article.articleNumber ? `${article.articleNumber} · ` : ''}{article.name} ({article.unit})</option>)}
-              </select>
-            </FormField>
-            <FormField label="Antal"><input className="input" value={materialForm.quantity} onChange={(event) => setMaterialForm((current) => ({ ...current, quantity: event.target.value }))} required /></FormField>
-            <FormField label="Datum"><input type="date" className="input" value={materialForm.date} onChange={(event) => setMaterialForm((current) => ({ ...current, date: event.target.value }))} /></FormField>
-            <FormField label="Kommentar"><input className="input" value={materialForm.note} onChange={(event) => setMaterialForm((current) => ({ ...current, note: event.target.value }))} /></FormField>
-            <div className="flex items-end gap-2">
-              <Button type="submit" isLoading={createMaterialMutation.isPending || updateMaterialMutation.isPending} disabledReason={!materialForm.articleId ? 'Välj artikel' : !materialForm.quantity ? 'Ange antal' : null}>
-                {editingMaterial ? <Edit2 className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-                {editingMaterial ? 'Spara' : 'Lägg till'}
-              </Button>
-              {editingMaterial && <button type="button" className="btn-secondary" onClick={cancelEditMaterial}><X className="h-4 w-4" /></button>}
+          {isLoadingMaterialArticles ? (
+            <p className="mb-5 border-y border-graphite-200 py-5 text-sm text-graphite-600" role="status">
+              Laddar materialregister...
+            </p>
+          ) : materialArticlesFailed ? (
+            <div className="mb-5">
+              <QueryError
+                title="Materialregistret kunde inte hämtas"
+                description="Kontrollera anslutningen och försök igen. Inget har ändrats på projektet."
+                onRetry={() => void refetchMaterialArticles()}
+              />
             </div>
-          </form>
+          ) : !activeMaterialArticles.length ? (
+            <div className="mb-5">
+              <EmptyState
+                title="Materialregistret är tomt"
+                description={isManager ? 'Importera prislistan under Material innan material kan registreras på projekt.' : 'Be en arbetsledare importera företagets materialregister.'}
+              />
+              {isManager && <Link to="/materials" className="text-link mt-3 inline-flex">Öppna materialregistret</Link>}
+            </div>
+          ) : (
+            <form onSubmit={onMaterialSubmit} className="material-entry-form">
+              <MaterialArticlePicker
+                articles={activeMaterialArticles}
+                matches={materialMatches}
+                recentCount={recentMaterialArticles.length}
+                value={materialSearch}
+                selectedArticle={selectedMaterialArticle}
+                open={materialPickerOpen}
+                disabled={Boolean(editingMaterial)}
+                onOpenChange={setMaterialPickerOpen}
+                onChange={(value) => {
+                  setMaterialSearch(value);
+                  setMaterialPickerOpen(true);
+                  if (materialForm.articleId) {
+                    setMaterialForm((current) => ({ ...current, articleId: '' }));
+                  }
+                }}
+                onSelect={selectMaterialArticle}
+              />
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(9rem,0.55fr)_minmax(10rem,0.7fr)_minmax(14rem,1.4fr)_auto]">
+                <FormField label={selectedMaterialArticle ? `Antal (${selectedMaterialArticle.unit})` : 'Antal'}>
+                  <input
+                    className="input"
+                    inputMode="decimal"
+                    value={materialForm.quantity}
+                    onChange={(event) => setMaterialForm((current) => ({ ...current, quantity: event.target.value }))}
+                    placeholder="0"
+                    required
+                  />
+                </FormField>
+                <FormField label="Datum">
+                  <input type="date" className="input" value={materialForm.date} onChange={(event) => setMaterialForm((current) => ({ ...current, date: event.target.value }))} />
+                </FormField>
+                <FormField label="Kommentar">
+                  <input className="input" value={materialForm.note} onChange={(event) => setMaterialForm((current) => ({ ...current, note: event.target.value }))} placeholder="Valfritt" />
+                </FormField>
+                <div className="flex items-end gap-2">
+                  <Button type="submit" isLoading={createMaterialMutation.isPending || updateMaterialMutation.isPending} disabledReason={!materialForm.articleId ? 'Välj artikel' : !materialForm.quantity ? 'Ange antal' : null}>
+                    {editingMaterial ? <Edit2 className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+                    {editingMaterial ? 'Spara' : 'Lägg till'}
+                  </Button>
+                  {editingMaterial && (
+                    <button type="button" className="icon-button" onClick={cancelEditMaterial} title="Avbryt redigering" aria-label="Avbryt redigering">
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            </form>
+          )}
 
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <h3 className="text-sm font-semibold text-graphite-950">Använt material</h3>
+            <span className="text-xs tabular-nums text-graphite-500">{materials.length.toLocaleString('sv-SE')} rader</span>
+          </div>
           <MaterialsTable
             materials={materials}
             canSeeMoney={canSeeMoney}
@@ -449,6 +553,193 @@ function SimpleEntries({ entries }: { entries: TimeEntry[] }) {
         </DataRow>
       ))}
     </DataList>
+  );
+}
+
+function MaterialArticlePicker({
+  articles,
+  matches,
+  recentCount,
+  value,
+  selectedArticle,
+  open,
+  disabled,
+  onOpenChange,
+  onChange,
+  onSelect,
+}: {
+  articles: MaterialArticle[];
+  matches: MaterialArticle[];
+  recentCount: number;
+  value: string;
+  selectedArticle?: MaterialArticle;
+  open: boolean;
+  disabled: boolean;
+  onOpenChange: (open: boolean) => void;
+  onChange: (value: string) => void;
+  onSelect: (article: MaterialArticle) => void;
+}) {
+  const resultLabel = value.trim() ? 'Sökresultat' : 'Senast använda på projektet';
+  const [activeIndex, setActiveIndex] = useState(-1);
+  const activeIndexRef = useRef(-1);
+  const matchesRef = useRef(matches);
+  const activeOption = activeIndex >= 0 ? matches[activeIndex] : undefined;
+  matchesRef.current = matches;
+
+  const setActiveOptionIndex = (index: number) => {
+    activeIndexRef.current = index;
+    setActiveIndex(index);
+  };
+
+  useEffect(() => {
+    if (!open || !activeOption) return;
+    document.getElementById(`project-material-option-${activeOption.id}`)?.scrollIntoView({ block: 'nearest' });
+  }, [activeOption, open]);
+
+  const moveActiveOption = (direction: 1 | -1) => {
+    const availableMatches = matchesRef.current;
+    if (!availableMatches.length) return;
+    onOpenChange(true);
+    const current = activeIndexRef.current;
+    const next = current < 0
+      ? direction === 1 ? 0 : availableMatches.length - 1
+      : (current + direction + availableMatches.length) % availableMatches.length;
+    setActiveOptionIndex(next);
+  };
+
+  const chooseArticle = (article: MaterialArticle) => {
+    setActiveOptionIndex(-1);
+    onSelect(article);
+  };
+
+  return (
+    <div
+      className="material-picker"
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+          onOpenChange(false);
+          setActiveOptionIndex(-1);
+        }
+      }}
+    >
+      <label htmlFor="project-material-search" className="label">Artikel</label>
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-graphite-500" aria-hidden="true" />
+        <input
+          id="project-material-search"
+          role="combobox"
+          aria-expanded={open}
+          aria-controls="project-material-results"
+          aria-activedescendant={open && activeOption ? `project-material-option-${activeOption.id}` : undefined}
+          aria-autocomplete="list"
+          autoComplete="off"
+          className="input pl-10 pr-11"
+          value={value}
+          onFocus={() => {
+            onOpenChange(true);
+            matchesRef.current = matches;
+            setActiveOptionIndex(matches.length ? 0 : -1);
+          }}
+          onChange={(event) => {
+            const nextValue = event.target.value;
+            const nextMatches = nextValue.trim()
+              ? searchMaterialArticles(articles, nextValue).slice(0, 12)
+              : matches;
+            matchesRef.current = nextMatches;
+            onChange(nextValue);
+            setActiveOptionIndex(nextMatches.length ? 0 : -1);
+          }}
+          onKeyDown={(event) => {
+            const availableMatches = matchesRef.current;
+            if (event.key === 'ArrowDown') {
+              event.preventDefault();
+              moveActiveOption(1);
+            } else if (event.key === 'ArrowUp') {
+              event.preventDefault();
+              moveActiveOption(-1);
+            } else if (event.key === 'Home' && availableMatches.length) {
+              event.preventDefault();
+              onOpenChange(true);
+              setActiveOptionIndex(0);
+            } else if (event.key === 'End' && availableMatches.length) {
+              event.preventDefault();
+              onOpenChange(true);
+              setActiveOptionIndex(availableMatches.length - 1);
+            } else if (event.key === 'Enter' && activeIndexRef.current >= 0 && availableMatches[activeIndexRef.current]) {
+              event.preventDefault();
+              chooseArticle(availableMatches[activeIndexRef.current]);
+            } else if (event.key === 'Escape') {
+              event.preventDefault();
+              onOpenChange(false);
+              setActiveOptionIndex(-1);
+            }
+          }}
+          placeholder="Sök AF215, rörskål 22-30 eller artikelnummer"
+          disabled={disabled}
+        />
+        {value && !disabled && (
+          <button
+            type="button"
+            className="absolute right-1 top-1/2 inline-flex min-h-9 min-w-9 -translate-y-1/2 items-center justify-center rounded-md text-graphite-500 hover:bg-graphite-100 hover:text-graphite-950"
+            onClick={() => {
+              matchesRef.current = [];
+              onChange('');
+              setActiveOptionIndex(-1);
+            }}
+            aria-label="Rensa materialsökning"
+            title="Rensa"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
+      </div>
+
+      {selectedArticle && (
+        <div className="material-picker-selection" aria-live="polite">
+          <Check className="h-4 w-4 text-emerald-700" aria-hidden="true" />
+          <strong>{selectedArticle.name}</strong>
+          <span>{selectedArticle.articleNumber || 'Utan artikelnr'}</span>
+          <span>{selectedArticle.category} · {selectedArticle.unit}</span>
+        </div>
+      )}
+
+      {open && !disabled && (
+        <div id="project-material-results" role="listbox" aria-label={resultLabel} className="material-picker-results">
+          <div className="material-picker-results-label">{resultLabel}</div>
+          {!value.trim() && recentCount === 0 ? (
+            <p className="px-3 py-4 text-sm text-graphite-600">Börja skriva namn, dimension eller artikelnummer.</p>
+          ) : !matches.length ? (
+            <p className="px-3 py-4 text-sm text-graphite-600">Ingen artikel matchar sökningen.</p>
+          ) : (
+            matches.map((article, index) => (
+              <button
+                key={article.id}
+                id={`project-material-option-${article.id}`}
+                type="button"
+                role="option"
+                aria-selected={activeIndex === index}
+                className="material-picker-option"
+                onPointerMove={() => setActiveOptionIndex(index)}
+                onClick={() => chooseArticle(article)}
+              >
+                <span className="min-w-0">
+                  <strong className="block truncate text-graphite-950">{article.name}</strong>
+                  <span className="mt-0.5 block truncate text-xs text-graphite-500">
+                    {[article.articleNumber, article.category, article.supplier].filter(Boolean).join(' · ')}
+                  </span>
+                </span>
+                <span className="shrink-0 text-xs font-semibold text-graphite-600">{article.unit}</span>
+              </button>
+            ))
+          )}
+          {value.trim() && matches.length > 0 && (
+            <div className="border-t border-graphite-200 px-3 py-2 text-xs text-graphite-500">
+              Visar {matches.length} av {articles.length.toLocaleString('sv-SE')} artiklar
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
