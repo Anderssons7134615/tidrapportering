@@ -108,23 +108,38 @@ model Project {
 }
 
 model MaterialArticle {
-  id               String   @id @default(uuid())
-  companyId        String
-  company          Company  @relation(fields: [companyId], references: [id])
-  name             String
-  articleNumber    String?
-  category         String   @default("Övrigt")
-  unit             String   @default("st")
-  purchasePrice    Float?
-  defaultUnitPrice Float?
-  markupPercent    Float?
-  active           Boolean  @default(true)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  id                    String    @id @default(uuid())
+  companyId             String
+  company               Company   @relation(fields: [companyId], references: [id])
+  name                  String
+  articleNumber         String?
+  category              String    @default("Övrigt")
+  unit                  String    @default("st")
+  supplier              String?
+  manufacturer          String?
+  originalDescription   String?
+  productFamily         String?
+  pipeDimensionMm       Float?
+  insulationThicknessMm Float?
+  outerDiameterMm       Float?
+  listPrice             Float?
+  discountPercent       Float?
+  purchasePrice         Float?
+  defaultUnitPrice      Float?
+  markupPercent         Float?
+  priceSource           String?
+  priceUpdatedAt        DateTime?
+  searchTerms           String?
+  employeeVisible       Boolean   @default(true)
+  active                Boolean   @default(true)
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 
   projectMaterials ProjectMaterial[]
 
   @@index([companyId, active])
+  @@index([companyId, category, active])
+  @@index([companyId, articleNumber])
 }
 
 model ProjectMaterial {

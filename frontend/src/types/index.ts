@@ -53,7 +53,7 @@ export type ProjectComputedStatus =
   | 'COMPLETED'
   | 'INACTIVE';
 
-export type MaterialCategory = 'Rörskål' | 'Lamellmatta' | 'Plåt' | 'Tejp' | 'Brandtätning' | 'Skruv/nit' | 'Övrigt';
+export type MaterialCategory = 'Rörskål' | 'Armaflex' | 'Lamellmatta' | 'Plåt' | 'Tejp' | 'Brandtätning' | 'Skruv/nit' | 'Övrigt';
 
 export interface ProjectStatusInfo {
   code: ProjectComputedStatus;
@@ -87,9 +87,22 @@ export interface MaterialArticle {
   articleNumber?: string | null;
   category: MaterialCategory;
   unit: string;
+  supplier?: string | null;
+  manufacturer?: string | null;
+  originalDescription?: string | null;
+  productFamily?: string | null;
+  pipeDimensionMm?: number | null;
+  insulationThicknessMm?: number | null;
+  outerDiameterMm?: number | null;
+  listPrice?: number | null;
+  discountPercent?: number | null;
   purchasePrice?: number | null;
   defaultUnitPrice?: number | null;
   markupPercent?: number | null;
+  priceSource?: string | null;
+  priceUpdatedAt?: string | null;
+  searchTerms?: string | null;
+  employeeVisible: boolean;
   active: boolean;
   createdAt: string;
   updatedAt: string;
@@ -155,6 +168,32 @@ export interface MaterialImportResult {
   skipped: number;
   errors: Array<{ row: number; message: string }>;
   items?: ProjectMaterial[];
+}
+
+export interface MaterialImportPreview {
+  filename: string;
+  sourceType: 'BEVEGO_CSV' | 'TIDAPP_XLSX';
+  totalRows: number;
+  created: number;
+  updated: number;
+  hiddenFromEmployees: number;
+  previewRows: Array<Pick<
+    MaterialArticle,
+    | 'name'
+    | 'articleNumber'
+    | 'category'
+    | 'unit'
+    | 'supplier'
+    | 'manufacturer'
+    | 'originalDescription'
+    | 'listPrice'
+    | 'discountPercent'
+    | 'purchasePrice'
+    | 'employeeVisible'
+    | 'active'
+  > & { sourceRow: number }>;
+  previewLimited: boolean;
+  errors: Array<{ row: number; message: string }>;
 }
 
 export interface ProjectEmployeeSummary {

@@ -8,6 +8,7 @@ import { deleteAttachmentFiles } from '../lib/attachments.js';
 import { requireRoles } from '../lib/authorization.js';
 import { endOfUtcDay, getDateOnlyInTimeZone, getWeekStartUtc, parseDateOnly } from '../lib/dateOnly.js';
 import { getNextProjectCodeFromCodes } from '../lib/projectCode.js';
+import { parseMaterialCatalogFile, type MaterialCatalogRow } from '../lib/materialCatalogImport.js';
 
 const projectSchema = z.object({
   customerId: z.string().uuid().optional().nullable(),
@@ -33,11 +34,24 @@ const createProjectSchema = projectSchema.extend({
 const materialArticleSchema = z.object({
   name: z.string().min(2),
   articleNumber: z.string().trim().optional().nullable(),
-  category: z.enum(['Rörskål', 'Lamellmatta', 'Plåt', 'Tejp', 'Brandtätning', 'Skruv/nit', 'Övrigt']).optional(),
+  category: z.enum(['Rörskål', 'Armaflex', 'Lamellmatta', 'Plåt', 'Tejp', 'Brandtätning', 'Skruv/nit', 'Övrigt']).optional(),
   unit: z.string().min(1).max(20).optional(),
+  supplier: z.string().trim().max(100).optional().nullable(),
+  manufacturer: z.string().trim().max(100).optional().nullable(),
+  originalDescription: z.string().trim().max(500).optional().nullable(),
+  productFamily: z.string().trim().max(100).optional().nullable(),
+  pipeDimensionMm: z.number().positive().optional().nullable(),
+  insulationThicknessMm: z.number().positive().optional().nullable(),
+  outerDiameterMm: z.number().positive().optional().nullable(),
+  listPrice: z.number().nonnegative().optional().nullable(),
+  discountPercent: z.number().nonnegative().optional().nullable(),
   purchasePrice: z.number().nonnegative().optional().nullable(),
   defaultUnitPrice: z.number().nonnegative().optional().nullable(),
   markupPercent: z.number().nonnegative().optional().nullable(),
+  priceSource: z.string().trim().max(255).optional().nullable(),
+  priceUpdatedAt: z.string().datetime().optional().nullable(),
+  searchTerms: z.string().trim().max(2000).optional().nullable(),
+  employeeVisible: z.boolean().optional(),
 });
 
 const projectMaterialSchema = z.object({
@@ -194,6 +208,67 @@ async function sendMaterialWorkbook(reply: any, workbook: ExcelJS.Workbook, file
   return reply.send(Buffer.from(buffer));
 }
 
+function articleNumberKey(value: string | null | undefined) {
+  return value?.trim().toLocaleUpperCase('sv-SE') || null;
+}
+
+function supplierArticleKey(supplier: string | null | undefined, articleNumber: string | null | undefined) {
+  const numberKey = articleNumberKey(articleNumber);
+  if (!numberKey) return null;
+  return `${supplier?.trim().toLocaleUpperCase('sv-SE') || ''}|${numberKey}`;
+}
+
+function materialNameKey(name: string, unit: string) {
+  return `${name.trim().toLocaleLowerCase('sv-SE')}|${unit.trim().toLocaleLowerCase('sv-SE')}`;
+}
+
+function catalogArticleData(row: MaterialCatalogRow) {
+  return {
+    name: row.name,
+    articleNumber: row.articleNumber,
+    category: row.category,
+    unit: row.unit,
+    supplier: row.supplier,
+    manufacturer: row.manufacturer,
+    originalDescription: row.originalDescription,
+    productFamily: row.productFamily,
+    pipeDimensionMm: row.pipeDimensionMm,
+    insulationThicknessMm: row.insulationThicknessMm,
+    outerDiameterMm: row.outerDiameterMm,
+    listPrice: row.listPrice,
+    discountPercent: row.discountPercent,
+    purchasePrice: row.purchasePrice,
+    defaultUnitPrice: row.defaultUnitPrice,
+    markupPercent: row.markupPercent,
+    priceSource: row.priceSource,
+    priceUpdatedAt: row.priceUpdatedAt,
+    searchTerms: row.searchTerms,
+    employeeVisible: row.employeeVisible,
+    active: row.active,
+  };
+}
+
+function duplicateArticleErrors(rows: MaterialCatalogRow[]) {
+  const seen = new Map<string, number>();
+  const errors: Array<{ row: number; message: string }> = [];
+
+  for (const row of rows) {
+    const key = articleNumberKey(row.articleNumber);
+    if (!key) continue;
+    const firstRow = seen.get(key);
+    if (firstRow) {
+      errors.push({
+        row: row.sourceRow,
+        message: `Artikelnummer ${row.articleNumber} finns även på rad ${firstRow}`,
+      });
+    } else {
+      seen.set(key, row.sourceRow);
+    }
+  }
+
+  return errors;
+}
+
 const projectRoutes: FastifyPluginAsync = async (fastify) => {
   // List projects (same company)
   fastify.get('/', {
@@ -251,6 +326,9 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
     if (active !== undefined) {
       where.active = active === 'true';
     }
+    if (!canManageMaterials(request.user.role) && request.user.role !== 'ACCOUNTANT') {
+      where.employeeVisible = true;
+    }
 
     const articles = await prisma.materialArticle.findMany({
       where,
@@ -261,7 +339,14 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
       return articles;
     }
 
-    return articles.map(({ purchasePrice: _purchasePrice, defaultUnitPrice: _defaultUnitPrice, markupPercent: _markupPercent, ...article }) => article);
+    return articles.map(({
+      listPrice: _listPrice,
+      discountPercent: _discountPercent,
+      purchasePrice: _purchasePrice,
+      defaultUnitPrice: _defaultUnitPrice,
+      markupPercent: _markupPercent,
+      ...article
+    }) => article);
   });
 
   fastify.get('/materials/articles.xlsx', {
@@ -281,9 +366,15 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
       { header: 'Artikelnummer', key: 'articleNumber', width: 18 },
       { header: 'Kategori', key: 'category', width: 18 },
       { header: 'Enhet', key: 'unit', width: 12 },
+      { header: 'Leverantör', key: 'supplier', width: 16 },
+      { header: 'Fabrikat', key: 'manufacturer', width: 16 },
+      { header: 'Leverantörsbeskrivning', key: 'originalDescription', width: 42 },
+      { header: 'Bevego listpris', key: 'listPrice', width: 16 },
+      { header: 'Rabatt %', key: 'discountPercent', width: 12 },
       { header: 'Inköpspris', key: 'purchasePrice', width: 14 },
       { header: 'Försäljningspris', key: 'defaultUnitPrice', width: 16 },
       { header: 'Påslag %', key: 'markupPercent', width: 12 },
+      { header: 'Synlig för anställda', key: 'employeeVisible', width: 20 },
       { header: 'Aktiv', key: 'active', width: 10 },
     ];
 
@@ -293,9 +384,15 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
         articleNumber: article.articleNumber || '',
         category: article.category || 'Övrigt',
         unit: article.unit,
+        supplier: article.supplier || '',
+        manufacturer: article.manufacturer || '',
+        originalDescription: article.originalDescription || '',
+        listPrice: article.listPrice ?? '',
+        discountPercent: article.discountPercent ?? '',
         purchasePrice: article.purchasePrice ?? '',
         defaultUnitPrice: article.defaultUnitPrice ?? '',
         markupPercent: article.markupPercent ?? '',
+        employeeVisible: article.employeeVisible ? 'Ja' : 'Nej',
         active: article.active ? 'Ja' : 'Nej',
       });
     }
@@ -326,34 +423,47 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
       { header: 'Artikelnummer', key: 'articleNumber', width: 18 },
       { header: 'Kategori', key: 'category', width: 18 },
       { header: 'Enhet', key: 'unit', width: 12 },
+      { header: 'Leverantör', key: 'supplier', width: 16 },
+      { header: 'Fabrikat', key: 'manufacturer', width: 16 },
+      { header: 'Leverantörsbeskrivning', key: 'originalDescription', width: 42 },
       { header: 'Antal', key: 'quantity', width: 12 },
       { header: 'Datum', key: 'date', width: 14 },
+      { header: 'Bevego listpris', key: 'listPrice', width: 16 },
+      { header: 'Rabatt %', key: 'discountPercent', width: 12 },
       { header: 'Inköpspris', key: 'purchasePrice', width: 14 },
       { header: 'Försäljningspris', key: 'unitPrice', width: 16 },
       { header: 'Kommentar', key: 'note', width: 32 },
+      { header: 'Synlig för anställda', key: 'employeeVisible', width: 20 },
       { header: 'Aktiv', key: 'active', width: 10 },
     ];
 
     [
-      ['Rörskål 42 mm', 'RS-42', 'Rörskål', 'm', 'Ja'],
-      ['Lamellmatta 50 mm', 'LM-50', 'Lamellmatta', 'm2', 'Ja'],
-      ['Plåt aluminium', 'PL-ALU', 'Plåt', 'm2', 'Ja'],
-      ['Tejp aluminium', 'TEJP-ALU', 'Tejp', 'st', 'Ja'],
-      ['Brandtätningsmassa', 'BT-MASSA', 'Brandtätning', 'st', 'Ja'],
-      ['Skruv/nit', 'SKRUV-NIT', 'Skruv/nit', 'st', 'Ja'],
-      ['Övrigt material', '', 'Övrigt', 'st', 'Ja'],
-    ].forEach(([name, articleNumber, category, unit, active]) => {
+      ['AF215', 'AF2015', 'Armaflex', 'm', 'Bevego', 'Armacell', 'RÖRSLANG AF-2-015 ARMAFLEX 2000 MM', 'Ja'],
+      ['Rörskål 22-30', 'IRTL02230', 'Rörskål', 'm', 'Bevego', 'Isover', 'RÖRSKÅL CLIMPIPE ALU2 ISOVER 22-30-82', 'Ja'],
+      ['Lamellmatta 50 mm', 'LM-50', 'Lamellmatta', 'm2', '', '', '', 'Ja'],
+      ['Plåt aluminium', 'PL-ALU', 'Plåt', 'm2', '', '', '', 'Ja'],
+      ['Tejp aluminium', 'TEJP-ALU', 'Tejp', 'st', '', '', '', 'Ja'],
+      ['Brandtätningsmassa', 'BT-MASSA', 'Brandtätning', 'st', '', '', '', 'Ja'],
+      ['Skruv/nit', 'SKRUV-NIT', 'Skruv/nit', 'st', '', '', '', 'Ja'],
+      ['Övrigt material', '', 'Övrigt', 'st', '', '', '', 'Nej'],
+    ].forEach(([name, articleNumber, category, unit, supplier, manufacturer, originalDescription, employeeVisible]) => {
       worksheet.addRow({
         name,
         articleNumber,
         category,
         unit,
+        supplier,
+        manufacturer,
+        originalDescription,
         quantity: 1,
         date: '',
+        listPrice: '',
+        discountPercent: '',
         purchasePrice: '',
         unitPrice: '',
         note: '',
-        active,
+        employeeVisible,
+        active: 'Ja',
       });
     });
 
@@ -363,7 +473,9 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
     info.columns = [{ header: 'Fält', key: 'field', width: 24 }, { header: 'Beskrivning', key: 'description', width: 72 }];
     info.addRows([
       { field: 'Artikel', description: 'Namnet som montörer och projektledare ser i materialregistret.' },
-      { field: 'Kategori', description: 'Använd en av kategorierna i mallen: Rörskål, Lamellmatta, Plåt, Tejp, Brandtätning, Skruv/nit eller Övrigt.' },
+      { field: 'Kategori', description: 'Använd en av kategorierna i mallen: Rörskål, Armaflex, Lamellmatta, Plåt, Tejp, Brandtätning, Skruv/nit eller Övrigt.' },
+      { field: 'Bevego listpris', description: 'Leverantörens bruttopris. Detta är inte samma sak som ert försäljningspris.' },
+      { field: 'Synlig för anställda', description: 'Skriv Ja om artikeln ska kunna väljas när anställda registrerar material på projekt.' },
       { field: 'Aktiv', description: 'Skriv Ja för aktiva artiklar och Nej för sådant som inte ska användas framåt.' },
     ]);
     styleMaterialWorksheet(info);
@@ -371,119 +483,133 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
     return sendMaterialWorkbook(reply, workbook, 'materialmall.xlsx');
   });
 
+  fastify.post('/materials/articles/import-preview', {
+    preHandler: [requireAdminOrSupervisor],
+  }, async (request, reply) => {
+    const file = await (request as any).file();
+    if (!file) return reply.status(400).send({ error: 'Importfil saknas' });
+
+    const buffer = await file.toBuffer();
+    const parsed = await parseMaterialCatalogFile(buffer, file.filename || 'materialimport.xlsx');
+    const errors = [...parsed.errors, ...duplicateArticleErrors(parsed.rows)];
+    if (errors.length) return reply.status(400).send({ error: 'Importen innehåller fel', errors });
+    if (!parsed.rows.length) return reply.status(400).send({ error: 'Inga materialartiklar att importera' });
+
+    const existingArticles = await prisma.materialArticle.findMany({
+      where: { companyId: request.user.companyId },
+      select: { articleNumber: true, supplier: true, name: true, unit: true },
+    });
+    const existingSupplierNumbers = new Set(
+      existingArticles
+        .map((article) => supplierArticleKey(article.supplier, article.articleNumber))
+        .filter(Boolean),
+    );
+    const existingLegacyNumbers = new Set(
+      existingArticles
+        .filter((article) => !article.supplier)
+        .map((article) => articleNumberKey(article.articleNumber))
+        .filter(Boolean),
+    );
+    const existingNames = new Set(
+      existingArticles.map((article) => materialNameKey(article.name, article.unit)),
+    );
+
+    let created = 0;
+    let updated = 0;
+    for (const row of parsed.rows) {
+      const numberKey = articleNumberKey(row.articleNumber);
+      const supplierNumberKey = supplierArticleKey(row.supplier, row.articleNumber);
+      if (
+        (supplierNumberKey && existingSupplierNumbers.has(supplierNumberKey))
+        || (numberKey && existingLegacyNumbers.has(numberKey))
+        || existingNames.has(materialNameKey(row.name, row.unit))
+      ) {
+        updated += 1;
+      } else {
+        created += 1;
+      }
+    }
+
+    return {
+      filename: file.filename,
+      sourceType: parsed.sourceType,
+      totalRows: parsed.rows.length,
+      created,
+      updated,
+      hiddenFromEmployees: parsed.rows.filter((row) => !row.employeeVisible).length,
+      previewRows: parsed.rows.slice(0, 60),
+      previewLimited: parsed.rows.length > 60,
+      errors: [],
+    };
+  });
+
   fastify.post('/materials/articles/import.xlsx', {
     preHandler: [requireAdminOrSupervisor],
   }, async (request, reply) => {
     const file = await (request as any).file();
-    if (!file) return reply.status(400).send({ error: 'Excel-fil saknas' });
+    if (!file) return reply.status(400).send({ error: 'Importfil saknas' });
 
     const buffer = await file.toBuffer();
-    const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(buffer);
-    const worksheet = workbook.getWorksheet('Materialmall') || workbook.getWorksheet('Materialregister') || workbook.worksheets[0];
-    if (!worksheet) return reply.status(400).send({ error: 'Excel-filen saknar blad' });
-
-    const headers = new Map<string, number>();
-    worksheet.getRow(1).eachCell((cell, colNumber) => headers.set(normalizeHeader(cell.value), colNumber));
-    const col = (name: string) => headers.get(normalizeHeader(name));
-    const articleCol = col('Artikel');
-    if (!articleCol) {
-      return reply.status(400).send({ error: 'Excel-filen måste innehålla kolumnen Artikel' });
-    }
-
-    const rows: Array<{
-      row: number;
-      name: string;
-      articleNumber: string | null;
-      category: string;
-      unit: string;
-      purchasePrice: number | null;
-      defaultUnitPrice: number | null;
-      markupPercent: number | null;
-      active: boolean;
-    }> = [];
-    const errors: Array<{ row: number; message: string }> = [];
-
-    worksheet.eachRow((row, rowNumber) => {
-      if (rowNumber === 1) return;
-      const values = row.values as unknown[];
-      const hasAnyValue = values.some((value) => normalizeText(value));
-      if (!hasAnyValue) return;
-
-      const name = normalizeText(row.getCell(articleCol).value);
-      const unit = col('Enhet') ? normalizeText(row.getCell(col('Enhet')!).value) || 'st' : 'st';
-      const category = col('Kategori') ? normalizeText(row.getCell(col('Kategori')!).value) || 'Övrigt' : 'Övrigt';
-      const purchasePrice = col('Inköpspris') ? parseOptionalNumber(row.getCell(col('Inköpspris')!).value) : null;
-      const defaultUnitPrice = col('Försäljningspris') ? parseOptionalNumber(row.getCell(col('Försäljningspris')!).value) : null;
-      const markupPercent = col('Påslag %') ? parseOptionalNumber(row.getCell(col('Påslag %')!).value) : null;
-
-      if (!name) errors.push({ row: rowNumber, message: 'Artikel saknas' });
-      if (!unit) errors.push({ row: rowNumber, message: 'Enhet saknas' });
-      if (purchasePrice != null && purchasePrice < 0) errors.push({ row: rowNumber, message: 'Inköpspris får inte vara negativt' });
-      if (defaultUnitPrice != null && defaultUnitPrice < 0) errors.push({ row: rowNumber, message: 'Försäljningspris får inte vara negativt' });
-      if (markupPercent != null && markupPercent < 0) errors.push({ row: rowNumber, message: 'Påslag får inte vara negativt' });
-      if (!name || !unit) return;
-
-      rows.push({
-        row: rowNumber,
-        name,
-        articleNumber: col('Artikelnummer') ? normalizeText(row.getCell(col('Artikelnummer')!).value) || null : null,
-        category,
-        unit,
-        purchasePrice,
-        defaultUnitPrice,
-        markupPercent,
-        active: col('Aktiv') ? parseActive(row.getCell(col('Aktiv')!).value) : true,
-      });
-    });
-
+    const parsed = await parseMaterialCatalogFile(buffer, file.filename || 'materialimport.xlsx');
+    const errors = [...parsed.errors, ...duplicateArticleErrors(parsed.rows)];
     if (errors.length) return reply.status(400).send({ error: 'Importen innehåller fel', errors });
-    if (!rows.length) return reply.status(400).send({ error: 'Inga materialartiklar att importera' });
+    if (!parsed.rows.length) return reply.status(400).send({ error: 'Inga materialartiklar att importera' });
+
+    const existingArticles = await prisma.materialArticle.findMany({
+      where: { companyId: request.user.companyId },
+    });
+    const bySupplierArticle = new Map(
+      existingArticles
+        .map((article) => [supplierArticleKey(article.supplier, article.articleNumber), article] as const)
+        .filter(([key]) => Boolean(key)),
+    );
+    const legacyByArticleNumber = new Map(
+      existingArticles
+        .filter((article) => !article.supplier)
+        .map((article) => [articleNumberKey(article.articleNumber), article] as const)
+        .filter(([key]) => Boolean(key)),
+    );
+    const byNameAndUnit = new Map(
+      existingArticles.map((article) => [materialNameKey(article.name, article.unit), article] as const),
+    );
 
     const result = await prisma.$transaction(async (tx) => {
       let created = 0;
       let updated = 0;
 
-      for (const row of rows) {
-        const existing = await tx.materialArticle.findFirst({
-          where: {
-            companyId: request.user.companyId,
-            OR: [
-              ...(row.articleNumber ? [{ articleNumber: row.articleNumber }] : []),
-              { name: row.name, unit: row.unit },
-            ],
-          },
-        });
+      for (const row of parsed.rows) {
+        const numberKey = articleNumberKey(row.articleNumber);
+        const supplierNumberKey = supplierArticleKey(row.supplier, row.articleNumber);
+        const existing = (supplierNumberKey ? bySupplierArticle.get(supplierNumberKey) : undefined)
+          || (numberKey ? legacyByArticleNumber.get(numberKey) : undefined)
+          || byNameAndUnit.get(materialNameKey(row.name, row.unit));
+        const importedData = catalogArticleData(row);
 
         if (existing) {
-          await tx.materialArticle.update({
+          const updatedArticle = await tx.materialArticle.update({
             where: { id: existing.id },
-            data: {
-              name: row.name,
-              articleNumber: row.articleNumber,
-              category: row.category,
-              unit: row.unit,
-              purchasePrice: row.purchasePrice,
-              defaultUnitPrice: row.defaultUnitPrice,
-              markupPercent: row.markupPercent,
-              active: row.active,
-            },
+            data: parsed.sourceType === 'BEVEGO_CSV'
+              ? {
+                  ...importedData,
+                  active: existing.active,
+                  employeeVisible: existing.employeeVisible,
+                  defaultUnitPrice: existing.defaultUnitPrice,
+                  markupPercent: existing.markupPercent,
+                }
+              : importedData,
           });
+          if (supplierNumberKey) bySupplierArticle.set(supplierNumberKey, updatedArticle);
+          byNameAndUnit.set(materialNameKey(updatedArticle.name, updatedArticle.unit), updatedArticle);
           updated += 1;
         } else {
-          await tx.materialArticle.create({
+          const createdArticle = await tx.materialArticle.create({
             data: {
               companyId: request.user.companyId,
-              name: row.name,
-              articleNumber: row.articleNumber,
-              category: row.category,
-              unit: row.unit,
-              purchasePrice: row.purchasePrice,
-              defaultUnitPrice: row.defaultUnitPrice,
-              markupPercent: row.markupPercent,
-              active: row.active,
+              ...importedData,
             },
           });
+          if (supplierNumberKey) bySupplierArticle.set(supplierNumberKey, createdArticle);
+          byNameAndUnit.set(materialNameKey(createdArticle.name, createdArticle.unit), createdArticle);
           created += 1;
         }
       }
@@ -492,16 +618,22 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
         data: {
           userId: request.user.id,
           action: 'IMPORT',
-          entityType: 'MaterialArticleExcel',
-          newValue: JSON.stringify({ rowCount: rows.length, created, updated }),
+          entityType: 'MaterialArticleCatalog',
+          newValue: JSON.stringify({
+            sourceType: parsed.sourceType,
+            filename: file.filename,
+            rowCount: parsed.rows.length,
+            created,
+            updated,
+          }),
         },
       });
 
       return { created, updated };
-    });
+    }, { maxWait: 10_000, timeout: 120_000 });
 
     return {
-      imported: rows.length,
+      imported: parsed.rows.length,
       created: result.created,
       updated: result.updated,
       skipped: 0,
@@ -522,9 +654,22 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
           articleNumber: body.articleNumber?.trim() || null,
           category: body.category || 'Övrigt',
           unit: body.unit?.trim() || 'st',
+          supplier: body.supplier?.trim() || null,
+          manufacturer: body.manufacturer?.trim() || null,
+          originalDescription: body.originalDescription?.trim() || null,
+          productFamily: body.productFamily?.trim() || null,
+          pipeDimensionMm: body.pipeDimensionMm ?? null,
+          insulationThicknessMm: body.insulationThicknessMm ?? null,
+          outerDiameterMm: body.outerDiameterMm ?? null,
+          listPrice: body.listPrice ?? null,
+          discountPercent: body.discountPercent ?? null,
           purchasePrice: body.purchasePrice ?? null,
           defaultUnitPrice: body.defaultUnitPrice ?? null,
           markupPercent: body.markupPercent ?? null,
+          priceSource: body.priceSource?.trim() || null,
+          priceUpdatedAt: body.priceUpdatedAt ? new Date(body.priceUpdatedAt) : null,
+          searchTerms: body.searchTerms?.trim() || null,
+          employeeVisible: body.employeeVisible ?? true,
         },
       });
 
@@ -574,9 +719,22 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
       if (body.articleNumber !== undefined) data.articleNumber = body.articleNumber?.trim() || null;
       if (body.category !== undefined) data.category = body.category;
       if (body.unit !== undefined) data.unit = body.unit.trim() || 'st';
+      if (body.supplier !== undefined) data.supplier = body.supplier?.trim() || null;
+      if (body.manufacturer !== undefined) data.manufacturer = body.manufacturer?.trim() || null;
+      if (body.originalDescription !== undefined) data.originalDescription = body.originalDescription?.trim() || null;
+      if (body.productFamily !== undefined) data.productFamily = body.productFamily?.trim() || null;
+      if (body.pipeDimensionMm !== undefined) data.pipeDimensionMm = body.pipeDimensionMm;
+      if (body.insulationThicknessMm !== undefined) data.insulationThicknessMm = body.insulationThicknessMm;
+      if (body.outerDiameterMm !== undefined) data.outerDiameterMm = body.outerDiameterMm;
+      if (body.listPrice !== undefined) data.listPrice = body.listPrice;
+      if (body.discountPercent !== undefined) data.discountPercent = body.discountPercent;
       if (body.purchasePrice !== undefined) data.purchasePrice = body.purchasePrice;
       if (body.defaultUnitPrice !== undefined) data.defaultUnitPrice = body.defaultUnitPrice;
       if (body.markupPercent !== undefined) data.markupPercent = body.markupPercent;
+      if (body.priceSource !== undefined) data.priceSource = body.priceSource?.trim() || null;
+      if (body.priceUpdatedAt !== undefined) data.priceUpdatedAt = body.priceUpdatedAt ? new Date(body.priceUpdatedAt) : null;
+      if (body.searchTerms !== undefined) data.searchTerms = body.searchTerms?.trim() || null;
+      if (body.employeeVisible !== undefined) data.employeeVisible = body.employeeVisible;
       if (body.active !== undefined) data.active = body.active;
 
       const article = await prisma.materialArticle.update({
@@ -1042,8 +1200,13 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
         where: { id: body.articleId },
       });
 
-      if (!article || article.companyId !== request.user.companyId || !article.active) {
-        return reply.status(400).send({ error: 'Materialartikeln finns inte eller ar inte aktiv' });
+      if (
+        !article
+        || article.companyId !== request.user.companyId
+        || !article.active
+        || (request.user.role === 'EMPLOYEE' && !article.employeeVisible)
+      ) {
+        return reply.status(400).send({ error: 'Materialartikeln finns inte eller kan inte väljas' });
       }
 
       const material = await prisma.projectMaterial.create({
@@ -1154,7 +1317,12 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
 
       if (body.articleId) {
         const article = await prisma.materialArticle.findFirst({
-          where: { id: body.articleId, companyId: request.user.companyId, active: true },
+          where: {
+            id: body.articleId,
+            companyId: request.user.companyId,
+            active: true,
+            ...(request.user.role === 'EMPLOYEE' ? { employeeVisible: true } : {}),
+          },
         });
         if (!article) return reply.status(400).send({ error: 'Materialartikeln finns inte eller är inte aktiv' });
         data.articleId = article.id;

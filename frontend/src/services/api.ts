@@ -19,6 +19,7 @@ import type {
   PushSubscriptionInfo,
   ProjectSummary,
   MaterialImportResult,
+  MaterialImportPreview,
 } from '../types';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
@@ -151,6 +152,14 @@ export const projectsApi = {
     fetchApi<MaterialArticle[]>(`/projects/materials/articles${active !== undefined ? `?active=${active}` : ''}`),
   exportMaterialArticlesExcel: () => fetchBlob('/projects/materials/articles.xlsx'),
   downloadMaterialTemplate: () => fetchBlob('/projects/materials/template.xlsx'),
+  previewMaterialArticlesImport: (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return fetchApi<MaterialImportPreview>('/projects/materials/articles/import-preview', {
+      method: 'POST',
+      body: formData,
+    });
+  },
   importMaterialArticlesExcel: (file: File) => {
     const formData = new FormData();
     formData.append('file', file);
@@ -164,9 +173,14 @@ export const projectsApi = {
     articleNumber?: string;
     category?: string;
     unit?: string;
+    supplier?: string;
+    manufacturer?: string;
+    listPrice?: number;
+    discountPercent?: number;
     purchasePrice?: number;
     defaultUnitPrice?: number;
     markupPercent?: number;
+    employeeVisible?: boolean;
   }) => fetchApi<MaterialArticle>('/projects/materials/articles', {
     method: 'POST',
     body: JSON.stringify(data),
