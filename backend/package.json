@@ -6,7 +6,7 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "test": "tsx --test src/lib/dateOnly.test.ts src/lib/csv.test.ts src/lib/projectCode.test.ts src/lib/weekVacation.test.ts src/lib/weeklyReminder.test.ts src/lib/pushEndpoint.test.ts src/lib/materialNaming.test.ts src/lib/materialCatalogImport.test.ts src/services/pushDelivery.test.ts",
+    "test": "tsx --test src/lib/dateOnly.test.ts src/lib/csv.test.ts src/lib/projectCode.test.ts src/lib/weekVacation.test.ts src/lib/weeklyReminder.test.ts src/lib/pushEndpoint.test.ts src/lib/materialNaming.test.ts src/lib/materialCatalogImport.test.ts src/lib/materialCatalogMatching.test.ts src/services/pushDelivery.test.ts",
     "build": "prisma generate && tsc",
     "start": "node dist/index.js",
     "start:migrate": "prisma migrate deploy && node dist/index.js",

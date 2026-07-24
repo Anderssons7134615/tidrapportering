@@ -9,6 +9,13 @@ import { requireRoles } from '../lib/authorization.js';
 import { endOfUtcDay, getDateOnlyInTimeZone, getWeekStartUtc, parseDateOnly } from '../lib/dateOnly.js';
 import { getNextProjectCodeFromCodes } from '../lib/projectCode.js';
 import { parseMaterialCatalogFile, type MaterialCatalogRow } from '../lib/materialCatalogImport.js';
+import {
+  articleNumberKey,
+  createMaterialArticleLookup,
+  findMaterialArticleMatch,
+  registerMaterialArticle,
+  type MaterialArticleIdentity,
+} from '../lib/materialCatalogMatching.js';
 
 const projectSchema = z.object({
   customerId: z.string().uuid().optional().nullable(),
@@ -206,20 +213,6 @@ async function sendMaterialWorkbook(reply: any, workbook: ExcelJS.Workbook, file
   reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   reply.header('Content-Disposition', `attachment; filename="${filename}"`);
   return reply.send(Buffer.from(buffer));
-}
-
-function articleNumberKey(value: string | null | undefined) {
-  return value?.trim().toLocaleUpperCase('sv-SE') || null;
-}
-
-function supplierArticleKey(supplier: string | null | undefined, articleNumber: string | null | undefined) {
-  const numberKey = articleNumberKey(articleNumber);
-  if (!numberKey) return null;
-  return `${supplier?.trim().toLocaleUpperCase('sv-SE') || ''}|${numberKey}`;
-}
-
-function materialNameKey(name: string, unit: string) {
-  return `${name.trim().toLocaleLowerCase('sv-SE')}|${unit.trim().toLocaleLowerCase('sv-SE')}`;
 }
 
 function catalogArticleData(row: MaterialCatalogRow) {
@@ -499,35 +492,17 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
       where: { companyId: request.user.companyId },
       select: { articleNumber: true, supplier: true, name: true, unit: true },
     });
-    const existingSupplierNumbers = new Set(
-      existingArticles
-        .map((article) => supplierArticleKey(article.supplier, article.articleNumber))
-        .filter(Boolean),
-    );
-    const existingLegacyNumbers = new Set(
-      existingArticles
-        .filter((article) => !article.supplier)
-        .map((article) => articleNumberKey(article.articleNumber))
-        .filter(Boolean),
-    );
-    const existingNames = new Set(
-      existingArticles.map((article) => materialNameKey(article.name, article.unit)),
-    );
+    const lookup = createMaterialArticleLookup<MaterialArticleIdentity>(existingArticles);
 
     let created = 0;
     let updated = 0;
     for (const row of parsed.rows) {
-      const numberKey = articleNumberKey(row.articleNumber);
-      const supplierNumberKey = supplierArticleKey(row.supplier, row.articleNumber);
-      if (
-        (supplierNumberKey && existingSupplierNumbers.has(supplierNumberKey))
-        || (numberKey && existingLegacyNumbers.has(numberKey))
-        || existingNames.has(materialNameKey(row.name, row.unit))
-      ) {
+      if (findMaterialArticleMatch(lookup, row)) {
         updated += 1;
       } else {
         created += 1;
       }
+      registerMaterialArticle(lookup, row);
     }
 
     return {
@@ -558,31 +533,14 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
     const existingArticles = await prisma.materialArticle.findMany({
       where: { companyId: request.user.companyId },
     });
-    const bySupplierArticle = new Map(
-      existingArticles
-        .map((article) => [supplierArticleKey(article.supplier, article.articleNumber), article] as const)
-        .filter(([key]) => Boolean(key)),
-    );
-    const legacyByArticleNumber = new Map(
-      existingArticles
-        .filter((article) => !article.supplier)
-        .map((article) => [articleNumberKey(article.articleNumber), article] as const)
-        .filter(([key]) => Boolean(key)),
-    );
-    const byNameAndUnit = new Map(
-      existingArticles.map((article) => [materialNameKey(article.name, article.unit), article] as const),
-    );
+    const lookup = createMaterialArticleLookup(existingArticles);
 
     const result = await prisma.$transaction(async (tx) => {
       let created = 0;
       let updated = 0;
 
       for (const row of parsed.rows) {
-        const numberKey = articleNumberKey(row.articleNumber);
-        const supplierNumberKey = supplierArticleKey(row.supplier, row.articleNumber);
-        const existing = (supplierNumberKey ? bySupplierArticle.get(supplierNumberKey) : undefined)
-          || (numberKey ? legacyByArticleNumber.get(numberKey) : undefined)
-          || byNameAndUnit.get(materialNameKey(row.name, row.unit));
+        const existing = findMaterialArticleMatch(lookup, row);
         const importedData = catalogArticleData(row);
 
         if (existing) {
@@ -598,8 +556,7 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
                 }
               : importedData,
           });
-          if (supplierNumberKey) bySupplierArticle.set(supplierNumberKey, updatedArticle);
-          byNameAndUnit.set(materialNameKey(updatedArticle.name, updatedArticle.unit), updatedArticle);
+          registerMaterialArticle(lookup, updatedArticle);
           updated += 1;
         } else {
           const createdArticle = await tx.materialArticle.create({
@@ -608,8 +565,7 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
               ...importedData,
             },
           });
-          if (supplierNumberKey) bySupplierArticle.set(supplierNumberKey, createdArticle);
-          byNameAndUnit.set(materialNameKey(createdArticle.name, createdArticle.unit), createdArticle);
+          registerMaterialArticle(lookup, createdArticle);
           created += 1;
         }
       }
