@@ -43,6 +43,8 @@ export interface MaterialCatalogParseResult {
   errors: Array<{ row: number; message: string }>;
 }
 
+type CatalogFlags = Pick<MaterialCatalogRow, 'active' | 'employeeVisible'>;
+
 const categories = new Set<MaterialCatalogCategory>([
   'Rörskål',
   'Armaflex',
@@ -161,6 +163,44 @@ function buildSearchTerms(values: Array<string | null | undefined>): string | nu
   return unique.length ? unique.join(' ') : null;
 }
 
+export function isPreferredBevegoCatalogArticle(input: {
+  articleNumber: string | null;
+  category: MaterialCatalogCategory;
+  description: string;
+}) {
+  const articleNumber = normalizeText(input.articleNumber).toLocaleUpperCase('sv-SE');
+  const description = normalizeText(input.description)
+    .replace(/\s+/g, ' ')
+    .toLocaleUpperCase('sv-SE');
+
+  if (input.category === 'Rörskål') {
+    return /^RÖRSKÅL CLIMPIPE ALU2 ISOVER \d{1,3}-\d{1,3}-\d{1,3}$/.test(description);
+  }
+
+  if (input.category === 'Armaflex') {
+    const standardAfTube =
+      /^AF[24]\d{3}$/.test(articleNumber)
+      && /^RÖRSLANG AF-[24]-\d{3} ARMAFLEX 2000 MM$/.test(description);
+    const standardUltimaTube =
+      /^UL\d{5}$/.test(articleNumber)
+      && /^RÖRSLANG ARMAFLEX ULTIMA UD \d{1,3}-\d{1,2} 2000 MM$/.test(description);
+    return standardAfTube || standardUltimaTube;
+  }
+
+  return true;
+}
+
+export function resolveBevegoCatalogFlags(existing: CatalogFlags, imported: CatalogFlags): CatalogFlags {
+  if (!imported.active) {
+    return { active: false, employeeVisible: false };
+  }
+
+  return {
+    active: existing.active,
+    employeeVisible: existing.employeeVisible,
+  };
+}
+
 function parseBevegoCsv(buffer: Buffer, filename: string): MaterialCatalogParseResult {
   const decoded = new TextDecoder('windows-1252').decode(buffer).replace(/^\uFEFF/, '');
   const records = parseDelimitedRows(decoded, ';');
@@ -197,6 +237,7 @@ function parseBevegoCsv(buffer: Buffer, filename: string): MaterialCatalogParseR
 
     const identity = deriveMaterialIdentity({ description, articleNumber });
     const category = inferCategory(description, identity.category);
+    const active = isPreferredBevegoCatalogArticle({ articleNumber, category, description });
     const listPrice = listPriceIndex >= 0 ? parseOptionalNumber(record[listPriceIndex]) : null;
     const discountPercent = discountIndex >= 0 ? parseOptionalNumber(record[discountIndex]) : null;
     const purchasePrice = purchasePriceIndex >= 0 ? parseOptionalNumber(record[purchasePriceIndex]) : null;
@@ -226,8 +267,8 @@ function parseBevegoCsv(buffer: Buffer, filename: string): MaterialCatalogParseR
       priceSource: filename,
       priceUpdatedAt,
       searchTerms: buildSearchTerms([identity.searchTerms, articleNumber, description]),
-      employeeVisible: category !== 'Övrigt',
-      active: true,
+      employeeVisible: active && category !== 'Övrigt',
+      active,
     });
   });
 

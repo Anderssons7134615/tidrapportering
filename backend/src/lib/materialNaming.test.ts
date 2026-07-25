@@ -44,6 +44,19 @@ test('derives AF4 identity with 19 mm insulation', () => {
   assert.equal(identity.insulationThicknessMm, 19);
 });
 
+test('derives a compact Ultima identity from a standard tube', () => {
+  const identity = deriveMaterialIdentity({
+    description: 'RÖRSLANG ARMAFLEX ULTIMA UD 15-13 2000 MM',
+    articleNumber: 'UL13015',
+  });
+
+  assert.equal(identity.displayName, 'Ultima 13-15');
+  assert.equal(identity.category, 'Armaflex');
+  assert.equal(identity.productFamily, 'Armaflex Ultima');
+  assert.equal(identity.insulationThicknessMm, 13);
+  assert.equal(identity.pipeDimensionMm, 15);
+});
+
 test('derives pipe section dimensions from the supplier description', () => {
   const identity = deriveMaterialIdentity({
     description: 'ISOVER RÖRSKÅL CLIMPIPE ALU2 22-30-82',

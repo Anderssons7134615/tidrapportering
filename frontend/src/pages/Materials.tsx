@@ -543,8 +543,11 @@ export default function Materials() {
             <p className="border-y border-graphite-200 py-3 text-sm leading-6 text-graphite-700">
               <strong>{importPreview.created.toLocaleString('sv-SE')}</strong> nya artiklar skapas och{' '}
               <strong>{importPreview.updated.toLocaleString('sv-SE')}</strong> befintliga uppdateras.
+              {importPreview.inactive > 0 && (
+                <> <strong>{importPreview.inactive.toLocaleString('sv-SE')}</strong> leverantörsvarianter inaktiveras enligt företagets sortiment.</>
+              )}
               {importPreview.hiddenFromEmployees > 0 && (
-                <> <strong>{importPreview.hiddenFromEmployees.toLocaleString('sv-SE')}</strong> okategoriserade artiklar blir dolda för anställda.</>
+                <> <strong>{importPreview.hiddenFromEmployees.toLocaleString('sv-SE')}</strong> artiklar blir dolda för anställda.</>
               )}
             </p>
             <div className="max-h-[420px] overflow-y-auto border-y border-graphite-200">

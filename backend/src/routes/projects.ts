@@ -8,7 +8,11 @@ import { deleteAttachmentFiles } from '../lib/attachments.js';
 import { requireRoles } from '../lib/authorization.js';
 import { endOfUtcDay, getDateOnlyInTimeZone, getWeekStartUtc, parseDateOnly } from '../lib/dateOnly.js';
 import { getNextProjectCodeFromCodes } from '../lib/projectCode.js';
-import { parseMaterialCatalogFile, type MaterialCatalogRow } from '../lib/materialCatalogImport.js';
+import {
+  parseMaterialCatalogFile,
+  resolveBevegoCatalogFlags,
+  type MaterialCatalogRow,
+} from '../lib/materialCatalogImport.js';
 import {
   articleNumberKey,
   createMaterialArticleLookup,
@@ -511,6 +515,7 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
       totalRows: parsed.rows.length,
       created,
       updated,
+      inactive: parsed.rows.filter((row) => !row.active).length,
       hiddenFromEmployees: parsed.rows.filter((row) => !row.employeeVisible).length,
       previewRows: parsed.rows.slice(0, 60),
       previewLimited: parsed.rows.length > 60,
@@ -544,13 +549,13 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
         const importedData = catalogArticleData(row);
 
         if (existing) {
+          const catalogFlags = resolveBevegoCatalogFlags(existing, importedData);
           const updatedArticle = await tx.materialArticle.update({
             where: { id: existing.id },
             data: parsed.sourceType === 'BEVEGO_CSV'
               ? {
                   ...importedData,
-                  active: existing.active,
-                  employeeVisible: existing.employeeVisible,
+                  ...catalogFlags,
                   defaultUnitPrice: existing.defaultUnitPrice,
                   markupPercent: existing.markupPercent,
                 }

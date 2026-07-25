@@ -23,6 +23,34 @@ export function deriveMaterialIdentity(input: MaterialIdentityInput): DerivedMat
   const description = normalizeWhitespace(input.description);
   const articleNumber = normalizeWhitespace(input.articleNumber || '');
   const source = [articleNumber, description].filter(Boolean).join(' ');
+  const ultimaMatch = description.match(
+    /^RÖRSLANG\s+ARMAFLEX\s+ULTIMA\s+UD(?:\s+A\s+FÖRLIM\.?)?\s+(\d{1,3})-(\d{1,2})\s+2000\s+MM$/i,
+  );
+
+  if (ultimaMatch) {
+    const pipeDimensionMm = Number.parseInt(ultimaMatch[1], 10);
+    const insulationThicknessMm = Number.parseInt(ultimaMatch[2], 10);
+    const displayName = `Ultima ${insulationThicknessMm}-${pipeDimensionMm}`;
+
+    return {
+      displayName,
+      category: 'Armaflex',
+      productFamily: 'Armaflex Ultima',
+      manufacturer: 'Armacell',
+      pipeDimensionMm,
+      insulationThicknessMm,
+      outerDiameterMm: null,
+      searchTerms: buildSearchTerms([
+        displayName,
+        'Armaflex Ultima',
+        `${insulationThicknessMm} mm`,
+        `dim ${pipeDimensionMm}`,
+        description,
+        articleNumber,
+      ]),
+    };
+  }
+
   const armaflexMatch = source.match(
     /(?:^|[^a-z0-9])AF[\s_-]*([24])[\s_-]*0*(\d{1,3})(?=$|[^a-z0-9])/i,
   );

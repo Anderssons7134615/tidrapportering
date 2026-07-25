@@ -176,6 +176,7 @@ export interface MaterialImportPreview {
   totalRows: number;
   created: number;
   updated: number;
+  inactive: number;
   hiddenFromEmployees: number;
   previewRows: Array<Pick<
     MaterialArticle,
