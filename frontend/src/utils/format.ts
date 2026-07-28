@@ -17,7 +17,7 @@ export function formatCurrency(value?: number | null) {
 }
 
 export function parseSwedishNumber(value: string) {
-  const parsed = Number(value.replace(',', '.'));
+  const parsed = Number(value.replace(/[\s\u00A0]/g, '').replace(',', '.'));
   return Number.isFinite(parsed) ? parsed : NaN;
 }
 

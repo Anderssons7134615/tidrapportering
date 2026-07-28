@@ -131,7 +131,20 @@ export default function Projects() {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
     const budgetHours = formData.get('budgetHours') as string;
+    const billingModel = formData.get('billingModel') as Project['billingModel'];
+    const fixedPriceText = String(formData.get('fixedPrice') || '').trim();
+    const fixedPrice = fixedPriceText ? parseSwedishNumber(fixedPriceText) : null;
     const enteredCode = String(formData.get('code') || '').trim();
+
+    if (fixedPriceText && !Number.isFinite(fixedPrice)) {
+      toast.error('Anbudet måste vara ett giltigt belopp');
+      return;
+    }
+    if (billingModel === 'FIXED' && fixedPrice == null) {
+      toast.error('Ange anbud eller fast pris för ett fastprisprojekt');
+      return;
+    }
+
     const data = {
       customerId: (formData.get('customerId') as string) || undefined,
       name: formData.get('name') as string,
@@ -139,6 +152,8 @@ export default function Projects() {
       site: (formData.get('site') as string) || undefined,
       status: formData.get('status') as Project['status'],
       budgetHours: budgetHours ? parseSwedishNumber(budgetHours) : undefined,
+      billingModel,
+      fixedPrice,
       notes: (formData.get('notes') as string) || undefined,
       employeeCanSeeResults: formData.get('employeeCanSeeResults') === 'on',
     };
@@ -504,6 +519,20 @@ function ProjectModal({
             </select>
           </label>
           <Field name="budgetHours" label="Budget timmar" defaultValue={editingProject?.budgetHours} placeholder="80" />
+          <label>
+            <span className="label">Debitering</span>
+            <select name="billingModel" defaultValue={editingProject?.billingModel || 'HOURLY'} className="input">
+              <option value="HOURLY">Löpande</option>
+              <option value="FIXED">Fast pris</option>
+            </select>
+          </label>
+          <Field
+            name="fixedPrice"
+            label="Anbud / fast pris (exkl. moms)"
+            defaultValue={editingProject?.fixedPrice ?? ''}
+            placeholder="150 000"
+            inputMode="decimal"
+          />
           <label className="md:col-span-2">
             <span className="label">Anteckningar</span>
             <textarea name="notes" defaultValue={editingProject?.notes || ''} className="input" rows={3} />
