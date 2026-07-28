@@ -1795,6 +1795,13 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
       });
     }
 
+    const projectUpdateCount = await prisma.projectUpdate.count({ where: { projectId: id } });
+    if (projectUpdateCount > 0) {
+      return reply.status(409).send({
+        error: 'Projekt med projektdagbok kan inte raderas permanent. Arkivera projektet i stället.',
+      });
+    }
+
     const attachments = await prisma.attachment.findMany({
       where: { timeEntry: { projectId: id } },
       select: { path: true },

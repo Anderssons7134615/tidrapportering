@@ -18,6 +18,8 @@ import type {
   TeamWeekSummary,
   PushSubscriptionInfo,
   ProjectSummary,
+  ProjectUpdate,
+  ProjectUpdateType,
   MaterialImportResult,
   MaterialImportPreview,
 } from '../types';
@@ -201,6 +203,16 @@ export const projectsApi = {
     return fetchApi<ProjectSummary>(`/projects/${id}/summary${query ? `?${query}` : ''}`);
   },
   listTimeEntries: (id: string) => fetchApi<TimeEntry[]>(`/projects/${id}/time-entries`),
+  listUpdates: (id: string, type?: ProjectUpdateType) =>
+    fetchApi<ProjectUpdate[]>(`/projects/${id}/updates${type ? `?type=${type}` : ''}`),
+  createUpdate: (id: string, data: {
+    type: ProjectUpdateType;
+    content: string;
+    occurredAt?: string;
+  }) => fetchApi<ProjectUpdate>(`/projects/${id}/updates`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  }),
   createMaterial: (id: string, data: {
     articleId: string;
     quantity: number;

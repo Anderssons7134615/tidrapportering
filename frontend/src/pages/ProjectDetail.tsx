@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, ArrowLeft, Check, Edit2, FileSpreadsheet, Plus, Search, Trash2, Upload, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Bot, Check, CheckCircle2, Edit2, FileSpreadsheet, ListTodo, MessageSquareText, Plus, Search, Trash2, Upload, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { projectsApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
-import type { MaterialArticle, Project, ProjectMaterial, ProjectSummary, TimeEntry } from '../types';
+import type { MaterialArticle, Project, ProjectMaterial, ProjectSummary, ProjectUpdate, ProjectUpdateType, TimeEntry } from '../types';
 import { AppShell, Button, DataList, DataRow, DataTable, EmptyState, FormField, KpiCard, PageHeader, StatusBadge, Tabs, TaskSection } from '../components/ui/design';
 import { QueryError } from '../components/ui/QueryError';
 import { formatCurrency, formatDate, formatHours, formatPercent, parseSwedishNumber, toDateInputValue } from '../utils/format';
@@ -16,7 +16,7 @@ const tabs = [
   { id: 'materials', label: 'Material' },
   { id: 'hours', label: 'Tid' },
   { id: 'summary', label: 'Ekonomi' },
-  { id: 'notes', label: 'Anteckningar' },
+  { id: 'notes', label: 'Dagbok' },
 ];
 
 type MaterialForm = {
@@ -33,6 +33,18 @@ const emptyMaterialForm = (): MaterialForm => ({
   note: '',
 });
 
+type ProjectUpdateForm = {
+  type: ProjectUpdateType;
+  content: string;
+  date: string;
+};
+
+const emptyProjectUpdateForm = (): ProjectUpdateForm => ({
+  type: 'STATUS',
+  content: '',
+  date: toDateInputValue(new Date()),
+});
+
 export default function ProjectDetail() {
   const { id = '' } = useParams();
   const queryClient = useQueryClient();
@@ -45,6 +57,7 @@ export default function ProjectDetail() {
   const [importErrors, setImportErrors] = useState<Array<{ row: number; message: string }>>([]);
   const [materialSearch, setMaterialSearch] = useState('');
   const [materialPickerOpen, setMaterialPickerOpen] = useState(false);
+  const [projectUpdateForm, setProjectUpdateForm] = useState<ProjectUpdateForm>(emptyProjectUpdateForm);
 
   const { data: project, isLoading } = useQuery({
     queryKey: ['project', id],
@@ -87,12 +100,24 @@ export default function ProjectDetail() {
     enabled: !!id,
   });
 
+  const {
+    data: projectUpdates,
+    isLoading: isLoadingProjectUpdates,
+    isError: projectUpdatesFailed,
+    refetch: refetchProjectUpdates,
+  } = useQuery({
+    queryKey: ['project', id, 'updates'],
+    queryFn: () => projectsApi.listUpdates(id),
+    enabled: !!id,
+  });
+
   const p = project as Project | undefined;
   const metrics = p?.metrics;
   const entries = (timeEntries || []) as TimeEntry[];
   const materials = materialsResponse?.items || [];
   const activeMaterialArticles = (materialArticles || []) as MaterialArticle[];
   const projectSummary = summary as ProjectSummary | undefined;
+  const updates = (projectUpdates || []) as ProjectUpdate[];
   const canSeeMoney = Boolean(p?.resultsVisibleToCurrentUser || materialsResponse?.costVisibleToCurrentUser || projectSummary?.resultsVisibleToCurrentUser);
   const selectedMaterialArticle = activeMaterialArticles.find((article) => article.id === materialForm.articleId);
 
@@ -176,6 +201,20 @@ export default function ProjectDetail() {
       setImportErrors(((error as any).errors || []) as Array<{ row: number; message: string }>);
       toast.error(error.message || 'Importen misslyckades');
     },
+  });
+
+  const createProjectUpdateMutation = useMutation({
+    mutationFn: () => projectsApi.createUpdate(id, {
+      type: projectUpdateForm.type,
+      content: projectUpdateForm.content.trim(),
+      occurredAt: new Date(`${projectUpdateForm.date}T12:00:00`).toISOString(),
+    }),
+    onSuccess: () => {
+      toast.success('Projekthändelsen sparades');
+      setProjectUpdateForm(emptyProjectUpdateForm());
+      queryClient.invalidateQueries({ queryKey: ['project', id, 'updates'] });
+    },
+    onError: (error: Error) => toast.error(error.message),
   });
 
   const groupedByPerson = useMemo(() => {
@@ -485,12 +524,192 @@ export default function ProjectDetail() {
       )}
 
       {activeTab === 'notes' && (
-        <TaskSection title="Anteckningar">
-          <p className="whitespace-pre-wrap text-sm text-slate-700">{p.notes || 'Inga anteckningar finns på projektet ännu.'}</p>
+        <TaskSection>
+          <div className="border-b border-graphite-200 pb-4">
+            <h2 className="section-title">Projektdagbok</h2>
+            <p className="mt-1 max-w-2xl text-sm text-graphite-500">
+              Lägesuppdateringar, risker, beslut och nästa steg i samma kronologiska flöde.
+            </p>
+          </div>
+
+          {isManager && (
+            <form
+              className="grid grid-cols-1 gap-3 border-b border-graphite-200 py-5 lg:grid-cols-[minmax(10rem,0.55fr)_minmax(10rem,0.55fr)_minmax(20rem,2fr)_auto]"
+              onSubmit={(event) => {
+                event.preventDefault();
+                createProjectUpdateMutation.mutate();
+              }}
+            >
+              <FormField label="Typ">
+                <select
+                  className="input"
+                  value={projectUpdateForm.type}
+                  onChange={(event) => setProjectUpdateForm((current) => ({
+                    ...current,
+                    type: event.target.value as ProjectUpdateType,
+                  }))}
+                >
+                  <option value="STATUS">Lägesuppdatering</option>
+                  <option value="NEXT_STEP">Nästa steg</option>
+                  <option value="RISK">Risk</option>
+                  <option value="DECISION">Beslut</option>
+                  <option value="NOTE">Anteckning</option>
+                </select>
+              </FormField>
+              <FormField label="Datum">
+                <input
+                  type="date"
+                  className="input"
+                  value={projectUpdateForm.date}
+                  onChange={(event) => setProjectUpdateForm((current) => ({ ...current, date: event.target.value }))}
+                  required
+                />
+              </FormField>
+              <FormField label="Vad har hänt?">
+                <textarea
+                  className="input min-h-[48px] resize-y py-3"
+                  rows={1}
+                  value={projectUpdateForm.content}
+                  onChange={(event) => setProjectUpdateForm((current) => ({ ...current, content: event.target.value }))}
+                  placeholder="Skriv kort och konkret..."
+                  maxLength={5000}
+                  required
+                />
+              </FormField>
+              <div className="flex items-end">
+                <Button
+                  type="submit"
+                  isLoading={createProjectUpdateMutation.isPending}
+                  disabledReason={!projectUpdateForm.content.trim() ? 'Skriv vad som har hänt' : null}
+                >
+                  <Plus className="h-4 w-4" />
+                  Lägg till
+                </Button>
+              </div>
+            </form>
+          )}
+
+          <ProjectTimeline
+            updates={updates}
+            legacyNotes={p.notes}
+            isLoading={isLoadingProjectUpdates}
+            hasError={projectUpdatesFailed}
+            onRetry={() => void refetchProjectUpdates()}
+          />
         </TaskSection>
       )}
     </AppShell>
   );
+}
+
+const projectUpdateLabels: Record<ProjectUpdateType, string> = {
+  NOTE: 'Anteckning',
+  STATUS: 'Lägesuppdatering',
+  RISK: 'Risk',
+  DECISION: 'Beslut',
+  NEXT_STEP: 'Nästa steg',
+};
+
+const projectUpdateTextTones: Record<ProjectUpdateType, string> = {
+  NOTE: 'text-graphite-600',
+  STATUS: 'text-sky-700',
+  RISK: 'text-rose-700',
+  DECISION: 'text-emerald-700',
+  NEXT_STEP: 'text-amber-700',
+};
+
+function ProjectTimeline({
+  updates,
+  legacyNotes,
+  isLoading,
+  hasError,
+  onRetry,
+}: {
+  updates: ProjectUpdate[];
+  legacyNotes?: string | null;
+  isLoading: boolean;
+  hasError: boolean;
+  onRetry: () => void;
+}) {
+  if (isLoading) {
+    return <p className="py-6 text-sm text-graphite-500" role="status">Laddar projektdagboken...</p>;
+  }
+
+  if (hasError) {
+    return (
+      <div className="py-5">
+        <QueryError
+          title="Projektdagboken kunde inte hämtas"
+          description="Kontrollera anslutningen och försök igen. Inget har ändrats."
+          onRetry={onRetry}
+        />
+      </div>
+    );
+  }
+
+  if (!updates.length && !legacyNotes) {
+    return (
+      <EmptyState
+        title="Projektdagboken är tom"
+        description="När något händer i projektet visas det här."
+      />
+    );
+  }
+
+  return (
+    <div className="divide-y divide-graphite-200">
+      {updates.map((update) => (
+        <article key={update.id} className="grid grid-cols-[1.5rem_minmax(0,1fr)] gap-3 py-5 sm:grid-cols-[2rem_minmax(0,1fr)]">
+          <ProjectUpdateIcon type={update.type} />
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <span className={`text-xs font-bold uppercase ${projectUpdateTextTones[update.type]}`}>
+                {projectUpdateLabels[update.type]}
+              </span>
+              <span className="text-xs text-graphite-500">
+                {formatDate(update.occurredAt)}
+                {update.createdByUser?.name ? ` · ${update.createdByUser.name}` : ''}
+              </span>
+              {update.source === 'CHATGPT' && (
+                <span className="inline-flex items-center gap-1 text-xs font-semibold text-primary-700">
+                  <Bot className="h-3.5 w-3.5" />
+                  ChatGPT
+                </span>
+              )}
+            </div>
+            <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-graphite-800">{update.content}</p>
+          </div>
+        </article>
+      ))}
+
+      {legacyNotes && (
+        <article className="grid grid-cols-[1.5rem_minmax(0,1fr)] gap-3 py-5 sm:grid-cols-[2rem_minmax(0,1fr)]">
+          <MessageSquareText className="mt-0.5 h-5 w-5 text-graphite-400" />
+          <div className="min-w-0">
+            <span className="text-xs font-bold uppercase text-graphite-500">Äldre projektanteckning</span>
+            <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-graphite-700">{legacyNotes}</p>
+          </div>
+        </article>
+      )}
+    </div>
+  );
+}
+
+function ProjectUpdateIcon({ type }: { type: ProjectUpdateType }) {
+  const className = `mt-0.5 h-5 w-5 ${projectUpdateTextTones[type]}`;
+
+  switch (type) {
+    case 'RISK':
+      return <AlertTriangle className={className} />;
+    case 'DECISION':
+      return <CheckCircle2 className={className} />;
+    case 'NEXT_STEP':
+      return <ListTodo className={className} />;
+    case 'NOTE':
+      return <MessageSquareText className={className} />;
+    default:
+      return <Check className={className} />;
+  }
 }
 
 function invalidateProjectData(queryClient: ReturnType<typeof useQueryClient>, id: string) {

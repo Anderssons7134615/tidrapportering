@@ -22,6 +22,7 @@ model Company {
   settings           Settings[]
   materialArticles  MaterialArticle[]
   obsidianSyncEvents ObsidianSyncEvent[]
+  projectUpdates     ProjectUpdate[]
 }
 
 model User {
@@ -43,6 +44,7 @@ model User {
   auditLogs         AuditLog[]
   pushSubscriptions PushSubscription[]
   projectMaterials  ProjectMaterial[]
+  projectUpdates    ProjectUpdate[]
 
   @@index([companyId, active])
 }
@@ -103,8 +105,30 @@ model Project {
 
   timeEntries       TimeEntry[]
   projectMaterials  ProjectMaterial[]
+  updates           ProjectUpdate[]
 
   @@unique([companyId, code])
+}
+
+model ProjectUpdate {
+  id                String   @id @default(uuid())
+  companyId         String
+  company           Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  projectId         String
+  project           Project  @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  type              String
+  content           String
+  occurredAt        DateTime
+  source            String   @default("TIDAPP")
+  createdByUserId   String?
+  createdByUser     User?    @relation(fields: [createdByUserId], references: [id], onDelete: SetNull)
+  idempotencyKey    String
+  payloadHash       String
+  createdAt         DateTime @default(now())
+
+  @@unique([companyId, source, idempotencyKey])
+  @@index([companyId, projectId, occurredAt])
+  @@index([projectId, createdAt])
 }
 
 model MaterialArticle {

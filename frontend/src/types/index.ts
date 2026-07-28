@@ -45,6 +45,21 @@ export interface Project {
   metrics?: ProjectMetrics | null;
 }
 
+export type ProjectUpdateType = 'NOTE' | 'STATUS' | 'RISK' | 'DECISION' | 'NEXT_STEP';
+export type ProjectUpdateSource = 'TIDAPP' | 'CHATGPT';
+
+export interface ProjectUpdate {
+  id: string;
+  projectId: string;
+  type: ProjectUpdateType;
+  content: string;
+  occurredAt: string;
+  source: ProjectUpdateSource;
+  createdByUserId?: string | null;
+  createdByUser?: { id: string; name: string } | null;
+  createdAt: string;
+}
+
 export type ProjectComputedStatus =
   | 'PLANNED'
   | 'ONGOING'
