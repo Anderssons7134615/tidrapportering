@@ -130,11 +130,12 @@ async function customerBelongsToCompany(customerId: string | null | undefined, c
 }
 
 function mapMaterialForRole(item: any, canView: boolean) {
-  const lineTotal = item.unitPrice != null ? item.quantity * item.unitPrice : null;
+  // Project logs always show the actual purchase cost, never the sales price.
+  const lineTotal = item.purchasePrice != null ? item.quantity * item.purchasePrice : null;
   return {
     ...item,
     purchasePrice: canView ? item.purchasePrice : null,
-    unitPrice: canView ? item.unitPrice : null,
+    unitPrice: null,
     lineTotal: canView ? lineTotal : null,
   };
 }
@@ -831,7 +832,7 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
     const billableHours = billableEntries.reduce((sum, entry) => sum + entry.hours, 0);
     const billableValue = billableEntries.reduce((sum, entry) => sum + entry.hours * getRate(entry), 0);
     const laborCost = approvedEntries.reduce((sum, entry) => sum + entry.hours * (entry.user.hourlyCost || 0), 0);
-    const materialCost = materials.reduce((sum, item) => sum + item.quantity * (item.purchasePrice ?? item.unitPrice ?? 0), 0);
+    const materialCost = materials.reduce((sum, item) => sum + item.quantity * (item.purchasePrice ?? 0), 0);
     const materialSalesValue = materials.reduce((sum, item) => sum + item.quantity * (item.unitPrice ?? 0), 0);
     const revenue = project.billingModel === 'FIXED' && project.fixedPrice != null
       ? project.fixedPrice + materialSalesValue
@@ -1136,7 +1137,7 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
         quantity: items.reduce((sum, item) => sum + item.quantity, 0),
         amount: !canView
           ? null
-          : items.reduce((sum, item) => sum + (item.unitPrice != null ? item.quantity * item.unitPrice : 0), 0),
+          : items.reduce((sum, item) => sum + (item.purchasePrice != null ? item.quantity * item.purchasePrice : 0), 0),
       },
     };
   });

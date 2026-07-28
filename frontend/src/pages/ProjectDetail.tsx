@@ -298,7 +298,7 @@ export default function ProjectDetail() {
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label="Attesterade timmar" value={formatHours(projectSummary?.totals.totalHours ?? metrics?.totalHours)} tone="blue" />
         <KpiCard label="Budgetläge" value={p.budgetHours ? formatPercent(budgetUsage) : 'Löpande'} hint={p.budgetHours ? `${formatHours(p.budgetHours)} budget` : 'Ingen timbudget'} tone={(budgetUsage || 0) >= 80 ? 'red' : 'green'} />
-        <KpiCard label="Material" value={canSeeMoney ? formatCurrency(projectSummary?.totals.materialSalesValue ?? materialsResponse?.totals.amount) : `${materials.length} rader`} tone="orange" />
+        <KpiCard label="Materialkostnad" value={canSeeMoney ? formatCurrency(projectSummary?.totals.materialCost ?? materialsResponse?.totals.amount) : `${materials.length} rader`} tone="orange" />
         <KpiCard label={p.status === 'COMPLETED' ? 'Slutresultat' : 'Preliminärt resultat'} value={canSeeMoney ? formatCurrency(result) : 'Ej synligt'} hint={canSeeMoney ? formatPercent(margin) : undefined} tone={summaryTone} />
       </div>
 
@@ -401,7 +401,7 @@ export default function ProjectDetail() {
           <div className="material-inline-summary">
             <span><strong>{materials.length.toLocaleString('sv-SE')}</strong> materialrader</span>
             <span><strong>{(materialsResponse?.totals.quantity || 0).toLocaleString('sv-SE')}</strong> totalt antal</span>
-            {canSeeMoney && <span><strong>{formatCurrency(materialsResponse?.totals.amount)}</strong> materialvärde</span>}
+            {canSeeMoney && <span><strong>{formatCurrency(materialsResponse?.totals.amount)}</strong> materialkostnad</span>}
           </div>
 
           {isLoadingMaterialArticles ? (
@@ -982,7 +982,7 @@ function MaterialsTable({
             <th className="px-3 py-2">Datum</th>
             <th className="px-3 py-2">Artikel</th>
             <th className="px-3 py-2">Antal</th>
-            {canSeeMoney && <th className="px-3 py-2">Radtotal</th>}
+            {canSeeMoney && <th className="px-3 py-2">Radtotal (inköp)</th>}
             <th className="px-3 py-2">Kommentar</th>
             <th className="px-3 py-2 text-right">Åtgärd</th>
           </tr>

@@ -93,7 +93,7 @@ export async function getProjectMetrics(
   const billableValue = billableEntries.reduce((sum, entry) => sum + entry.hours * getRate(entry), 0);
   const laborCost = entries.reduce((sum, entry) => sum + entry.hours * (entry.user?.hourlyCost || 0), 0);
   const materialCost = materials.reduce(
-    (sum, item) => sum + item.quantity * (item.purchasePrice ?? item.unitPrice ?? 0),
+    (sum, item) => sum + item.quantity * (item.purchasePrice ?? 0),
     0
   );
   const materialSalesValue = materials.reduce((sum, item) => sum + item.quantity * (item.unitPrice ?? 0), 0);

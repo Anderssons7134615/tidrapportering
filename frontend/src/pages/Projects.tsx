@@ -105,12 +105,12 @@ export default function Projects() {
         const metrics = project.metrics;
         acc.hours += metrics?.totalHours || 0;
         acc.weekHours += metrics?.weekHours || 0;
-        acc.material += metrics?.materialSalesValue || 0;
+        acc.material += metrics?.materialCost || 0;
         acc.result += metrics?.projectResult || 0;
         acc.risk += metrics?.status.code === 'RISK' ? 1 : 0;
         acc.missingBudget += !project.budgetHours ? 1 : 0;
         acc.completed += metrics?.status.code === 'COMPLETED' ? 1 : 0;
-        acc.withFinancials ||= metrics?.projectResult != null || Boolean(metrics?.materialSalesValue);
+        acc.withFinancials ||= metrics?.projectResult != null || Boolean(metrics?.materialCost);
         return acc;
       },
       { hours: 0, weekHours: 0, material: 0, result: 0, risk: 0, missingBudget: 0, completed: 0, withFinancials: false }
@@ -229,7 +229,7 @@ export default function Projects() {
 
         {totals.withFinancials && (
           <p className="border-t border-graphite-200 pt-3 text-sm leading-6 text-graphite-600">
-            Material i urvalet: <strong>{formatCurrency(totals.material)}</strong>. Resultat i urvalet:{' '}
+            Materialkostnad i urvalet: <strong>{formatCurrency(totals.material)}</strong>. Resultat i urvalet:{' '}
             <strong className={totals.result < 0 ? 'text-rose-700' : 'text-emerald-700'}>{formatCurrency(totals.result)}</strong>.
           </p>
         )}
