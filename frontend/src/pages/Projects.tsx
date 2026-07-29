@@ -20,6 +20,18 @@ const statusFilters = [
   { id: 'COMPLETED', label: 'Avslutade' },
 ] as const;
 
+const projectStatusDisplay = {
+  PLANNED: { label: 'Planerad', tone: 'blue' },
+  ONGOING: { label: 'Pågående', tone: 'green' },
+  COMPLETED: { label: 'Avslutad', tone: 'gray' },
+} as const;
+
+function getBillingModelLabel(billingModel: Project['billingModel'] | null | undefined) {
+  if (billingModel === 'HOURLY') return 'Löpande';
+  if (billingModel === 'FIXED') return 'Fast pris';
+  return 'Ej angiven';
+}
+
 export default function Projects() {
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
@@ -94,7 +106,13 @@ export default function Projects() {
         .filter(Boolean)
         .some((value) => value!.toLowerCase().includes(term));
       const matchesStatus = statusFilter === 'ALL'
-        || (statusFilter === 'RUNNING_JOB' ? !project.budgetHours : metrics?.status.code === statusFilter);
+        || (statusFilter === 'RUNNING_JOB' && project.billingModel === 'HOURLY')
+        || (statusFilter === 'PLANNED' && project.status === 'PLANNED')
+        || (
+          statusFilter !== 'RUNNING_JOB'
+          && statusFilter !== 'PLANNED'
+          && metrics?.status.code === statusFilter
+        );
       return matchesSearch && matchesStatus;
     });
   }, [projectItems, search, statusFilter]);
@@ -108,7 +126,7 @@ export default function Projects() {
         acc.material += metrics?.materialCost || 0;
         acc.result += metrics?.projectResult || 0;
         acc.risk += metrics?.status.code === 'RISK' ? 1 : 0;
-        acc.missingBudget += !project.budgetHours ? 1 : 0;
+        acc.missingBudget += project.billingModel === 'HOURLY' && !project.budgetHours ? 1 : 0;
         acc.completed += metrics?.status.code === 'COMPLETED' ? 1 : 0;
         acc.withFinancials ||= metrics?.projectResult != null || Boolean(metrics?.materialCost);
         return acc;
@@ -290,13 +308,15 @@ function ProjectTable({
       </div>
 
       <div className="hidden overflow-x-auto border-y border-graphite-200 bg-white/90 md:block">
-      <table className="min-w-[980px] w-full text-sm">
+      <table className="min-w-[1160px] w-full text-sm">
         <thead className="sticky top-0 z-10 border-b border-graphite-200 bg-[#f3f6f4] text-left text-xs font-semibold uppercase tracking-normal text-graphite-500">
           <tr>
             <th className="px-3 py-3">Projektnr</th>
             <th className="px-3 py-3">Projekt</th>
             <th className="px-3 py-3">Kund och plats</th>
             <th className="px-3 py-3">Status</th>
+            <th className="px-3 py-3">Projekttyp</th>
+            <th className="px-3 py-3">Aktivitet/risk</th>
             <th className="px-3 py-3 text-right">Timmar</th>
             <th className="px-3 py-3">Budget</th>
             <th className="px-3 py-3">Senast</th>
@@ -333,7 +353,8 @@ function MobileProjectRow({
   onDelete: () => void;
 }) {
   const metrics = project.metrics;
-  const runningJob = !project.budgetHours && !['MISSING_BUDGET', 'ONGOING'].includes(metrics?.status.code || '');
+  const projectStatus = projectStatusDisplay[project.status]
+    ?? { label: 'Okänd', tone: 'gray' };
   const usagePercent = metrics?.budgetUsagePercent ?? null;
 
   return (
@@ -349,9 +370,30 @@ function MobileProjectRow({
         <ChevronRight className="mt-1 h-5 w-5 shrink-0 text-graphite-400" />
       </div>
 
+      <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3">
+        <div>
+          <dt className="text-xs font-semibold text-graphite-500">Status</dt>
+          <dd className="mt-1">
+            <StatusBadge label={projectStatus.label} tone={projectStatus.tone} />
+          </dd>
+        </div>
+        <div>
+          <dt className="text-xs font-semibold text-graphite-500">Projekttyp</dt>
+          <dd className="mt-1 text-sm font-semibold text-graphite-800">
+            {getBillingModelLabel(project.billingModel)}
+          </dd>
+        </div>
+        <div className="col-span-2">
+          <dt className="text-xs font-semibold text-graphite-500">Aktivitet/risk</dt>
+          <dd className="mt-1">
+            {metrics?.status
+              ? <StatusBadge label={metrics.status.label} tone={metrics.status.tone} />
+              : <span className="text-sm text-graphite-500">Ej angiven</span>}
+          </dd>
+        </div>
+      </dl>
+
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        {metrics?.status && <StatusBadge label={metrics.status.label} tone={metrics.status.tone} />}
-        {runningJob && <StatusBadge label="Löpande" tone="yellow" />}
         <span className="font-semibold text-graphite-950">{formatHours(metrics?.totalHours)}</span>
         <span className="text-graphite-500">{project.budgetHours ? `${formatPercent(usagePercent)} av budget` : 'Utan timbudget'}</span>
       </div>
@@ -382,10 +424,11 @@ function ProjectRow({
   onDelete: () => void;
 }) {
   const metrics = project.metrics;
-  const runningJob = !project.budgetHours;
+  const projectStatus = projectStatusDisplay[project.status]
+    ?? { label: 'Okänd', tone: 'gray' };
   const usagePercent = metrics?.budgetUsagePercent ?? null;
   const isRisk = metrics?.status.code === 'RISK' || (usagePercent ?? 0) >= 100;
-  const isWarning = !isRisk && (runningJob || (usagePercent ?? 0) >= 80);
+  const isWarning = !isRisk && (!project.budgetHours || (usagePercent ?? 0) >= 80);
   const progressClass = isRisk ? 'bg-rose-500' : isWarning ? 'bg-amber-500' : 'bg-emerald-500';
   const progressWidth = `${Math.max(0, Math.min(usagePercent || 0, 100))}%`;
 
@@ -414,10 +457,15 @@ function ProjectRow({
         )}
       </td>
       <td className="px-3 py-3">
-        <div className="flex flex-wrap gap-1.5">
-          {metrics?.status && <StatusBadge label={metrics.status.label} tone={metrics.status.tone} />}
-          {runningJob && metrics?.status.code !== 'MISSING_BUDGET' && <StatusBadge label="Löpande" tone="yellow" />}
-        </div>
+        <StatusBadge label={projectStatus.label} tone={projectStatus.tone} />
+      </td>
+      <td className="whitespace-nowrap px-3 py-3 font-medium text-graphite-800">
+        {getBillingModelLabel(project.billingModel)}
+      </td>
+      <td className="px-3 py-3">
+        {metrics?.status
+          ? <StatusBadge label={metrics.status.label} tone={metrics.status.tone} />
+          : <span className="text-graphite-500">Ej angiven</span>}
       </td>
       <td className="whitespace-nowrap px-3 py-3 text-right font-semibold text-graphite-950 tabular-nums">
         {formatHours(metrics?.totalHours)}
@@ -426,7 +474,7 @@ function ProjectRow({
       <td className="px-3 py-3">
         <div className="min-w-[150px]">
           <div className="mb-1 flex items-center justify-between gap-2 text-xs text-graphite-500 tabular-nums">
-            <span>{project.budgetHours ? formatHours(project.budgetHours) : 'Löpande jobb'}</span>
+            <span>{project.budgetHours ? formatHours(project.budgetHours) : 'Ingen timbudget'}</span>
             <span>{project.budgetHours ? formatPercent(usagePercent) : ''}</span>
           </div>
           {project.budgetHours && (
