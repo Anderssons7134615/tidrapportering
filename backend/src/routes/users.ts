@@ -11,14 +11,14 @@ const createUserSchema = z.object({
   password: z.string().min(6),
   name: z.string().min(2),
   role: z.enum(['ADMIN', 'SUPERVISOR', 'EMPLOYEE', 'ACCOUNTANT']),
-  hourlyCost: z.number().optional(),
+  hourlyCost: z.number().nonnegative().optional(),
 });
 
 const updateUserSchema = z.object({
   email: z.string().email().optional(),
   name: z.string().min(2).optional(),
   role: z.enum(['ADMIN', 'SUPERVISOR', 'EMPLOYEE', 'ACCOUNTANT']).optional(),
-  hourlyCost: z.number().nullable().optional(),
+  hourlyCost: z.number().nonnegative().nullable().optional(),
   active: z.boolean().optional(),
 });
 
@@ -159,7 +159,13 @@ const userRoutes: FastifyPluginAsync = async (fastify) => {
       };
 
       // Spara gamla värden för audit
-      const oldValue = { email: user.email, name: user.name, role: user.role, active: user.active };
+      const oldValue = {
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        hourlyCost: user.hourlyCost,
+        active: user.active,
+      };
 
       const updatedUser = await prisma.$transaction(async (tx) => {
         const removesActiveAdmin = user.role === 'ADMIN' && user.active && (

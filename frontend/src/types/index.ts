@@ -3,7 +3,7 @@ export interface User {
   email: string;
   name: string;
   role: 'ADMIN' | 'SUPERVISOR' | 'EMPLOYEE' | 'ACCOUNTANT';
-  hourlyCost?: number;
+  hourlyCost?: number | null;
   active: boolean;
   createdAt: string;
   companyId?: string;
@@ -18,7 +18,7 @@ export interface Customer {
   contactPerson?: string;
   email?: string;
   phone?: string;
-  defaultRate?: number;
+  defaultRate?: number | null;
   active: boolean;
   projects?: Project[];
   _count?: { projects: number };
@@ -27,7 +27,7 @@ export interface Customer {
 export interface Project {
   id: string;
   customerId?: string;
-  customer?: { id: string; name: string };
+  customer?: { id: string; name: string; defaultRate?: number | null };
   name: string;
   code: string;
   site?: string;
@@ -35,7 +35,7 @@ export interface Project {
   budgetHours?: number;
   fixedPrice?: number | null;
   billingModel: 'HOURLY' | 'FIXED';
-  defaultRate?: number;
+  defaultRate?: number | null;
   notes?: string | null;
   employeeCanSeeResults?: boolean;
   resultsVisibleToCurrentUser?: boolean;

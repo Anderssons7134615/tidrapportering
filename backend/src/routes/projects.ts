@@ -30,7 +30,7 @@ const projectSchema = z.object({
   budgetHours: z.number().optional().nullable(),
   fixedPrice: z.number().optional().nullable(),
   billingModel: z.enum(['HOURLY', 'FIXED']).optional(),
-  defaultRate: z.number().optional().nullable(),
+  defaultRate: z.number().nonnegative().optional().nullable(),
   employeeCanSeeResults: z.boolean().optional(),
   notes: z.string().optional().nullable(),
 });

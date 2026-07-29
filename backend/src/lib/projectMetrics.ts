@@ -144,6 +144,12 @@ export async function getProjectMetrics(
 
   if (project.billingModel === 'FIXED' && project.fixedPrice == null) warnings.push('Fast pris saknas');
   else if (!['FIXED', 'HOURLY'].includes(project.billingModel)) warnings.push('Projekttyp saknas eller är ogiltig');
+  if (entries.some((entry) => entry.user?.hourlyCost == null)) {
+    warnings.push('Timkostnad saknas på minst en användare');
+  }
+  if (project.billingModel === 'HOURLY' && billableEntries.some((entry) => getRate(entry) <= 0)) {
+    warnings.push('Timpris saknas för debiterbar tid');
+  }
   if (budgetUsagePercent != null && budgetUsagePercent >= 100) warnings.push('Över budget');
   else if (budgetUsagePercent != null && budgetUsagePercent >= 80) warnings.push('Nära budget');
   return {

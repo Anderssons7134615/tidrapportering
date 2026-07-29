@@ -152,10 +152,16 @@ export default function Projects() {
     const billingModel = formData.get('billingModel') as Project['billingModel'];
     const fixedPriceText = String(formData.get('fixedPrice') || '').trim();
     const fixedPrice = fixedPriceText ? parseSwedishNumber(fixedPriceText) : null;
+    const defaultRateText = String(formData.get('defaultRate') || '').trim();
+    const defaultRate = defaultRateText ? parseSwedishNumber(defaultRateText) : null;
     const enteredCode = String(formData.get('code') || '').trim();
 
     if (fixedPriceText && !Number.isFinite(fixedPrice)) {
       toast.error('Anbudet måste vara ett giltigt belopp');
+      return;
+    }
+    if (defaultRateText && (defaultRate == null || !Number.isFinite(defaultRate) || defaultRate < 0)) {
+      toast.error('Timpriset måste vara ett giltigt belopp');
       return;
     }
     if (billingModel === 'FIXED' && fixedPrice == null) {
@@ -172,6 +178,7 @@ export default function Projects() {
       budgetHours: budgetHours ? parseSwedishNumber(budgetHours) : undefined,
       billingModel,
       fixedPrice,
+      defaultRate,
       notes: (formData.get('notes') as string) || undefined,
       employeeCanSeeResults: formData.get('employeeCanSeeResults') === 'on',
     };
@@ -574,6 +581,13 @@ function ProjectModal({
               <option value="FIXED">Fast pris</option>
             </select>
           </label>
+          <Field
+            name="defaultRate"
+            label="Timpris till kund (kr/tim)"
+            defaultValue={editingProject?.defaultRate ?? ''}
+            placeholder="Exempel: 650"
+            inputMode="decimal"
+          />
           <Field
             name="fixedPrice"
             label="Anbud / fast pris (exkl. moms)"

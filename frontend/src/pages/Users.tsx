@@ -6,6 +6,7 @@ import { Plus, Edit2, Trash2, Loader2, Shield } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ListSkeleton } from '../components/ui/Skeleton';
 import { AppShell, ConfirmDialog, DataTable, Dialog, PageHeader, StatusBadge } from '../components/ui/design';
+import { formatCurrency, parseSwedishNumber } from '../utils/format';
 
 const roleLabels: Record<string, string> = {
   ADMIN: 'Admin',
@@ -82,14 +83,28 @@ export default function UsersPage() {
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
+    const hourlyCostText = String(formData.get('hourlyCost') || '').trim();
+    const hourlyCost = hourlyCostText ? parseSwedishNumber(hourlyCostText) : null;
+
+    if (hourlyCostText && (hourlyCost == null || !Number.isFinite(hourlyCost) || hourlyCost < 0)) {
+      toast.error('Timkostnaden måste vara ett giltigt belopp');
+      return;
+    }
+
     const data: Partial<User> = {
       name: formData.get('name') as string,
       email: formData.get('email') as string,
       role: formData.get('role') as User['role'],
+      hourlyCost,
     };
 
     if (editingUser) updateMutation.mutate({ id: editingUser.id, data });
-    else createMutation.mutate({ ...data, password: formData.get('password') as string });
+    else {
+      const createData = hourlyCost == null
+        ? { ...data, hourlyCost: undefined }
+        : data;
+      createMutation.mutate({ ...createData, password: formData.get('password') as string });
+    }
   };
 
   if (isLoading) return <ListSkeleton />;
@@ -108,12 +123,13 @@ export default function UsersPage() {
       />
 
       <DataTable>
-        <table className="min-w-[760px] w-full text-left text-sm">
+        <table className="min-w-[860px] w-full text-left text-sm">
           <thead className="table-head">
             <tr>
               <th className="px-4 py-3">Namn</th>
               <th className="px-4 py-3">E-post</th>
               <th className="px-4 py-3">Roll</th>
+              <th className="px-4 py-3 text-right">Intern timkostnad</th>
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3 text-right">Åtgärder</th>
             </tr>
@@ -132,6 +148,13 @@ export default function UsersPage() {
                 <td className="px-4 py-3 text-graphite-600">{user.email}</td>
                 <td className="px-4 py-3">
                   <StatusBadge label={roleLabels[user.role]} tone={roleTones[user.role]} />
+                </td>
+                <td className="whitespace-nowrap px-4 py-3 text-right font-medium tabular-nums text-graphite-800">
+                  {user.hourlyCost == null ? (
+                    <span className="text-amber-700">Saknas</span>
+                  ) : (
+                    `${formatCurrency(user.hourlyCost)}/tim`
+                  )}
                 </td>
                 <td className="px-4 py-3">
                   <StatusBadge label={user.active ? 'Aktiv' : 'Inaktiv'} tone={user.active ? 'green' : 'gray'} />
@@ -206,6 +229,20 @@ export default function UsersPage() {
                   <option value="SUPERVISOR">Arbetsledare</option>
                   <option value="ADMIN">Admin</option>
                 </select>
+              </div>
+              <div>
+                <label className="label">Intern timkostnad (kr/tim)</label>
+                <input
+                  name="hourlyCost"
+                  defaultValue={editingUser?.hourlyCost ?? ''}
+                  className="input"
+                  inputMode="decimal"
+                  placeholder="Exempel: 450"
+                  aria-describedby="hourly-cost-help"
+                />
+                <p id="hourly-cost-help" className="mt-1 text-sm leading-5 text-graphite-600">
+                  Används som arbetskostnad när projektets resultat beräknas. Beloppet visas inte för medarbetaren.
+                </p>
               </div>
             </form>
       </Dialog>

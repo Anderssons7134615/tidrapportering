@@ -321,7 +321,16 @@ export default function ProjectDetail() {
           <TaskSection title="Ekonomi">
             {canSeeMoney ? (
               <div className="space-y-2 text-sm">
-                <Line label="Anbud / fast pris" value={p.billingModel === 'FIXED' ? formatCurrency(p.fixedPrice) : 'Löpande arbete'} />
+                <Line
+                  label={p.billingModel === 'FIXED' ? 'Anbud / fast pris' : 'Timpris till kund'}
+                  value={
+                    p.billingModel === 'FIXED'
+                      ? formatCurrency(p.fixedPrice)
+                      : (p.defaultRate ?? p.customer?.defaultRate) != null
+                        ? `${formatCurrency(p.defaultRate ?? p.customer?.defaultRate)}/tim`
+                        : 'Saknas'
+                  }
+                />
                 <Line label="Intäkt" value={formatCurrency(projectSummary?.totals.revenue)} />
                 <Line label="Arbetskostnad" value={formatCurrency(projectSummary?.totals.laborCost)} />
                 <Line label="Materialkostnad" value={formatCurrency(projectSummary?.totals.materialCost ?? metrics?.materialCost)} />
