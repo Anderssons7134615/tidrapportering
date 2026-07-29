@@ -60,6 +60,34 @@ export function getRate(entry: any): number {
   return entry.activity?.rateOverride ?? entry.project?.defaultRate ?? entry.project?.customer?.defaultRate ?? 0;
 }
 
+export function calculateProjectFinancials(input: {
+  billingModel?: string | null;
+  fixedPrice?: number | null;
+  billableValue: number;
+  materialSalesValue: number;
+  laborCost: number;
+  materialCost: number;
+}): {
+  revenue: number | null;
+  result: number | null;
+  marginPercent: number | null;
+} {
+  let revenue: number | null = null;
+  if (input.billingModel === 'FIXED') {
+    revenue = input.fixedPrice ?? null;
+  } else if (input.billingModel === 'HOURLY') {
+    revenue = input.billableValue + input.materialSalesValue;
+  }
+  const result = revenue != null && revenue > 0
+    ? revenue - input.laborCost - input.materialCost
+    : null;
+  const marginPercent = result != null && revenue != null && revenue > 0
+    ? (result / revenue) * 100
+    : null;
+
+  return { revenue, result, marginPercent };
+}
+
 export async function getProjectMetrics(
   prisma: PrismaClient,
   project: any,
@@ -97,10 +125,16 @@ export async function getProjectMetrics(
     0
   );
   const materialSalesValue = materials.reduce((sum, item) => sum + item.quantity * (item.unitPrice ?? 0), 0);
-  const fixedPrice = project.fixedPrice ?? null;
-  const revenueBase = fixedPrice ?? billableValue + materialSalesValue;
-  const projectResult = revenueBase > 0 ? revenueBase - laborCost - materialCost : null;
-  const marginPercent = projectResult != null && revenueBase > 0 ? (projectResult / revenueBase) * 100 : null;
+  const financials = calculateProjectFinancials({
+    billingModel: project.billingModel,
+    fixedPrice: project.fixedPrice,
+    billableValue,
+    materialSalesValue,
+    laborCost,
+    materialCost,
+  });
+  const projectResult = financials.result;
+  const marginPercent = financials.marginPercent;
   const budgetUsagePercent = project.budgetHours ? (totalHours / project.budgetHours) * 100 : null;
   const lastActivityAt = entries.reduce<Date | null>((latest, entry) => {
     const candidate = entry.createdAt > entry.date ? entry.createdAt : entry.date;
@@ -108,6 +142,8 @@ export async function getProjectMetrics(
   }, null);
   const warnings: string[] = [];
 
+  if (project.billingModel === 'FIXED' && project.fixedPrice == null) warnings.push('Fast pris saknas');
+  else if (!['FIXED', 'HOURLY'].includes(project.billingModel)) warnings.push('Projekttyp saknas eller är ogiltig');
   if (budgetUsagePercent != null && budgetUsagePercent >= 100) warnings.push('Över budget');
   else if (budgetUsagePercent != null && budgetUsagePercent >= 80) warnings.push('Nära budget');
   return {

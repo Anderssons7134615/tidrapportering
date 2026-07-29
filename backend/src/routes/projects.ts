@@ -2,7 +2,7 @@ import { FastifyPluginAsync } from 'fastify';
 import ExcelJS from 'exceljs';
 import { z } from 'zod';
 import { prisma } from '../index.js';
-import { getProjectMetrics, getRate } from '../lib/projectMetrics.js';
+import { calculateProjectFinancials, getProjectMetrics, getRate } from '../lib/projectMetrics.js';
 import { enqueueMaterialChanged, enqueueProjectChanged, enqueueTimeEntryChanged } from '../lib/obsidianSync.js';
 import { deleteAttachmentFiles } from '../lib/attachments.js';
 import { requireRoles } from '../lib/authorization.js';
@@ -834,16 +834,21 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
     const laborCost = approvedEntries.reduce((sum, entry) => sum + entry.hours * (entry.user.hourlyCost || 0), 0);
     const materialCost = materials.reduce((sum, item) => sum + item.quantity * (item.purchasePrice ?? 0), 0);
     const materialSalesValue = materials.reduce((sum, item) => sum + item.quantity * (item.unitPrice ?? 0), 0);
-    const revenue = project.billingModel === 'FIXED' && project.fixedPrice != null
-      ? project.fixedPrice + materialSalesValue
-      : billableValue + materialSalesValue;
-    const result = revenue > 0 ? revenue - laborCost - materialCost : null;
-    const marginPercent = result != null && revenue > 0 ? (result / revenue) * 100 : null;
+    const { revenue, result, marginPercent } = calculateProjectFinancials({
+      billingModel: project.billingModel,
+      fixedPrice: project.fixedPrice,
+      billableValue,
+      materialSalesValue,
+      laborCost,
+      materialCost,
+    });
     const warnings: string[] = [];
     if (openEntryCount > 0) warnings.push(`${openEntryCount} tidrader är inte attesterade`);
     if (approvedEntries.some((entry) => entry.user.hourlyCost == null)) warnings.push('Timkostnad saknas på minst en användare');
     if (materials.some((item) => item.purchasePrice == null)) warnings.push('Inköpspris saknas på minst en materialrad');
-    if (revenue === 0) warnings.push('Pris eller debiterbart värde saknas');
+    if (project.billingModel === 'FIXED' && project.fixedPrice == null) warnings.push('Fast pris saknas');
+    else if (!['FIXED', 'HOURLY'].includes(project.billingModel)) warnings.push('Projekttyp saknas eller är ogiltig');
+    else if (revenue === 0) warnings.push('Pris eller debiterbart värde saknas');
 
     const byActivity = new Map<string, { activityId: string; activityName: string; activityCode: string; hours: number }>();
     const byUser = new Map<string, { userId: string; userName: string; hours: number; billableHours: number }>();
