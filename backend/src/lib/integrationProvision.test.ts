@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { prepareIntegrationProvision } from './integrationProvision.js';
+import { parseProvisionKey, prepareIntegrationProvision } from './integrationProvision.js';
 
 test('förbereder endast hashad integrationsnyckel för exakt ett företag', () => {
   const key = 'a'.repeat(48);
@@ -8,7 +8,6 @@ test('förbereder endast hashad integrationsnyckel för exakt ett företag', () 
   const result = prepareIntegrationProvision({
     key,
     companyIds: ['company-1'],
-    existingKey: false,
   });
 
   assert.deepEqual(result, {
@@ -20,9 +19,17 @@ test('förbereder endast hashad integrationsnyckel för exakt ett företag', () 
   assert.equal(JSON.stringify(result).includes(key), false);
 });
 
-test('avvisar kort nyckel, dubblett och tvetydig företagsscope före skrivning', () => {
-  assert.throws(() => prepareIntegrationProvision({ key: 'kort', companyIds: ['company-1'], existingKey: false }));
-  assert.throws(() => prepareIntegrationProvision({ key: 'a'.repeat(48), companyIds: ['company-1'], existingKey: true }));
-  assert.throws(() => prepareIntegrationProvision({ key: 'a'.repeat(48), companyIds: [], existingKey: false }));
-  assert.throws(() => prepareIntegrationProvision({ key: 'a'.repeat(48), companyIds: ['company-1', 'company-2'], existingKey: false }));
+test('avvisar kort nyckel och tvetydig företagsscope före skrivning', () => {
+  assert.throws(() => prepareIntegrationProvision({ key: 'kort', companyIds: ['company-1'] }));
+  assert.throws(() => prepareIntegrationProvision({ key: 'a'.repeat(48), companyIds: [] }));
+  assert.throws(() => prepareIntegrationProvision({ key: 'a'.repeat(48), companyIds: ['company-1', 'company-2'] }));
+});
+
+test('stdin-provisionering accepterar exakt 64 URL-säkra ASCII-byte utan radslut', () => {
+  const key = Buffer.from('a'.repeat(63) + '_', 'ascii');
+  assert.equal(parseProvisionKey(key), key.toString('ascii'));
+
+  assert.throws(() => parseProvisionKey(Buffer.from('a'.repeat(63), 'ascii')));
+  assert.throws(() => parseProvisionKey(Buffer.from('a'.repeat(64) + '\n', 'ascii')));
+  assert.throws(() => parseProvisionKey(Buffer.from('a'.repeat(63) + '+', 'ascii')));
 });
