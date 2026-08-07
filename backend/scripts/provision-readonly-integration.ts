@@ -1,10 +1,23 @@
 import { prisma } from '../src/lib/prisma.js';
 import { prepareIntegrationProvision } from '../src/lib/integrationProvision.js';
 
-const key = process.env.TIDAPP_READ_API_KEY;
+if (process.stdin.isTTY) {
+  throw new Error('INTEGRATION_KEY_STDIN_REQUIRED');
+}
+if (process.env.TIDAPP_READ_API_KEY) {
+  throw new Error('INTEGRATION_KEY_ENV_FORBIDDEN');
+}
 
-if (!key) {
-  throw new Error('TIDAPP_READ_API_KEY_MISSING');
+const key = await new Promise<string>((resolve, reject) => {
+  let input = '';
+  process.stdin.setEncoding('utf8');
+  process.stdin.on('data', (chunk: string) => { input += chunk; });
+  process.stdin.on('end', () => resolve(input));
+  process.stdin.on('error', reject);
+});
+
+if (!key || key.includes('\n') || key.includes('\r')) {
+  throw new Error('INTEGRATION_KEY_STDIN_INVALID');
 }
 
 const existingKey = await prisma.integrationAccessKey.findFirst({
