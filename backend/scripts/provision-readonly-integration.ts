@@ -2,6 +2,7 @@ import { prisma } from '../src/lib/prisma.js';
 import { parseProvisionKey, prepareIntegrationProvision } from '../src/lib/integrationProvision.js';
 
 const MAX_STDIN_BYTES = 256;
+const INTEGRATION_COMPANY_NAME = 'Anderssons Isolering i Laholm AB';
 
 async function readProvisionKey(): Promise<string> {
   const chunks: Buffer[] = [];
@@ -29,6 +30,7 @@ async function main(): Promise<void> {
 
   const key = await readProvisionKey();
   const companies = await prisma.company.findMany({
+    where: { name: INTEGRATION_COMPANY_NAME },
     select: { id: true },
     take: 2,
   });
