@@ -21,6 +21,7 @@ model Company {
   activities Activity[]
   settings           Settings[]
   materialArticles  MaterialArticle[]
+  integrationAccessKeys IntegrationAccessKey[]
   obsidianSyncEvents ObsidianSyncEvent[]
   projectUpdates     ProjectUpdate[]
 }
@@ -45,6 +46,19 @@ model User {
   pushSubscriptions PushSubscription[]
   projectMaterials  ProjectMaterial[]
   projectUpdates    ProjectUpdate[]
+
+  @@index([companyId, active])
+}
+
+model IntegrationAccessKey {
+  id        String   @id @default(uuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name      String
+  keyHash   String   @unique
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  revokedAt DateTime?
 
   @@index([companyId, active])
 }
