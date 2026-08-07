@@ -23,6 +23,7 @@ import pushSubscriptionRoutes from './routes/pushSubscriptions.js';
 import reminderRoutes from './routes/reminders.js';
 import obsidianSyncRoutes from './routes/obsidianSync.js';
 import projectUpdateRoutes from './routes/projectUpdates.js';
+import integrationRoutes from './routes/integrations.js';
 
 // Prisma client
 export const prisma = new PrismaClient();
@@ -168,6 +169,7 @@ fastify.register(pushSubscriptionRoutes, { prefix: '/api/push-subscriptions' });
 fastify.register(reminderRoutes, { prefix: '/api/reminders' });
 fastify.register(obsidianSyncRoutes, { prefix: '/api/obsidian-sync' });
 fastify.register(projectUpdateRoutes, { prefix: '/api' });
+fastify.register(integrationRoutes, { prefix: '/api/integrations' });
 
 // Health check
 fastify.get('/api/health', async () => {
