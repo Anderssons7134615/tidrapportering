@@ -4,9 +4,12 @@ import jwt from '@fastify/jwt';
 import multipart from '@fastify/multipart';
 import rateLimit from '@fastify/rate-limit';
 import fastifyStatic from '@fastify/static';
-import { Prisma, PrismaClient } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { ZodError } from 'zod';
 import { ensureUploadDir } from './lib/uploads.js';
+import { prisma } from './lib/prisma.js';
+
+export { prisma } from './lib/prisma.js';
 
 // Routes
 import authRoutes from './routes/auth.js';
@@ -25,8 +28,6 @@ import obsidianSyncRoutes from './routes/obsidianSync.js';
 import projectUpdateRoutes from './routes/projectUpdates.js';
 import integrationRoutes from './routes/integrations.js';
 
-// Prisma client
-export const prisma = new PrismaClient();
 
 // Fastify instance
 const fastify = Fastify({
