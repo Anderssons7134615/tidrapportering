@@ -1,5 +1,5 @@
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -66,6 +66,7 @@ export default function Layout() {
   const navigate = useNavigate();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
+  const mobileMenuRef = useRef<HTMLElement>(null);
   const reduceMotion = useReducedMotion();
   const { data: currentUser } = useQuery({
     queryKey: ['auth', 'me'],
@@ -92,6 +93,13 @@ export default function Layout() {
     logout();
     navigate('/login');
   };
+
+  useEffect(() => {
+    const menu = mobileMenuRef.current;
+    if (!menu) return;
+    if (menuOpen) menu.removeAttribute('inert');
+    else menu.setAttribute('inert', '');
+  }, [menuOpen]);
 
   return (
     <div className="min-h-[100dvh] text-graphite-900">
@@ -123,7 +131,11 @@ export default function Layout() {
 
         {menuOpen && <div className="fixed inset-0 z-40 bg-graphite-950/35 lg:hidden" onClick={() => setMenuOpen(false)} />}
 
-        <aside className={`app-sidebar fixed left-0 top-0 z-50 flex h-full w-72 flex-col border-r border-white/10 text-white shadow-md transition-transform duration-200 lg:hidden ${menuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <aside
+          ref={mobileMenuRef}
+          aria-hidden={!menuOpen}
+          className={`app-sidebar fixed left-0 top-0 z-50 flex h-full w-72 flex-col border-r border-white/10 text-white shadow-md transition-transform duration-200 lg:hidden ${menuOpen ? 'translate-x-0' : '-translate-x-full'}`}
+        >
           <div className="flex items-center justify-between border-b border-white/10 px-4 py-4">
             <div className="flex min-w-0 items-center gap-3">
               <BrandMark compact onDark />
