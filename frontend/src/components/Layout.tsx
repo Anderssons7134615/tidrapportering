@@ -1,5 +1,6 @@
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useEffect, useState } from 'react';
+import { motion, useReducedMotion } from 'framer-motion';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Home, Clock, Calendar, CheckSquare, Users, Building2, FolderKanban, Tags,
@@ -65,6 +66,7 @@ export default function Layout() {
   const navigate = useNavigate();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
+  const reduceMotion = useReducedMotion();
   const { data: currentUser } = useQuery({
     queryKey: ['auth', 'me'],
     queryFn: authApi.me,
@@ -92,8 +94,8 @@ export default function Layout() {
   };
 
   return (
-    <div className="min-h-screen bg-[#eef2f1] text-graphite-900">
-      <header className="safe-top sticky top-0 z-50 border-b border-graphite-200 bg-[#f8faf9] lg:hidden">
+    <div className="min-h-[100dvh] text-graphite-900">
+      <header className="mobile-header safe-top sticky top-0 z-50 border-b border-graphite-200/80 lg:hidden">
         <div className="mx-auto flex h-16 max-w-[96rem] items-center justify-between px-4">
           <div className="flex min-w-0 items-center gap-3">
             <button onClick={() => setMenuOpen(!menuOpen)} className="icon-button" aria-label="Meny" aria-expanded={menuOpen}>
@@ -112,8 +114,8 @@ export default function Layout() {
         </div>
       </header>
 
-      <div className="mx-auto flex w-full max-w-[96rem]">
-        <aside className="sticky top-0 hidden h-screen w-72 shrink-0 flex-col border-r border-white/10 bg-graphite-950 text-white lg:flex">
+      <div className="app-frame">
+        <aside className="app-sidebar sticky top-0 hidden h-[100dvh] w-72 shrink-0 flex-col border-r border-white/10 text-white lg:flex">
           <SidebarIdentity companyName={user?.companyName} role={role} />
           <SidebarNavigation items={filteredNavItems} />
           <SidebarFooter isOnline={isOnline} pendingEntryCount={pendingEntryCount} onLogout={handleLogout} />
@@ -121,7 +123,7 @@ export default function Layout() {
 
         {menuOpen && <div className="fixed inset-0 z-40 bg-graphite-950/35 lg:hidden" onClick={() => setMenuOpen(false)} />}
 
-        <aside className={`fixed left-0 top-0 z-50 flex h-full w-72 flex-col border-r border-white/10 bg-graphite-950 text-white shadow-md transition-transform duration-200 lg:hidden ${menuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <aside className={`app-sidebar fixed left-0 top-0 z-50 flex h-full w-72 flex-col border-r border-white/10 text-white shadow-md transition-transform duration-200 lg:hidden ${menuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
           <div className="flex items-center justify-between border-b border-white/10 px-4 py-4">
             <div className="flex min-w-0 items-center gap-3">
               <BrandMark compact onDark />
@@ -136,13 +138,21 @@ export default function Layout() {
           <SidebarFooter isOnline={isOnline} pendingEntryCount={pendingEntryCount} onLogout={handleLogout} />
         </aside>
 
-        <main className="min-w-0 w-full flex-1 px-4 pb-32 pt-4 sm:px-6 sm:pt-6 lg:px-8 lg:pb-10 lg:pt-7">
-          <div className="mx-auto min-w-0 w-full max-w-7xl"><Outlet /></div>
+        <main className="app-main">
+          <motion.div
+            key={location.pathname}
+            className="route-stage"
+            initial={reduceMotion ? false : { opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.36, ease: [0.16, 1, 0.3, 1] }}
+          >
+            <Outlet />
+          </motion.div>
         </main>
       </div>
 
       {filteredBottomTabs.length > 0 && (
-        <nav className="safe-bottom fixed bottom-0 left-0 right-0 z-40 border-t border-graphite-200 bg-[#f8faf9] text-graphite-600 shadow-sm lg:hidden">
+        <nav className="mobile-bottom-nav safe-bottom fixed bottom-0 left-0 right-0 z-40 border-t border-graphite-200/80 text-graphite-600 shadow-sm lg:hidden">
           <div className={`mx-auto grid items-center gap-1 px-2 py-2 ${filteredBottomTabs.length <= 2 ? 'max-w-[14rem] grid-cols-2' : 'max-w-md grid-cols-5'}`}>
             {filteredBottomTabs.map((item) => <MobileNavLink key={item.to} item={item} />)}
           </div>
@@ -173,7 +183,7 @@ function SidebarNavigation({ items, onClick }: { items: NavigationItem[]; onClic
       {(Object.keys(groupLabels) as NavigationGroup[]).map((group) => {
         const groupItems = items.filter((item) => item.group === group);
         if (!groupItems.length) return null;
-        return <div key={group} className="mb-5 last:mb-0"><p className="px-3 pb-2 text-xs font-semibold uppercase tracking-normal text-white/40">{groupLabels[group]}</p><div className="space-y-1">{groupItems.map((item) => <SideNavLink key={item.to} item={item} onClick={onClick} />)}</div></div>;
+        return <div key={group} className="mb-5 last:mb-0"><p className="px-3 pb-2 text-xs font-bold text-white/42">{groupLabels[group]}</p><div className="space-y-1">{groupItems.map((item) => <SideNavLink key={item.to} item={item} onClick={onClick} />)}</div></div>;
       })}
     </nav>
   );
@@ -184,12 +194,12 @@ function SidebarFooter({ isOnline, pendingEntryCount, onLogout }: { isOnline: bo
 }
 
 function SideNavLink({ item, onClick }: { item: NavigationItem; onClick?: () => void }) {
-  return <NavLink to={item.to} end={item.to === '/'} onClick={onClick} className={({ isActive }) => `group flex min-h-11 items-center gap-3 rounded-md px-3 py-2.5 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300 ${isActive ? 'bg-white/[0.12] text-white ring-1 ring-inset ring-primary-300/50' : 'text-white/60 hover:bg-white/[0.07] hover:text-white'}`}><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-white/[0.07] text-current ring-1 ring-white/10 transition group-hover:bg-white/[0.11]"><item.icon size={17} /></span><span>{item.label}</span></NavLink>;
+  return <NavLink to={item.to} end={item.to === '/'} onClick={onClick} className={({ isActive }) => `group relative flex min-h-11 items-center gap-3 overflow-hidden rounded-[0.7rem] px-3 py-2.5 text-sm font-bold transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300 ${isActive ? 'bg-white/[0.1] text-white shadow-[inset_3px_0_0_#ea8242]' : 'text-white/58 hover:bg-white/[0.06] hover:text-white'}`}><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[0.6rem] bg-white/[0.06] text-current ring-1 ring-white/[0.08] transition group-hover:bg-white/[0.1]"><item.icon size={17} strokeWidth={1.8} /></span><span>{item.label}</span></NavLink>;
 }
 
 function MobileNavLink({ item }: { item: NavigationItem }) {
   const primary = item.to === '/time-entry';
-  return <NavLink to={item.to} end={item.to === '/'} className={({ isActive }) => primary ? `flex min-h-[58px] flex-col items-center justify-center rounded-md px-2 py-2 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2 ${isActive ? 'bg-primary-800 text-white' : 'bg-primary-700 text-white hover:bg-primary-800'}` : `flex min-h-[56px] flex-col items-center justify-center rounded-md px-1.5 py-2 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2 ${isActive ? 'bg-primary-50 text-primary-800' : 'text-graphite-500 hover:bg-graphite-50 hover:text-graphite-950'}`}><item.icon size={primary ? 22 : 20} /><span className="mt-0.5">{item.label}</span></NavLink>;
+  return <NavLink to={item.to} end={item.to === '/'} className={({ isActive }) => primary ? `flex min-h-[58px] flex-col items-center justify-center rounded-[0.7rem] px-2 py-2 text-xs font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2 ${isActive ? 'bg-primary-700 text-white' : 'bg-primary-600 text-white hover:bg-primary-700'}` : `flex min-h-[56px] flex-col items-center justify-center rounded-[0.7rem] px-1.5 py-2 text-xs font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2 ${isActive ? 'bg-primary-50 text-primary-800' : 'text-graphite-500 hover:bg-graphite-50 hover:text-graphite-950'}`}><item.icon size={primary ? 22 : 20} strokeWidth={1.8} /><span className="mt-0.5">{item.label}</span></NavLink>;
 }
 
 function BrandMark({ compact = false, onDark = false }: { compact?: boolean; onDark?: boolean }) {

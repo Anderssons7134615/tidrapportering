@@ -367,7 +367,7 @@ function MobileProjectRow({
   return (
     <div
       className={`px-3 py-4 text-sm ${!project.active ? 'opacity-65' : ''}`}
-      title="Ã–ppna projekt"
+      title="Öppna projekt"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">

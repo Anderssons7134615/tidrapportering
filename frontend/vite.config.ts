@@ -13,8 +13,8 @@ export default defineConfig({
         short_name: 'TidApp',
         description: 'Tidrapporteringsapp för hantverks- och byggföretag',
         lang: 'sv',
-        theme_color: '#0a0a0a',
-        background_color: '#0a0a0a',
+        theme_color: '#111613',
+        background_color: '#111613',
         display: 'standalone',
         orientation: 'portrait',
         scope: '/',
@@ -46,34 +46,6 @@ export default defineConfig({
         importScripts: ['/push-sw.js'],
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
         runtimeCaching: [
-          {
-            urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'google-fonts-cache',
-              expiration: {
-                maxEntries: 10,
-                maxAgeSeconds: 60 * 60 * 24 * 365, // 1 year
-              },
-              cacheableResponse: {
-                statuses: [0, 200],
-              },
-            },
-          },
-          {
-            urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/i,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'gstatic-fonts-cache',
-              expiration: {
-                maxEntries: 10,
-                maxAgeSeconds: 60 * 60 * 24 * 365, // 1 year
-              },
-              cacheableResponse: {
-                statuses: [0, 200],
-              },
-            },
-          },
           {
             urlPattern: /^https:\/\/api\./i,
             handler: 'NetworkOnly',

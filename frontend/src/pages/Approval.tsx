@@ -211,7 +211,7 @@ export default function Approval() {
                       {dayHours.map((day) => (
                         <td key={toDateInputValue(day.date)} className="px-2 py-3 text-center">
                           <div className={`border-y px-2 py-1.5 ${day.hours == null ? 'border-graphite-100 text-graphite-500' : day.hours > 10 ? 'border-rose-200 bg-rose-50 text-rose-700' : day.hours === 0 ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-graphite-100 text-graphite-900'}`}>
-                            <p className="font-semibold">{day.hours == null ? '–' : formatHours(day.hours)}</p>
+                            <p className="font-semibold">{day.hours == null ? '-' : formatHours(day.hours)}</p>
                           </div>
                         </td>
                       ))}
@@ -233,7 +233,7 @@ export default function Approval() {
                           onClick={() => setApprovalCandidate(lock)}
                           disabled={approveMutation.isPending || lock.isCompleteForApproval === false}
                           className="btn-success disabled:cursor-not-allowed disabled:opacity-50"
-                          title={lock.isCompleteForApproval === false ? 'Kan inte godkänna: veckan saknar tid måndag–fredag' : 'Godkänn vecka'}
+                          title={lock.isCompleteForApproval === false ? 'Kan inte godkänna: veckan saknar tid måndag-fredag' : 'Godkänn vecka'}
                         >
                           <CheckCircle className="h-4 w-4" />
                           {lock.isCompleteForApproval === false ? 'Ej komplett' : 'Godkänn'}

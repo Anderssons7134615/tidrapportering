@@ -306,7 +306,7 @@ export default function TimeEntry() {
             <ReviewSummary>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <p className="text-xs font-bold uppercase tracking-wide text-primary-700">Vald dag</p>
+                <p className="text-xs font-bold text-primary-700">Vald dag</p>
                 <h2 className="mt-1 text-lg font-black text-graphite-950">
                   {selectedDateLabel}
                 </h2>
@@ -352,23 +352,23 @@ export default function TimeEntry() {
                 <div>
                   <div className="flex items-center gap-2 text-primary-700">
                     <Clock className="h-4 w-4" />
-                    <p className="text-xs font-semibold uppercase tracking-wide">Snabbval</p>
+                    <p className="text-xs font-bold">Snabbval</p>
                   </div>
                   <h2 className="mt-2 text-xl font-semibold text-graphite-950">Börja med dagens tid</h2>
                   <p className="mt-1 text-sm leading-6 text-graphite-600">Välj datum, projekt och standardtimmar utan att lämna formuläret.</p>
                 </div>
                 <div className="space-y-3">
                   <div className="grid grid-cols-3 gap-2">
-                    <button type="button" onClick={() => setDate(format(new Date(), 'yyyy-MM-dd'))} className="rounded-md border border-graphite-200 bg-white px-3 py-3 text-sm font-semibold text-graphite-800 transition hover:border-primary-200 hover:bg-primary-50">Idag</button>
-                    <button type="button" onClick={() => setDate(yesterday)} className="rounded-md border border-graphite-200 bg-white px-3 py-3 text-sm font-semibold text-graphite-800 transition hover:border-primary-200 hover:bg-primary-50">Igår</button>
-                    <button type="button" onClick={copyYesterday} className="rounded-md border border-primary-200 bg-primary-50 px-3 py-3 text-sm font-semibold text-primary-800 transition hover:border-primary-300 hover:bg-primary-100">
+                    <button type="button" onClick={() => setDate(format(new Date(), 'yyyy-MM-dd'))} className="choice-tile text-sm">Idag</button>
+                    <button type="button" onClick={() => setDate(yesterday)} className="choice-tile text-sm">Igår</button>
+                    <button type="button" onClick={copyYesterday} className="choice-tile border-primary-200 bg-primary-50 text-sm text-primary-800">
                       <Copy className="mx-auto mb-1 h-4 w-4" />
                       Kopiera
                     </button>
                   </div>
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                     {[7.5, 8, 4, 2].map((preset) => (
-                      <button key={preset} type="button" onClick={() => setHours(String(preset).replace('.', ','))} className="rounded-md border border-graphite-200 bg-white px-3 py-3 text-base font-semibold text-graphite-900 transition hover:border-primary-200 hover:bg-primary-50">{String(preset).replace('.', ',')} h</button>
+                      <button key={preset} type="button" onClick={() => setHours(String(preset).replace('.', ','))} className="choice-tile text-base">{String(preset).replace('.', ',')} h</button>
                     ))}
                   </div>
                   {!!recentProjects?.length && (
@@ -378,8 +378,8 @@ export default function TimeEntry() {
                           key={project.id}
                           type="button"
                           onClick={() => setProjectId(project.id)}
-                          className={`rounded-md border px-3 py-3 text-left transition ${
-                            projectId === project.id ? 'border-primary-400 bg-primary-50 text-primary-900' : 'border-graphite-200 bg-white text-graphite-700 hover:border-primary-200 hover:bg-primary-50'
+                          className={`choice-tile text-left ${
+                            projectId === project.id ? 'choice-tile-selected' : 'text-graphite-700'
                           }`}
                         >
                           <span className="block text-sm font-semibold">{project.code}</span>
@@ -422,10 +422,10 @@ export default function TimeEntry() {
                         key={activity.id}
                         type="button"
                         onClick={() => setActivityId(activity.id)}
-                        className={`rounded-lg border px-3 py-2.5 text-left text-sm font-semibold transition ${
+                        className={`choice-tile px-3 py-2.5 text-left text-sm ${
                           activityId === activity.id
-                            ? 'border-primary-300 bg-primary-50 text-primary-800 ring-2 ring-primary-100'
-                            : 'border-graphite-200 bg-white text-graphite-700 hover:border-primary-200 hover:bg-primary-50'
+                            ? 'choice-tile-selected text-primary-800'
+                            : 'text-graphite-700'
                         }`}
                       >
                         {activity.name}
@@ -452,7 +452,7 @@ export default function TimeEntry() {
               </div>
               <div className="mt-3 grid grid-cols-4 gap-2">
                 {[2, 4, 6, 8].map((preset) => (
-                  <button key={preset} type="button" onClick={() => setHours(String(preset))} className="rounded-md border border-graphite-200 bg-white px-3 py-2 text-sm font-semibold text-graphite-800 transition hover:border-primary-200 hover:bg-primary-50 hover:text-primary-800">{preset} h</button>
+                  <button key={preset} type="button" onClick={() => setHours(String(preset))} className="choice-tile py-2 text-sm">{preset} h</button>
                 ))}
               </div>
             </FormField>

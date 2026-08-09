@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowRight, Clock, Loader2, ShieldCheck } from 'lucide-react';
+import { ArrowRight, CheckCircle2, Clock, Loader2, ShieldCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { authApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
@@ -41,34 +41,43 @@ export default function Login() {
   };
 
   return (
-    <main className="min-h-screen bg-[#f4f6f8] px-4 py-8 text-graphite-900">
-      <div className="mx-auto grid min-h-[calc(100vh-4rem)] w-full max-w-6xl gap-8 lg:grid-cols-[1fr_420px] lg:items-center">
-        <section className="order-2 flex flex-col justify-center border-t border-graphite-200 pt-8 lg:order-1 lg:border-r lg:border-t-0 lg:pb-0 lg:pr-12 lg:pt-0">
-          <img src="/anderssons-logo.svg" alt="Anderssons Isolering" className="h-14 w-fit object-contain" />
-          <p className="mt-8 text-sm font-semibold uppercase tracking-wide text-primary-700">TidApp</p>
-          <h1 className="mt-2 max-w-3xl text-3xl font-semibold tracking-normal text-graphite-950 sm:text-5xl">
-            Tidrapportering som känns rak, tydlig och lätt att lita på.
-          </h1>
-          <p className="mt-5 max-w-2xl text-base leading-7 text-graphite-600">
-            Samma arbetsflöde för rapportering, veckovy, attest, projekt och löneunderlag. Byggt för att vara snabbt på plats och tydligt på kontoret.
-          </p>
+    <main className="login-shell">
+      <div className="login-frame">
+        <section className="login-brand-panel order-2 lg:order-1">
+          <div className="relative z-10">
+            <img src="/anderssons-logo.svg" alt="Anderssons Isolering" className="h-14 w-fit max-w-[14rem] brightness-0 invert" />
+            <p className="mt-12 text-sm font-bold text-primary-300">TidApp</p>
+            <h1 className="mt-3 max-w-3xl text-4xl font-extrabold leading-[1.05] tracking-[-0.045em] text-white sm:text-5xl lg:text-6xl">
+              Arbetstid. Projekt. Kontroll.
+            </h1>
+            <p className="mt-6 max-w-xl text-base leading-7 text-white/68 sm:text-lg">
+              Ett arbetsverktyg byggt för platsen, kontoret och ett tryggt löneunderlag.
+            </p>
+          </div>
 
-          <div className="mt-8 grid gap-3 text-sm leading-6 text-graphite-700 sm:grid-cols-3">
-            <p><strong className="block text-graphite-950">Rapportera snabbt</strong>Få in dagens timmar utan onödiga steg.</p>
-            <p><strong className="block text-graphite-950">Följ upp jobb</strong>Se risk, budget och senaste aktivitet direkt.</p>
-            <p><strong className="block text-graphite-950">Exportera tryggt</strong>Löne- och revisorsunderlag ligger samlat.</p>
+          <div className="relative z-10 mt-12 max-w-xl space-y-0 divide-y divide-white/10 lg:mt-20">
+            {[
+              'Rapportera dagens timmar utan onödiga steg',
+              'Följ projekt, budget och aktivitet i samma vy',
+              'Ta fram attest och underlag med full spårbarhet',
+            ].map((item) => (
+              <p key={item} className="flex items-center gap-3 py-3.5 text-sm font-semibold text-white/80">
+                <CheckCircle2 className="h-4 w-4 shrink-0 text-primary-300" strokeWidth={2} />
+                {item}
+              </p>
+            ))}
           </div>
         </section>
 
-        <section className="order-1 w-full lg:order-2">
-          <div className="border-y border-graphite-200 bg-white px-1 py-5 sm:border sm:p-6">
+        <section className="login-form-panel order-1 lg:order-2">
+          <div className="login-form-surface">
             <div className="mb-6">
-              <p className="inline-flex items-center gap-2 text-sm font-semibold text-primary-800">
+              <p className="inline-flex items-center gap-2 text-sm font-bold text-primary-800">
                 <ShieldCheck className="h-4 w-4" />
-                Logga in
+                Säker inloggning
               </p>
-              <h2 className="mt-2 text-2xl font-semibold tracking-normal text-graphite-950">Fortsätt arbetet</h2>
-              <p className="mt-1 text-sm text-graphite-500">Använd samma konto på mobil och dator.</p>
+              <h2 className="mt-3 text-3xl font-extrabold tracking-[-0.035em] text-graphite-950">Välkommen tillbaka</h2>
+              <p className="mt-2 text-sm leading-6 text-graphite-600">Logga in med samma konto på mobil och dator.</p>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -113,11 +122,9 @@ export default function Login() {
               </button>
             </form>
 
-            <div className="mt-6 border-t border-graphite-200 pt-4 text-sm leading-6 text-graphite-600">
-              <p className="flex items-center gap-2 font-semibold text-graphite-950">
-                <Clock className="h-4 w-4 text-primary-700" />
-                Vecka, attest och rapporter i samma system
-              </p>
+            <div className="mt-6 flex items-center gap-2 border-t border-graphite-200 pt-4 text-sm font-semibold text-graphite-600">
+              <Clock className="h-4 w-4 text-primary-600" />
+              TidApp håller din arbetsdag samlad
             </div>
 
             {registrationStatus?.enabled && (

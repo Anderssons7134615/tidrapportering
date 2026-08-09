@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
+import { motion, useReducedMotion } from 'framer-motion';
 import {
   AlertTriangle,
   ArrowRight,
@@ -177,6 +178,8 @@ function WeekPulse({
   weeklyHours: number;
   monthlyHours: number;
 }) {
+  const reduceMotion = useReducedMotion();
+
   return (
     <section className="work-panel overflow-hidden">
       <div className="work-panel-header">
@@ -194,16 +197,22 @@ function WeekPulse({
       </p>
 
       <div className="divide-y divide-graphite-100">
-        {rows.length ? rows.map((day) => (
+        {rows.length ? rows.map((day, index) => (
           <div key={day.date} className="grid grid-cols-[4.5rem_1fr_4rem] items-center gap-3 px-4 py-3 text-sm">
             <div>
               <p className="font-semibold text-graphite-950">{day.label}</p>
               <p className="text-xs text-graphite-500">{formatShortDate(day.date)}</p>
             </div>
-            <div className="h-2 overflow-hidden rounded-full bg-graphite-100">
-              <div
+            <div className="h-2 overflow-hidden rounded-full bg-graphite-100/80">
+              <motion.div
                 className={day.hours > 0 ? 'h-full rounded-full bg-primary-600' : 'h-full rounded-full bg-graphite-200'}
-                style={{ width: `${Math.max(day.hours > 0 ? 6 : 0, Math.min(100, Math.round((day.hours / maxHours) * 100)))}%` }}
+                initial={reduceMotion ? false : { scaleX: 0 }}
+                animate={{ scaleX: 1 }}
+                transition={{ duration: 0.7, delay: index * 0.055, ease: [0.16, 1, 0.3, 1] }}
+                style={{
+                  width: `${Math.max(day.hours > 0 ? 6 : 0, Math.min(100, Math.round((day.hours / maxHours) * 100)))}%`,
+                  transformOrigin: 'left center',
+                }}
               />
             </div>
             <p className="text-right font-semibold text-graphite-950">{formatHours(day.hours)}</p>

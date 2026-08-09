@@ -113,8 +113,8 @@ export function KpiCard({
 }) {
   return (
     <div className="kpi-summary">
-      <p className="text-xs font-semibold uppercase tracking-normal text-graphite-500">{label}</p>
-      <p className={`mt-1 text-xl font-semibold tracking-normal tabular-nums sm:text-2xl ${toneTextClasses[tone]}`}>{value}</p>
+      <p className="text-xs font-bold text-graphite-500">{label}</p>
+      <p className={`mt-1 font-mono text-xl font-semibold tracking-[-0.03em] tabular-nums sm:text-2xl ${toneTextClasses[tone]}`}>{value}</p>
       {hint && <p className="mt-1 text-xs font-medium text-graphite-500">{hint}</p>}
     </div>
   );
@@ -160,7 +160,7 @@ export function Button({
 }
 
 export function StatusBadge({ label, tone = 'gray' }: { label: string; tone?: Tone }) {
-  return <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${toneClasses[tone]}`}>{label}</span>;
+  return <span className={`inline-flex items-center rounded-md border px-2.5 py-1 text-xs font-bold ${toneClasses[tone]}`}>{label}</span>;
 }
 
 export function DataTable({ children }: { children: ReactNode }) {

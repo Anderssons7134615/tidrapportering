@@ -54,8 +54,8 @@ export default function Register() {
 
   if (!isLoadingRegistrationStatus && !registrationStatus?.enabled) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#f4f6f8] px-4 text-graphite-900">
-        <section className="w-full max-w-lg border-y border-graphite-200 bg-white px-5 py-8 text-center sm:border">
+      <main className="login-shell flex items-center justify-center">
+        <section className="login-form-surface max-w-lg text-center">
           <ShieldCheck className="mx-auto h-6 w-6 text-primary-700" />
           <h1 className="mt-3 text-2xl font-semibold text-graphite-950">Registrering är avstängd</h1>
           <p className="mt-2 text-sm leading-6 text-graphite-600">Nya konton skapas av administratören i TidApp.</p>
@@ -66,32 +66,32 @@ export default function Register() {
   }
 
   return (
-    <main className="min-h-screen bg-[#f4f6f8] px-4 py-8 text-graphite-900">
-      <div className="mx-auto grid min-h-[calc(100vh-4rem)] w-full max-w-6xl gap-8 lg:grid-cols-[0.9fr_1fr] lg:items-center">
-        <section className="border-b border-graphite-200 pb-8 lg:border-b-0 lg:border-r lg:pb-0 lg:pr-12">
-          <img src="/anderssons-logo.svg" alt="Anderssons Isolering" className="h-14 w-fit object-contain" />
-          <p className="mt-8 text-sm font-semibold uppercase tracking-wide text-primary-700">Nytt konto</p>
-          <h1 className="mt-2 max-w-2xl text-4xl font-semibold tracking-normal text-graphite-950 sm:text-5xl">
+    <main className="login-shell">
+      <div className="login-frame lg:grid-cols-[minmax(21rem,0.8fr)_minmax(28rem,1.2fr)]">
+        <section className="login-brand-panel">
+          <img src="/anderssons-logo.svg" alt="Anderssons Isolering" className="relative z-10 h-14 w-fit max-w-[14rem] brightness-0 invert" />
+          <p className="relative z-10 mt-10 text-sm font-bold text-primary-300">Nytt konto</p>
+          <h1 className="relative z-10 mt-3 max-w-2xl text-4xl font-extrabold leading-[1.08] tracking-[-0.04em] text-white sm:text-5xl">
             Starta TidApp för företaget.
           </h1>
-          <p className="mt-5 max-w-xl text-base leading-7 text-graphite-600">
+          <p className="relative z-10 mt-5 max-w-xl text-base leading-7 text-white/68">
             Skapa företaget, lägg till administratören och fortsätt sedan direkt in i samma rena arbetsyta som används för projekt, tid och rapporter.
           </p>
 
-          <dl className="mt-8 space-y-3 text-sm leading-6 text-graphite-700">
-            <div className="border-t border-graphite-200 pt-3">
-              <dt className="font-semibold text-graphite-950">1. Företagsuppgifter</dt>
+          <dl className="relative z-10 mt-10 space-y-3 text-sm leading-6 text-white/70">
+            <div className="border-t border-white/10 pt-3">
+              <dt className="font-bold text-white">1. Företagsuppgifter</dt>
               <dd>Företagsnamn och organisationsnummer.</dd>
             </div>
-            <div className="border-t border-graphite-200 pt-3">
-              <dt className="font-semibold text-graphite-950">2. Administratör</dt>
+            <div className="border-t border-white/10 pt-3">
+              <dt className="font-bold text-white">2. Administratör</dt>
               <dd>Den första användaren får åtkomst direkt efter registrering.</dd>
             </div>
           </dl>
         </section>
 
-        <section className="w-full">
-          <form onSubmit={handleSubmit} className="border-y border-graphite-200 bg-white px-1 py-5 sm:border sm:p-6">
+        <section className="login-form-panel">
+          <form onSubmit={handleSubmit} className="login-form-surface">
             <div className="mb-5">
               <p className="inline-flex items-center gap-2 text-sm font-semibold text-primary-800">
                 <Building2 className="h-4 w-4" />
