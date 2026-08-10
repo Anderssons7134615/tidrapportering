@@ -1,11 +1,18 @@
 import { prisma } from '../src/lib/prisma.js';
-import { parseProvisionKey } from '../src/lib/integrationProvision.js';
+import { parseProvisionKey, parseProvisionKeyFileArgument } from '../src/lib/integrationProvision.js';
 import { prepareProjectIntegrationProvision } from '../src/lib/integrationProjectProvision.js';
+import { readFile } from 'node:fs/promises';
 
 const MAX_STDIN_BYTES = 256;
 const INTEGRATION_COMPANY_NAME = 'Anderssons Isolering i Laholm AB';
 
 async function readProvisionKey(): Promise<string> {
+  const keyFile = parseProvisionKeyFileArgument(process.argv.slice(2));
+  if (keyFile) {
+    const input = await readFile(keyFile);
+    if (input.length > MAX_STDIN_BYTES) throw new Error('INTEGRATION_KEY_STDIN_INVALID');
+    return parseProvisionKey(input);
+  }
   const chunks: Buffer[] = [];
   let totalBytes = 0;
   for await (const chunk of process.stdin) {

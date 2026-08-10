@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseProvisionKey, prepareIntegrationProvision } from './integrationProvision.js';
+import { parseProvisionKey, parseProvisionKeyFileArgument, prepareIntegrationProvision } from './integrationProvision.js';
 
 test('förbereder endast hashad integrationsnyckel för exakt ett företag', () => {
   const key = 'a'.repeat(48);
@@ -33,4 +33,11 @@ test('stdin-provisionering accepterar exakt 64 URL-säkra ASCII-byte utan radslu
   assert.throws(() => parseProvisionKey(Buffer.from('a'.repeat(63), 'ascii')));
   assert.throws(() => parseProvisionKey(Buffer.from('a'.repeat(64) + '\n', 'ascii')));
   assert.throws(() => parseProvisionKey(Buffer.from('a'.repeat(63) + '+', 'ascii')));
+});
+
+test('provisionering accepterar endast en explicit temporär nyckelfil', () => {
+  assert.equal(parseProvisionKeyFileArgument([]), null);
+  assert.equal(parseProvisionKeyFileArgument(['--key-file', 'C:\\Temp\\key.bin']), 'C:\\Temp\\key.bin');
+  assert.throws(() => parseProvisionKeyFileArgument(['--key-file']));
+  assert.throws(() => parseProvisionKeyFileArgument(['--other', 'key.bin']));
 });
