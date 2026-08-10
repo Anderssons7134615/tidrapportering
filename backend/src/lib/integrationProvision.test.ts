@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseProvisionKey, parseProvisionKeyFileArgument, prepareIntegrationProvision } from './integrationProvision.js';
+import { allowsProvisionKeyInput, parseProvisionKey, parseProvisionKeyFileArgument, prepareIntegrationProvision } from './integrationProvision.js';
 
 test('förbereder endast hashad integrationsnyckel för exakt ett företag', () => {
   const key = 'a'.repeat(48);
@@ -40,4 +40,10 @@ test('provisionering accepterar endast en explicit temporär nyckelfil', () => {
   assert.equal(parseProvisionKeyFileArgument(['--key-file', 'C:\\Temp\\key.bin']), 'C:\\Temp\\key.bin');
   assert.throws(() => parseProvisionKeyFileArgument(['--key-file']));
   assert.throws(() => parseProvisionKeyFileArgument(['--other', 'key.bin']));
+});
+
+test('temporär nyckelfil tillåts även när vanlig stdin är en terminal', () => {
+  assert.equal(allowsProvisionKeyInput(null, true), false);
+  assert.equal(allowsProvisionKeyInput(null, false), true);
+  assert.equal(allowsProvisionKeyInput('C:\\Temp\\key.bin', true), true);
 });

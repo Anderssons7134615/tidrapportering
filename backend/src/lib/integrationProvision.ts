@@ -37,6 +37,10 @@ export function parseProvisionKeyFileArgument(args: string[]): string | null {
   throw new Error('INTEGRATION_KEY_ARGUMENT_INVALID');
 }
 
+export function allowsProvisionKeyInput(keyFile: string | null, stdinIsTTY: boolean): boolean {
+  return keyFile !== null || !stdinIsTTY;
+}
+
 export function prepareIntegrationProvision(input: IntegrationProvisionInput): IntegrationProvisionData {
   if (input.key.length < MINIMUM_KEY_LENGTH) {
     throw new Error('INTEGRATION_KEY_TOO_SHORT');
