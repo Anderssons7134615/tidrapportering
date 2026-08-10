@@ -7,6 +7,12 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum IntegrationPermission {
+  READ_ONLY
+  MATERIAL_CREATE
+  PROJECT_CREATE
+}
+
 model Company {
   id        String   @id @default(uuid())
   name      String
@@ -22,6 +28,8 @@ model Company {
   settings           Settings[]
   materialArticles  MaterialArticle[]
   integrationAccessKeys IntegrationAccessKey[]
+  integrationMaterialOperations IntegrationMaterialOperation[]
+  integrationProjectCreateOperations IntegrationProjectCreateOperation[]
   obsidianSyncEvents ObsidianSyncEvent[]
   projectUpdates     ProjectUpdate[]
 }
@@ -57,10 +65,64 @@ model IntegrationAccessKey {
   name      String
   keyHash   String   @unique
   active    Boolean  @default(true)
+  permission IntegrationPermission @default(READ_ONLY)
   createdAt DateTime @default(now())
   revokedAt DateTime?
 
+  projectAccess      IntegrationProjectAccess[]
+  materialOperations IntegrationMaterialOperation[]
+  projectCreateOperations IntegrationProjectCreateOperation[]
+
   @@index([companyId, active])
+}
+
+model IntegrationProjectAccess {
+  integrationAccessKeyId String
+  integrationAccessKey   IntegrationAccessKey @relation(fields: [integrationAccessKeyId], references: [id], onDelete: Cascade)
+  projectId              String
+  project                Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt              DateTime @default(now())
+
+  @@id([integrationAccessKeyId, projectId])
+  @@index([projectId])
+}
+
+model IntegrationMaterialOperation {
+  id                     String @id @default(uuid())
+  companyId              String
+  company                Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  integrationAccessKeyId String
+  integrationAccessKey   IntegrationAccessKey @relation(fields: [integrationAccessKeyId], references: [id], onDelete: Restrict)
+  projectId              String
+  project                Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  idempotencyKey         String
+  payloadHash            String
+  status                 String @default("COMPLETED")
+  rowCount               Int
+  createdAt              DateTime @default(now())
+
+  materials ProjectMaterial[]
+
+  @@unique([integrationAccessKeyId, idempotencyKey])
+  @@index([companyId, createdAt])
+  @@index([projectId, createdAt])
+}
+
+model IntegrationProjectCreateOperation {
+  id                     String @id @default(uuid())
+  companyId              String
+  company                Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  integrationAccessKeyId String
+  integrationAccessKey   IntegrationAccessKey @relation(fields: [integrationAccessKeyId], references: [id], onDelete: Restrict)
+  projectId              String @unique
+  project                Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  idempotencyKey         String
+  payloadHash            String
+  status                 String @default("COMPLETED")
+  createdAt              DateTime @default(now())
+
+  @@unique([integrationAccessKeyId, idempotencyKey])
+  @@index([companyId, createdAt])
 }
 
 model PushSubscription {
@@ -120,6 +182,9 @@ model Project {
   timeEntries       TimeEntry[]
   projectMaterials  ProjectMaterial[]
   updates           ProjectUpdate[]
+  integrationAccess IntegrationProjectAccess[]
+  integrationMaterialOperations IntegrationMaterialOperation[]
+  integrationProjectCreateOperation IntegrationProjectCreateOperation?
 
   @@unique([companyId, code])
 }
@@ -201,9 +266,14 @@ model ProjectMaterial {
   invoiceReference String?
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
+  integrationOperationId String?
+  integrationOperation IntegrationMaterialOperation? @relation(fields: [integrationOperationId], references: [id], onDelete: SetNull)
+  integrationRowIndex Int?
 
   @@index([projectId, date])
   @@index([createdByUserId])
+  @@index([integrationOperationId])
+  @@unique([integrationOperationId, integrationRowIndex])
 }
 
 model Activity {

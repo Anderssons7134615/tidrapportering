@@ -1,16 +1,22 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 
+export const INTEGRATION_PERMISSIONS = ['READ_ONLY', 'MATERIAL_CREATE', 'PROJECT_CREATE'] as const;
+export type IntegrationPermission = typeof INTEGRATION_PERMISSIONS[number];
+
 export type IntegrationKeyRecord = {
   id: string;
   companyId: string;
   active: boolean;
+  permission: IntegrationPermission;
+  keyHash: string;
+  revokedAt: Date | null;
 };
 
 export type IntegrationKeyRepository = {
   findByHash(keyHash: string): Promise<IntegrationKeyRecord | null>;
 };
 
-export type IntegrationScope = Pick<IntegrationKeyRecord, 'id' | 'companyId'>;
+export type IntegrationScope = Pick<IntegrationKeyRecord, 'id' | 'companyId' | 'permission'>;
 
 export function hashIntegrationKey(key: string): string {
   return createHash('sha256').update(key, 'utf8').digest('hex');
@@ -23,9 +29,9 @@ export function extractIntegrationKey(headers: Record<string, string | string[] 
   return key || null;
 }
 
-function hashesMatch(expectedHash: string, suppliedKey: string): boolean {
+function hashesMatch(expectedHash: string, suppliedHash: string): boolean {
   const expected = Buffer.from(expectedHash, 'utf8');
-  const actual = Buffer.from(hashIntegrationKey(suppliedKey), 'utf8');
+  const actual = Buffer.from(suppliedHash, 'utf8');
   return expected.length === actual.length && timingSafeEqual(expected, actual);
 }
 
@@ -34,9 +40,10 @@ export async function authenticateIntegrationKey(
   suppliedKey: string | null,
 ): Promise<IntegrationScope | null> {
   if (!suppliedKey) return null;
-  const record = await repository.findByHash(hashIntegrationKey(suppliedKey));
-  if (!record || !record.active || !hashesMatch(hashIntegrationKey(suppliedKey), suppliedKey)) {
+  const suppliedHash = hashIntegrationKey(suppliedKey);
+  const record = await repository.findByHash(suppliedHash);
+  if (!record || !record.active || record.revokedAt !== null || !hashesMatch(record.keyHash, suppliedHash)) {
     return null;
   }
-  return { id: record.id, companyId: record.companyId };
+  return { id: record.id, companyId: record.companyId, permission: record.permission };
 }

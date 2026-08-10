@@ -15,6 +15,7 @@ export type IntegrationProvisionData = {
   name: typeof INTEGRATION_NAME;
   keyHash: string;
   active: true;
+  permission: 'READ_ONLY';
 };
 
 export function parseProvisionKey(input: Buffer): string {
@@ -43,5 +44,6 @@ export function prepareIntegrationProvision(input: IntegrationProvisionInput): I
     name: INTEGRATION_NAME,
     keyHash: hashIntegrationKey(input.key),
     active: true,
+    permission: 'READ_ONLY',
   };
 }

@@ -31,7 +31,16 @@ import integrationRoutes from './routes/integrations.js';
 
 // Fastify instance
 const fastify = Fastify({
-  logger: true,
+  logger: {
+    redact: {
+      paths: [
+        'req.headers.authorization',
+        'req.headers.cookie',
+        'req.headers["x-tidapp-integration-key"]',
+      ],
+      censor: '[REDACTED]',
+    },
+  },
 });
 
 const jwtSecret = process.env.JWT_SECRET;

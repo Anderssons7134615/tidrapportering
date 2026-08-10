@@ -14,6 +14,7 @@ test('förbereder endast hashad integrationsnyckel för exakt ett företag', () 
     companyId: 'company-1',
     name: 'Hermes read-only adapter',
     active: true,
+    permission: 'READ_ONLY',
     keyHash: '97daac0ee9998dfcad6c9c0970da5ca411c86233a944c25b47566f6a7bc1ddd5',
   });
   assert.equal(JSON.stringify(result).includes(key), false);

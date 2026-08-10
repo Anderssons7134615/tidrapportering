@@ -27,20 +27,95 @@ test('godkänner en aktiv integrationsnyckel och returnerar endast dess företag
   const scope = await authenticateIntegrationKey(
     {
       findByHash: async (keyHash) => keyHash === hashIntegrationKey(key)
-        ? { id: 'key-1', companyId: 'company-1', active: true }
+        ? {
+            id: 'key-1',
+            companyId: 'company-1',
+            active: true,
+            permission: 'READ_ONLY' as const,
+            keyHash: hashIntegrationKey(key),
+            revokedAt: null,
+          }
         : null,
     },
     key,
   );
 
-  assert.deepEqual(scope, { id: 'key-1', companyId: 'company-1' });
+  assert.deepEqual(scope, { id: 'key-1', companyId: 'company-1', permission: 'READ_ONLY' });
+});
+
+test('behåller databasens verifierade hash som jämförelseunderlag', async () => {
+  const key = 'tidapp_read_test_key_123';
+  let lookups = 0;
+  const scope = await authenticateIntegrationKey(
+    {
+      findByHash: async () => {
+        lookups += 1;
+        return {
+          id: 'key-1',
+          companyId: 'company-1',
+          active: true,
+          permission: 'READ_ONLY' as const,
+          keyHash: hashIntegrationKey(key),
+          revokedAt: null,
+        };
+      },
+    },
+    key,
+  );
+
+  assert.equal(lookups, 1);
+  assert.equal(scope?.permission, 'READ_ONLY');
 });
 
 test('avvisar saknad, okänd och inaktiv integrationsnyckel', async () => {
   const repository = {
-    findByHash: async () => ({ id: 'key-1', companyId: 'company-1', active: false }),
+    findByHash: async () => ({
+      id: 'key-1',
+      companyId: 'company-1',
+      active: false,
+      permission: 'READ_ONLY' as const,
+      keyHash: hashIntegrationKey('annan-nyckel'),
+      revokedAt: null,
+    }),
   };
 
   assert.equal(await authenticateIntegrationKey(repository, null), null);
   assert.equal(await authenticateIntegrationKey(repository, 'okänd'), null);
+});
+
+test('avvisar repository-record vars lagrade hash inte matchar den skickade nyckeln', async () => {
+  const scope = await authenticateIntegrationKey(
+    {
+      findByHash: async () => ({
+        id: 'key-1',
+        companyId: 'company-1',
+        active: true,
+        permission: 'READ_ONLY' as const,
+        keyHash: hashIntegrationKey('en-annan-hemlighet'),
+        revokedAt: null,
+      }),
+    },
+    'korrekt-klientnyckel',
+  );
+
+  assert.equal(scope, null);
+});
+
+test('avvisar en explicit återkallad integrationsnyckel även om active är true', async () => {
+  const key = 'tidapp_read_test_key_123';
+  const scope = await authenticateIntegrationKey(
+    {
+      findByHash: async () => ({
+        id: 'key-1',
+        companyId: 'company-1',
+        active: true,
+        permission: 'READ_ONLY' as const,
+        keyHash: hashIntegrationKey(key),
+        revokedAt: new Date('2026-08-10T00:00:00.000Z'),
+      }),
+    },
+    key,
+  );
+
+  assert.equal(scope, null);
 });
