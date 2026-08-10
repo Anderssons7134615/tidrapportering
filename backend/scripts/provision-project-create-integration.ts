@@ -1,17 +1,11 @@
 import { prisma } from '../src/lib/prisma.js';
-import { allowsProvisionKeyInput, parseProvisionKey, parseProvisionKeyFileArgument } from '../src/lib/integrationProvision.js';
+import { parseProvisionKey } from '../src/lib/integrationProvision.js';
 import { prepareProjectIntegrationProvision } from '../src/lib/integrationProjectProvision.js';
-import { readFile } from 'node:fs/promises';
 
 const MAX_STDIN_BYTES = 256;
 const INTEGRATION_COMPANY_NAME = 'Anderssons Isolering i Laholm AB';
 
-async function readProvisionKey(keyFile: string | null): Promise<string> {
-  if (keyFile) {
-    const input = await readFile(keyFile);
-    if (input.length > MAX_STDIN_BYTES) throw new Error('INTEGRATION_KEY_STDIN_INVALID');
-    return parseProvisionKey(input);
-  }
+async function readProvisionKey(): Promise<string> {
   const chunks: Buffer[] = [];
   let totalBytes = 0;
   for await (const chunk of process.stdin) {
@@ -24,10 +18,9 @@ async function readProvisionKey(keyFile: string | null): Promise<string> {
 }
 
 async function main(): Promise<void> {
-  const keyFile = parseProvisionKeyFileArgument(process.argv.slice(2));
-  if (!allowsProvisionKeyInput(keyFile, process.stdin.isTTY)) throw new Error('INTEGRATION_KEY_STDIN_REQUIRED');
+  if (process.stdin.isTTY) throw new Error('INTEGRATION_KEY_STDIN_REQUIRED');
   if (process.env.TIDAPP_PROJECT_CREATE_API_KEY) throw new Error('INTEGRATION_KEY_ENV_FORBIDDEN');
-  const key = await readProvisionKey(keyFile);
+  const key = await readProvisionKey();
   const companies = await prisma.company.findMany({
     where: { name: INTEGRATION_COMPANY_NAME },
     select: { id: true },

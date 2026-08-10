@@ -31,16 +31,6 @@ export function parseProvisionKey(input: Buffer): string {
   return key;
 }
 
-export function parseProvisionKeyFileArgument(args: string[]): string | null {
-  if (args.length === 0) return null;
-  if (args.length === 2 && args[0] === '--key-file' && args[1].trim()) return args[1];
-  throw new Error('INTEGRATION_KEY_ARGUMENT_INVALID');
-}
-
-export function allowsProvisionKeyInput(keyFile: string | null, stdinIsTTY: boolean): boolean {
-  return keyFile !== null || !stdinIsTTY;
-}
-
 export function prepareIntegrationProvision(input: IntegrationProvisionInput): IntegrationProvisionData {
   if (input.key.length < MINIMUM_KEY_LENGTH) {
     throw new Error('INTEGRATION_KEY_TOO_SHORT');
