@@ -1,0 +1,4 @@
+interface:
+  display_name: "TidApp leverans"
+  short_description: "Bygg, testa och leverera TidApp säkert"
+  default_prompt: "Use $tidapp-verified-delivery to implement and verify this TidApp change."
