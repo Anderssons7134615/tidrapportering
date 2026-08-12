@@ -1,0 +1,4 @@
+interface:
+  display_name: "TidApp UI-polish"
+  short_description: "Slutlig UI-kvalitet i linje med TidApps design"
+  default_prompt: "Use $tidapp-ui-polish to polish this TidApp UI change before delivery."

@@ -35,12 +35,14 @@ Bygg en pålitlig TidApp för medarbetare, arbetsledare och ekonomi. Prioritera 
 
 ## Leverans
 
+- Före commit eller push av appkod, schema, migration, API-kontrakt eller frontend: kör `$tidapp-critical-review` på slutdiffen och använd `tidapp_fullstack_reviewer`. Åtgärda P0/P1-fynd innan leverans, eller redovisa varför Rick uttryckligen väljer att acceptera risken. Rena instruktioner och dokumentation behöver inte denna spärr.
+- Efter varje UI-ändring som är funktionellt klar: kör `$tidapp-ui-polish` före leverans. Den får förbättra den berörda upplevelsen men får inte ändra affärsbeteende utan uppdrag.
 - När en ändring är färdig och verifierad: gör en avsiktlig commit och pusha `master` enligt TidApps normala flöde, om Rick inte har pausat, sagt att den inte får deployas eller en obligatorisk kontroll har fallerat.
 - Håll varje commit fokuserad. Beskriv kort ändring, verifiering, commit/push och eventuella kvarvarande begränsningar.
 
 ## Stora uppgifter och granskning
 
-- Behåll en skrivande huvudagent. Vid större, oberoende läsarbete kan du använda `tidapp_explorer` för kartläggning och `tidapp_reviewer` för risk- och testgranskning; vänta in dem innan kod ändras.
+- Behåll en skrivande huvudagent. Vid större, oberoende läsarbete kan du använda `tidapp_explorer` för kartläggning. Använd alltid den läsande `tidapp_fullstack_reviewer` i den obligatoriska leveransgranskningen; vänta in resultatet innan kod ändras eller levereras.
 - Använd aldrig parallella skrivande agenter i samma arbetskopia.
 
 ## Code Review Rules

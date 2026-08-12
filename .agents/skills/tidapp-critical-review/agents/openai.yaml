@@ -1,0 +1,4 @@
+interface:
+  display_name: "TidApp kritisk granskning"
+  short_description: "Kritisk granskning av UI, frontend och backend"
+  default_prompt: "Use $tidapp-critical-review to review this TidApp diff before delivery."
