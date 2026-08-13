@@ -112,7 +112,7 @@ const pushSubscriptionRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       const result = await deliverPushNotification(prisma, subscription, {
-        title: 'TidApp fungerar',
+        title: 'Notiser fungerar',
         body: 'Provnotisen kom fram. Påminnelser är aktiverade på den här enheten.',
         url: '/week',
         tag: `push-test-${request.user.id}`,

@@ -1,10 +1,9 @@
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useEffect, useRef, useState } from 'react';
-import { motion, useReducedMotion } from 'framer-motion';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Home, Clock, Calendar, CheckSquare, Users, Building2, FolderKanban, Tags,
-  Package, FileBarChart, Settings, LogOut, Menu, X, WifiOff, Wifi, ShieldCheck, type LucideIcon,
+  Package, FileBarChart, Settings, LogOut, Menu, X, WifiOff, Wifi, type LucideIcon,
 } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import { useOfflineStore } from '../stores/offlineStore';
@@ -28,6 +27,7 @@ const navItems: NavigationItem[] = [
   { to: '/team-week', icon: Users, label: 'Teamvecka', roles: ['ADMIN', 'SUPERVISOR'], group: 'management' },
   { to: '/approval', icon: CheckSquare, label: 'Attestera', roles: ['ADMIN', 'SUPERVISOR'], group: 'management' },
   { to: '/projects', icon: FolderKanban, label: 'Projekt', roles: ['ADMIN', 'SUPERVISOR', 'EMPLOYEE'], group: 'management' },
+  { to: '/project-economy', icon: FileBarChart, label: 'Projektekonomi', roles: ['ADMIN', 'SUPERVISOR', 'ACCOUNTANT'], group: 'management' },
   { to: '/reports', icon: FileBarChart, label: 'Rapporter', roles: ['ADMIN', 'SUPERVISOR', 'ACCOUNTANT'], group: 'management' },
   { to: '/customers', icon: Building2, label: 'Kunder', roles: ['ADMIN', 'SUPERVISOR'], group: 'register' },
   { to: '/materials', icon: Package, label: 'Material', roles: ['ADMIN', 'SUPERVISOR'], group: 'register' },
@@ -47,7 +47,7 @@ const mobileTabsByRole: Record<Role, NavigationItem['to'][]> = {
   EMPLOYEE: ['/', '/week', '/time-entry', '/projects', '/settings'],
   SUPERVISOR: ['/', '/team-week', '/time-entry', '/approval', '/projects'],
   ADMIN: ['/', '/team-week', '/time-entry', '/approval', '/projects'],
-  ACCOUNTANT: ['/reports', '/settings'],
+  ACCOUNTANT: ['/project-economy', '/reports', '/settings'],
 };
 
 const roleLabel: Record<Role, string> = {
@@ -67,7 +67,6 @@ export default function Layout() {
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   const mobileMenuRef = useRef<HTMLElement>(null);
-  const reduceMotion = useReducedMotion();
   const { data: currentUser } = useQuery({
     queryKey: ['auth', 'me'],
     queryFn: authApi.me,
@@ -96,7 +95,7 @@ export default function Layout() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'tidapp-sparade-offline-rader.json';
+    link.download = 'sparade-offline-rader.json';
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -126,11 +125,8 @@ export default function Layout() {
             </button>
             <BrandMark compact />
             <div className="min-w-0">
-              <div className="flex min-w-0 items-center gap-2">
-                <h1 className="truncate text-base font-semibold text-graphite-950">TidApp</h1>
-                {activeItem && <span className="chip hidden sm:inline-flex">{activeItem.label}</span>}
-              </div>
-              {user?.companyName && <p className="truncate text-xs text-graphite-500">{user.companyName}</p>}
+              <p className="truncate text-sm font-semibold text-graphite-950">{user?.companyName || 'Arbetsyta'}</p>
+              {activeItem && <p className="truncate text-xs text-graphite-500">{activeItem.label}</p>}
             </div>
           </div>
           <TopStatus isOnline={isOnline} pendingEntries={pendingEntryCount} userName={user?.name} onLogout={handleLogout} />
@@ -180,8 +176,8 @@ export default function Layout() {
             <div className="flex min-w-0 items-center gap-3">
               <BrandMark compact onDark />
               <div className="min-w-0">
-                <p className="truncate font-semibold text-white">TidApp</p>
-                <p className="truncate text-xs text-white/50">{user?.companyName || 'Navigation'}</p>
+                <p className="truncate font-semibold text-white">{user?.companyName || 'Arbetsyta'}</p>
+                <p className="truncate text-xs text-white/60">Navigation</p>
               </div>
             </div>
             <button onClick={() => setMenuOpen(false)} className="icon-button-dark" aria-label="Stäng meny"><X size={20} /></button>
@@ -191,21 +187,15 @@ export default function Layout() {
         </aside>
 
         <main className="app-main">
-          <motion.div
-            key={location.pathname}
-            className="route-stage"
-            initial={reduceMotion ? false : { opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.36, ease: [0.16, 1, 0.3, 1] }}
-          >
+          <div className="route-stage">
             <Outlet />
-          </motion.div>
+          </div>
         </main>
       </div>
 
       {filteredBottomTabs.length > 0 && (
         <nav className="mobile-bottom-nav safe-bottom fixed bottom-0 left-0 right-0 z-40 border-t border-graphite-200/80 text-graphite-600 shadow-sm lg:hidden">
-          <div className={`mx-auto grid items-center gap-1 px-2 py-2 ${filteredBottomTabs.length <= 2 ? 'max-w-[14rem] grid-cols-2' : 'max-w-md grid-cols-5'}`}>
+          <div className={`mx-auto grid items-center gap-1 px-2 py-2 ${filteredBottomTabs.length <= 2 ? 'max-w-[14rem]' : filteredBottomTabs.length === 3 ? 'max-w-[21rem]' : 'max-w-md'}`} style={{ gridTemplateColumns: `repeat(${filteredBottomTabs.length}, minmax(0, 1fr))` }}>
             {filteredBottomTabs.map((item) => <MobileNavLink key={item.to} item={item} />)}
           </div>
         </nav>
@@ -219,11 +209,7 @@ function SidebarIdentity({ companyName, role }: { companyName?: string; role?: R
     <div className="border-b border-white/10 px-5 py-5">
       <div className="flex items-center gap-3">
         <BrandMark onDark />
-        <div className="min-w-0"><p className="truncate text-sm font-semibold text-white">TidApp</p><p className="truncate text-xs text-white/50">Tid, vecka och attest</p></div>
-      </div>
-      <div className="mt-5 flex items-start gap-3 border-t border-white/10 pt-4">
-        <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary-300" />
-        <div className="min-w-0"><p className="truncate text-sm font-semibold text-white">{companyName || 'TidApp'}</p><p className="mt-0.5 text-xs text-white/50">{role ? roleLabel[role] : 'Medarbetare'}</p></div>
+        <div className="min-w-0"><p className="truncate text-sm font-semibold text-white">{companyName || 'Arbetsyta'}</p><p className="truncate text-xs text-white/60">{role ? roleLabel[role] : 'Medarbetare'}</p></div>
       </div>
     </div>
   );
@@ -246,7 +232,7 @@ function SidebarFooter({ isOnline, pendingEntryCount, onLogout }: { isOnline: bo
 }
 
 function SideNavLink({ item, onClick }: { item: NavigationItem; onClick?: () => void }) {
-  return <NavLink to={item.to} end={item.to === '/'} onClick={onClick} className={({ isActive }) => `group relative flex min-h-11 items-center gap-3 overflow-hidden rounded-[0.7rem] px-3 py-2.5 text-sm font-bold transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300 ${isActive ? 'bg-white/[0.1] text-white shadow-[inset_3px_0_0_#ea8242]' : 'text-white/58 hover:bg-white/[0.06] hover:text-white'}`}><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[0.6rem] bg-white/[0.06] text-current ring-1 ring-white/[0.08] transition group-hover:bg-white/[0.1]"><item.icon size={17} strokeWidth={1.8} /></span><span>{item.label}</span></NavLink>;
+  return <NavLink to={item.to} end={item.to === '/'} onClick={onClick} className={({ isActive }) => `flex min-h-11 items-center gap-3 rounded-md px-3 py-2.5 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300 ${isActive ? 'bg-white text-graphite-950' : 'text-white/65 hover:bg-white/[0.07] hover:text-white'}`}><item.icon size={18} strokeWidth={1.8} /><span>{item.label}</span></NavLink>;
 }
 
 function MobileNavLink({ item }: { item: NavigationItem }) {
@@ -255,7 +241,7 @@ function MobileNavLink({ item }: { item: NavigationItem }) {
 }
 
 function BrandMark({ compact = false, onDark = false }: { compact?: boolean; onDark?: boolean }) {
-  return <div className={`brand-mark flex h-10 shrink-0 items-center justify-center ${onDark ? compact ? 'w-24 px-0 text-white' : 'w-28 px-0 text-white' : `rounded-md border border-graphite-200 bg-white px-2 ${compact ? 'w-24' : 'w-28'}`}`}><img src="/anderssons-logo.svg" alt="Anderssons Isolering" className={`h-7 w-full object-contain ${onDark ? 'brightness-0 invert' : ''}`} /></div>;
+  return <div aria-hidden="true" className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md ${onDark ? 'bg-white text-primary-800' : 'bg-primary-700 text-white'}`}><Building2 size={compact ? 17 : 18} strokeWidth={1.8} /></div>;
 }
 
 function TopStatus({ isOnline, pendingEntries, userName, onLogout }: { isOnline: boolean; pendingEntries: number; userName?: string; onLogout: () => void }) {

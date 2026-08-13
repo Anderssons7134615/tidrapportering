@@ -90,7 +90,7 @@ export async function getPushStatus(): Promise<PushStatus> {
 export async function enablePushNotifications() {
   const { requiresHomeScreenInstall } = getInstallState();
   if (requiresHomeScreenInstall) {
-    throw new Error('På iPhone behöver du först lägga TidApp på hemskärmen och öppna appen därifrån.');
+    throw new Error('På iPhone behöver du först lägga arbetsytan på hemskärmen och öppna den därifrån.');
   }
 
   if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) {

@@ -58,7 +58,7 @@ export default function Register() {
         <section className="login-form-surface max-w-lg text-center">
           <ShieldCheck className="mx-auto h-6 w-6 text-primary-700" />
           <h1 className="mt-3 text-2xl font-semibold text-graphite-950">Registrering är avstängd</h1>
-          <p className="mt-2 text-sm leading-6 text-graphite-600">Nya konton skapas av administratören i TidApp.</p>
+          <p className="mt-2 text-sm leading-6 text-graphite-600">Nya konton skapas av företagets administratör.</p>
           <Link to="/login" className="btn-primary mt-5 inline-flex">Till inloggningen</Link>
         </section>
       </main>
@@ -69,10 +69,10 @@ export default function Register() {
     <main className="login-shell">
       <div className="login-frame lg:grid-cols-[minmax(21rem,0.8fr)_minmax(28rem,1.2fr)]">
         <section className="login-brand-panel">
-          <img src="/anderssons-logo.svg" alt="Anderssons Isolering" className="relative z-10 h-14 w-fit max-w-[14rem] brightness-0 invert" />
+          <div className="relative z-10 inline-flex h-11 w-11 items-center justify-center rounded-lg bg-white text-primary-800" aria-hidden="true"><Building2 className="h-5 w-5" /></div>
           <p className="relative z-10 mt-10 text-sm font-bold text-primary-300">Nytt konto</p>
           <h1 className="relative z-10 mt-3 max-w-2xl text-4xl font-extrabold leading-[1.08] tracking-[-0.04em] text-white sm:text-5xl">
-            Starta TidApp för företaget.
+            Skapa företagets arbetsyta.
           </h1>
           <p className="relative z-10 mt-5 max-w-xl text-base leading-7 text-white/68">
             Skapa företaget, lägg till administratören och fortsätt sedan direkt in i samma rena arbetsyta som används för projekt, tid och rapporter.

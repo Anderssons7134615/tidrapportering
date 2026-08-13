@@ -62,7 +62,7 @@ const reportRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     const workbook = new ExcelJS.Workbook();
-    workbook.creator = 'TidApp';
+    workbook.creator = 'Arbetsyta';
     workbook.created = new Date();
 
     const entriesByWeek = new Map<string, typeof entries>();
@@ -155,7 +155,7 @@ const reportRoutes: FastifyPluginAsync = async (fastify) => {
 
     if (format === 'xlsx') {
       const workbook = new ExcelJS.Workbook();
-      workbook.creator = 'TidApp';
+      workbook.creator = 'Arbetsyta';
       workbook.created = new Date();
 
       const importSheet = workbook.addWorksheet('Import');
@@ -309,7 +309,7 @@ const reportRoutes: FastifyPluginAsync = async (fastify) => {
 
     if (format === 'xlsx') {
       const workbook = new ExcelJS.Workbook();
-      workbook.creator = 'TidApp';
+      workbook.creator = 'Arbetsyta';
       workbook.created = new Date();
       const worksheet = workbook.addWorksheet('Löneunderlag');
       worksheet.columns = [

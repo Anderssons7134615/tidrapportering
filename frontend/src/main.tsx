@@ -4,7 +4,6 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { RefreshCw, X } from 'lucide-react';
-import '@fontsource-variable/manrope/wght.css';
 import '@fontsource/ibm-plex-mono/latin-400.css';
 import '@fontsource/ibm-plex-mono/latin-600.css';
 import App from './App';
@@ -53,7 +52,7 @@ function AppUpdateNotice() {
         <X className="h-4 w-4" aria-hidden="true" />
       </button>
       <div>
-        <p className="font-semibold">En ny version av TidApp är klar</p>
+        <p className="font-semibold">En ny version är klar</p>
         <p className="mt-1 text-sm text-white/75">Ladda om när du har sparat det du arbetar med.</p>
       </div>
       <button type="button" onClick={() => window.location.reload()} className="app-update-action">

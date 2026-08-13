@@ -14,6 +14,7 @@ const TeamWeekOverview = lazy(() => import('./pages/TeamWeekOverview'));
 const Approval = lazy(() => import('./pages/Approval'));
 const Customers = lazy(() => import('./pages/Customers'));
 const Projects = lazy(() => import('./pages/Projects'));
+const ProjectEconomy = lazy(() => import('./pages/ProjectEconomy'));
 const ProjectDetail = lazy(() => import('./pages/ProjectDetail'));
 const Activities = lazy(() => import('./pages/Activities'));
 const Materials = lazy(() => import('./pages/Materials'));
@@ -127,18 +128,22 @@ export default function App() {
         <Route
           path="projects"
           element={
-            <ProtectedRoute>
+            <WorkRoute>
               <PageLoader><Projects /></PageLoader>
-            </ProtectedRoute>
+            </WorkRoute>
           }
         />
         <Route
           path="projects/:id"
           element={
-            <ProtectedRoute>
+            <WorkRoute>
               <PageLoader><ProjectDetail /></PageLoader>
-            </ProtectedRoute>
+            </WorkRoute>
           }
+        />
+        <Route
+          path="project-economy"
+          element={<ReportRoute><PageLoader><ProjectEconomy /></PageLoader></ReportRoute>}
         />
         <Route
           path="materials"

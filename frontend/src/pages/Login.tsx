@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowRight, CheckCircle2, Clock, Loader2, ShieldCheck } from 'lucide-react';
+import { ArrowRight, CheckCircle2, Clock, Loader2, ShieldCheck, Building2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { authApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
@@ -45,8 +45,8 @@ export default function Login() {
       <div className="login-frame">
         <section className="login-brand-panel order-2 lg:order-1">
           <div className="relative z-10">
-            <img src="/anderssons-logo.svg" alt="Anderssons Isolering" className="h-14 w-fit max-w-[14rem] brightness-0 invert" />
-            <p className="mt-12 text-sm font-bold text-primary-300">TidApp</p>
+            <div className="inline-flex h-11 w-11 items-center justify-center rounded-lg bg-white text-primary-800" aria-hidden="true"><Building2 className="h-5 w-5" /></div>
+            <p className="mt-12 text-sm font-semibold text-primary-100">Arbetsyta</p>
             <h1 className="mt-3 max-w-3xl text-4xl font-extrabold leading-[1.05] tracking-[-0.045em] text-white sm:text-5xl lg:text-6xl">
               Arbetstid. Projekt. Kontroll.
             </h1>
@@ -124,7 +124,7 @@ export default function Login() {
 
             <div className="mt-6 flex items-center gap-2 border-t border-graphite-200 pt-4 text-sm font-semibold text-graphite-600">
               <Clock className="h-4 w-4 text-primary-600" />
-              TidApp håller din arbetsdag samlad
+              Din arbetsdag samlad på ett ställe
             </div>
 
             {registrationStatus?.enabled && (

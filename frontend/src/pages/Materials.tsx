@@ -367,7 +367,7 @@ export default function Materials() {
             <p className="mt-2 max-w-2xl text-sm leading-6 text-graphite-600">
               {showInactive
                 ? 'Varken aktiva eller inaktiva artiklar hittades. Importera en prisfil eller skapa den första artikeln manuellt.'
-                : 'Bevegos CSV och TidApps Excel-mall kontrolleras innan något sparas. Du får se antal nya och uppdaterade artiklar först.'}
+                : 'Bevegos CSV och Excel-mallen kontrolleras innan något sparas. Du får se antal nya och uppdaterade artiklar först.'}
             </p>
             <div className="mt-5 flex flex-wrap gap-2">
               <button className="btn-primary" onClick={() => importInputRef.current?.click()} disabled={previewImportMutation.isPending}>

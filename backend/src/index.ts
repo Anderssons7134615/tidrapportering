@@ -27,6 +27,7 @@ import reminderRoutes from './routes/reminders.js';
 import obsidianSyncRoutes from './routes/obsidianSync.js';
 import projectUpdateRoutes from './routes/projectUpdates.js';
 import integrationRoutes from './routes/integrations.js';
+import projectTaskRoutes from './routes/projectTasks.js';
 
 
 // Fastify instance
@@ -187,6 +188,7 @@ fastify.register(reminderRoutes, { prefix: '/api/reminders' });
 fastify.register(obsidianSyncRoutes, { prefix: '/api/obsidian-sync' });
 fastify.register(projectUpdateRoutes, { prefix: '/api' });
 fastify.register(integrationRoutes, { prefix: '/api/integrations' });
+fastify.register(projectTaskRoutes, { prefix: '/api' });
 
 // Health check
 fastify.get('/api/health', async () => {
@@ -220,14 +222,14 @@ let isShuttingDown = false;
 const shutdown = async (signal: string) => {
   if (isShuttingDown) return;
   isShuttingDown = true;
-  fastify.log.info({ signal }, 'Stänger TidApp');
+  fastify.log.info({ signal }, 'Stänger tjänsten');
 
   try {
     await fastify.close();
     await prisma.$disconnect();
     process.exit(0);
   } catch (error) {
-    fastify.log.error(error, 'Kunde inte stänga TidApp korrekt');
+    fastify.log.error(error, 'Kunde inte stänga tjänsten korrekt');
     process.exit(1);
   }
 };

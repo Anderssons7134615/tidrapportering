@@ -1,193 +1,80 @@
-import { useMemo, useState } from 'react';
-import type { FormEvent, InputHTMLAttributes } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useState, type FormEvent, type InputHTMLAttributes } from 'react';
+import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, ChevronRight, Edit2, MapPin, Plus, Search, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, Plus, Search } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { customersApi, projectsApi } from '../services/api';
+import { customersApi, projectTasksApi, projectsApi, usersApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
-import type { Project, ProjectListItem } from '../types';
-import { AppShell, Dialog, EmptyState, PageHeader, StatusBadge, Toolbar } from '../components/ui/design';
-import { formatCurrency, formatDate, formatHours, formatPercent, parseSwedishNumber } from '../utils/format';
+import type { Project, ProjectControlItem, ProjectTask, ProjectTaskPriority, ProjectTaskStatus, User } from '../types';
+import { AppShell, ConfirmDialog, Dialog, EmptyState, PageHeader } from '../components/ui/design';
 import { ListSkeleton } from '../components/ui/Skeleton';
+import { QueryError } from '../components/ui/QueryError';
+import { parseSwedishNumber } from '../utils/format';
+import { toDateInputValue } from '../utils/format';
 
-const statusFilters = [
-  { id: 'ALL', label: 'Alla jobb' },
-  { id: 'ONGOING', label: 'Pågående' },
-  { id: 'RUNNING_JOB', label: 'Löpande' },
-  { id: 'RISK', label: 'Risk' },
-  { id: 'PLANNED', label: 'Planerade' },
-  { id: 'COMPLETED', label: 'Avslutade' },
-] as const;
+const taskStatusLabels: Record<ProjectTaskStatus, string> = {
+  TODO: 'Att göra',
+  IN_PROGRESS: 'Pågår',
+  WAITING: 'Väntar',
+  DONE: 'Klar',
+};
 
-const projectStatusDisplay = {
-  PLANNED: { label: 'Planerad', tone: 'blue' },
-  ONGOING: { label: 'Pågående', tone: 'green' },
-  COMPLETED: { label: 'Avslutad', tone: 'gray' },
-} as const;
+const priorityLabels: Record<ProjectTaskPriority, string> = { LOW: 'Låg', NORMAL: 'Normal', HIGH: 'Hög' };
 
-function getBillingModelLabel(billingModel: Project['billingModel'] | null | undefined) {
-  if (billingModel === 'HOURLY') return 'Löpande';
-  if (billingModel === 'FIXED') return 'Fast pris';
-  return 'Ej angiven';
+function formatTaskDate(date: string) {
+  return new Intl.DateTimeFormat('sv-SE', { day: 'numeric', month: 'short' }).format(new Date(`${date}T12:00:00`));
+}
+
+function formatActivity(date: string | null) {
+  if (!date) return 'Ingen aktivitet registrerad';
+  const stockholmDay = (value: Date) => {
+    const parts = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Stockholm', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(value);
+    const part = (type: Intl.DateTimeFormatPartTypes) => Number(parts.find((item) => item.type === type)?.value);
+    return Date.UTC(part('year'), part('month') - 1, part('day'));
+  };
+  const days = Math.max(0, Math.round((stockholmDay(new Date()) - stockholmDay(new Date(date))) / 86_400_000));
+  if (days === 0) return 'Aktivitet idag';
+  if (days === 1) return 'Aktivitet igår';
+  return `Aktivitet för ${days} dagar sedan`;
+}
+
+function formatTaskSummary(project: ProjectControlItem) {
+  const parts = [
+    project.overdueCount ? (project.overdueCount === 1 ? '1 försenad' : `${project.overdueCount} försenade`) : null,
+    project.dueTodayCount ? (project.dueTodayCount === 1 ? '1 förfaller idag' : `${project.dueTodayCount} förfaller idag`) : null,
+    project.waitingCount ? `${project.waitingCount} väntar` : null,
+    project.upcomingCount ? `${project.upcomingCount} kommande` : null,
+  ].filter(Boolean);
+  return parts.length ? parts.join(' · ') : 'Inget brådskande';
 }
 
 export default function Projects() {
-  const queryClient = useQueryClient();
-  const [searchParams] = useSearchParams();
   const { user } = useAuthStore();
   const isManager = user?.role === 'ADMIN' || user?.role === 'SUPERVISOR';
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState(searchParams.get('risk') ? 'RISK' : searchParams.get('missingBudget') ? 'RUNNING_JOB' : 'ALL');
-  const [activeFilter, setActiveFilter] = useState('ACTIVE');
-  const [customerFilter, setCustomerFilter] = useState(searchParams.get('customerId') || '');
+  const [deadline, setDeadline] = useState('');
+  const [projectStatus, setProjectStatus] = useState('');
+  const [assigneeId, setAssigneeId] = useState('');
+  const [taskStatus, setTaskStatus] = useState('');
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [taskDialog, setTaskDialog] = useState<{ project?: ProjectControlItem; task?: ProjectTask } | null>(null);
+  const [projectDialog, setProjectDialog] = useState<{ project?: Project } | null>(null);
+  const [projectToInactivate, setProjectToInactivate] = useState<ProjectControlItem | null>(null);
 
-  const { data: projects, isLoading } = useQuery({
-    queryKey: ['projects', 'rich', activeFilter, customerFilter],
-    queryFn: () => projectsApi.list({
-      active: activeFilter === 'ALL' ? undefined : activeFilter === 'ACTIVE',
-      customerId: customerFilter || undefined,
-    }),
+  const { data, isLoading, isError, refetch } = useQuery({
+    queryKey: ['project-control', search, projectStatus, deadline, assigneeId, taskStatus],
+    queryFn: () => projectTasksApi.control({ q: search || undefined, projectStatus: projectStatus || undefined, deadline: deadline || undefined, assigneeId: assigneeId || undefined, taskStatus: taskStatus || undefined }),
   });
+  const { data: users } = useQuery({ queryKey: ['users', 'project-tasks'], queryFn: usersApi.list, enabled: isManager });
+  const loadProjectMutation = useMutation({ mutationFn: projectsApi.get, onSuccess: (project) => setProjectDialog({ project }), onError: (error: Error) => toast.error(error.message) });
+  const inactivateProjectMutation = useMutation({ mutationFn: projectsApi.delete, onSuccess: () => { toast.success('Projektet inaktiverades'); setProjectToInactivate(null); refetch(); }, onError: (error: Error) => toast.error(error.message) });
 
-  const { data: customers } = useQuery({
-    queryKey: ['customers', 'active'],
-    queryFn: () => customersApi.list(true),
-    enabled: isManager,
-  });
-
-  const { data: nextCodeResult } = useQuery({
-    queryKey: ['projects', 'next-code'],
-    queryFn: projectsApi.nextCode,
-    enabled: isManager,
-  });
-
-  const projectItems = (projects || []) as ProjectListItem[];
-  const nextProjectCode = nextCodeResult?.code || '';
-
-  const createMutation = useMutation({
-    mutationFn: projectsApi.create,
-    onSuccess: () => {
-      toast.success('Projekt skapat');
-      closeModal();
-      queryClient.invalidateQueries({ queryKey: ['projects'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-    },
-    onError: (error: Error) => toast.error(error.message),
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<Project> }) => projectsApi.update(id, data),
-    onSuccess: () => {
-      toast.success('Projekt uppdaterat');
-      closeModal();
-      queryClient.invalidateQueries({ queryKey: ['projects'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-    },
-    onError: (error: Error) => toast.error(error.message),
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: projectsApi.delete,
-    onSuccess: () => {
-      toast.success('Projekt inaktiverat');
-      queryClient.invalidateQueries({ queryKey: ['projects'] });
-    },
-    onError: (error: Error) => toast.error(error.message),
-  });
-
-  const filteredProjects = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    return projectItems.filter((project) => {
-      const metrics = project.metrics;
-      const matchesSearch = !term || [project.name, project.code, project.customer?.name, project.site]
-        .filter(Boolean)
-        .some((value) => value!.toLowerCase().includes(term));
-      const matchesStatus = statusFilter === 'ALL'
-        || (statusFilter === 'RUNNING_JOB' && project.billingModel === 'HOURLY')
-        || (statusFilter === 'PLANNED' && project.status === 'PLANNED')
-        || (
-          statusFilter !== 'RUNNING_JOB'
-          && statusFilter !== 'PLANNED'
-          && metrics?.status.code === statusFilter
-        );
-      return matchesSearch && matchesStatus;
+  const toggleExpanded = (id: string) => {
+    setExpanded((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
     });
-  }, [projectItems, search, statusFilter]);
-
-  const totals = useMemo(() => {
-    return filteredProjects.reduce(
-      (acc, project) => {
-        const metrics = project.metrics;
-        acc.hours += project.totalHours ?? metrics?.totalHours ?? 0;
-        if (metrics?.weekHours != null) {
-          acc.weekHours += metrics.weekHours;
-          acc.hasWeeklyHours = true;
-        }
-        acc.material += metrics?.materialCost || 0;
-        acc.result += metrics?.projectResult || 0;
-        acc.risk += metrics?.status.code === 'RISK' ? 1 : 0;
-        acc.missingBudget += project.billingModel === 'HOURLY' && !project.budgetHours ? 1 : 0;
-        acc.completed += metrics?.status.code === 'COMPLETED' ? 1 : 0;
-        acc.withFinancials ||= metrics?.projectResult != null || Boolean(metrics?.materialCost);
-        return acc;
-      },
-      { hours: 0, weekHours: 0, hasWeeklyHours: false, material: 0, result: 0, risk: 0, missingBudget: 0, completed: 0, withFinancials: false }
-    );
-  }, [filteredProjects]);
-
-  const openCreateModal = () => {
-    setEditingProject(null);
-    setIsModalOpen(true);
-  };
-
-  const closeModal = () => {
-    setIsModalOpen(false);
-    setEditingProject(null);
-  };
-
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const formData = new FormData(event.currentTarget);
-    const budgetHours = formData.get('budgetHours') as string;
-    const billingModel = formData.get('billingModel') as Project['billingModel'];
-    const fixedPriceText = String(formData.get('fixedPrice') || '').trim();
-    const fixedPrice = fixedPriceText ? parseSwedishNumber(fixedPriceText) : null;
-    const defaultRateText = String(formData.get('defaultRate') || '').trim();
-    const defaultRate = defaultRateText ? parseSwedishNumber(defaultRateText) : null;
-    const enteredCode = String(formData.get('code') || '').trim();
-
-    if (fixedPriceText && !Number.isFinite(fixedPrice)) {
-      toast.error('Anbudet måste vara ett giltigt belopp');
-      return;
-    }
-    if (defaultRateText && (defaultRate == null || !Number.isFinite(defaultRate) || defaultRate < 0)) {
-      toast.error('Timpriset måste vara ett giltigt belopp');
-      return;
-    }
-    if (billingModel === 'FIXED' && fixedPrice == null) {
-      toast.error('Ange anbud eller fast pris för ett fastprisprojekt');
-      return;
-    }
-
-    const data = {
-      customerId: (formData.get('customerId') as string) || undefined,
-      name: formData.get('name') as string,
-      code: editingProject || enteredCode !== nextProjectCode ? enteredCode : undefined,
-      site: (formData.get('site') as string) || undefined,
-      status: formData.get('status') as Project['status'],
-      budgetHours: budgetHours ? parseSwedishNumber(budgetHours) : undefined,
-      billingModel,
-      fixedPrice,
-      defaultRate,
-      notes: (formData.get('notes') as string) || undefined,
-      employeeCanSeeResults: formData.get('employeeCanSeeResults') === 'on',
-    };
-
-    if (editingProject) updateMutation.mutate({ id: editingProject.id, data });
-    else createMutation.mutate(data);
   };
 
   if (isLoading) return <ListSkeleton />;
@@ -196,436 +83,211 @@ export default function Projects() {
     <AppShell>
       <PageHeader
         title="Projekt"
-        description="Sök, följ upp och öppna jobb i en gemensam radlista."
+        description="Se vad som kräver åtgärd och följ nästa steg i alla aktiva projekt."
         action={isManager ? (
-          <div className="flex flex-wrap items-center gap-3">
-            {nextProjectCode && <span className="text-sm text-graphite-600">Nästa nummer: <strong className="tabular-nums text-graphite-950">{nextProjectCode}</strong></span>}
-            <button type="button" onClick={openCreateModal} className="btn-primary">
-              <Plus className="h-4 w-4" />
-              Nytt projekt
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className="btn-secondary" onClick={() => setProjectDialog({})}>Nytt projekt</button>
+            <button type="button" className="btn-primary" onClick={() => setTaskDialog({})} disabled={!data?.items.length}>
+              <Plus className="h-4 w-4" aria-hidden="true" />Ny uppgift
             </button>
           </div>
         ) : undefined}
       />
-      <Toolbar className="grid grid-cols-1 lg:grid-cols-[minmax(260px,1fr)_220px_220px]">
-        <div className="grid grid-cols-1 gap-3 lg:col-span-3 lg:grid-cols-[minmax(260px,1fr)_220px_220px]">
-          <label className="relative block">
-            <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-graphite-400" />
-            <input className="input pl-9" placeholder="Sök jobb, projektnummer, kund eller plats" value={search} onChange={(event) => setSearch(event.target.value)} />
-          </label>
 
-          {isManager && (
-            <select className="input" value={customerFilter} onChange={(event) => setCustomerFilter(event.target.value)} aria-label="Filtrera på kund">
-              <option value="">Alla kunder</option>
-              {customers?.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}
+      {isError ? (
+        <QueryError title="Projektkontrollen kunde inte hämtas" description="Kontrollera anslutningen och försök igen." onRetry={() => void refetch()} />
+      ) : (
+        <>
+          <div className="mb-4 flex flex-wrap gap-x-5 gap-y-2 border-y border-graphite-200 py-3 text-sm text-graphite-600" aria-label="Projektstatus">
+            <span><strong className="text-graphite-950">{data?.summary.active ?? 0}</strong> aktiva</span>
+            <span><strong className="text-rose-700">{data?.summary.overdue ?? 0}</strong> försenade</span>
+            <span><strong className="text-amber-800">{data?.summary.dueToday ?? 0}</strong> idag</span>
+            <span><strong className="text-graphite-950">{data?.summary.upcoming ?? 0}</strong> kommande sju dagar</span>
+          </div>
+
+          <div className="mb-4 grid grid-cols-1 gap-3 border-b border-graphite-200 pb-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-[minmax(240px,1fr)_170px_170px_170px_170px]">
+            <label className="relative">
+              <span className="sr-only">Sök projekt</span>
+              <Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-graphite-400" aria-hidden="true" />
+              <input className="input pl-9" type="search" placeholder="Sök projekt, kund eller plats" value={search} onChange={(event) => setSearch(event.target.value)} />
+            </label>
+            <select className="input" aria-label="Filtrera på projektstatus" value={projectStatus} onChange={(event) => setProjectStatus(event.target.value)}>
+              <option value="">Alla projektstatusar</option><option value="PLANNED">Planerade</option><option value="ONGOING">Pågående</option><option value="COMPLETED">Avslutade</option>
             </select>
+            <select className="input" aria-label="Filtrera på deadline" value={deadline} onChange={(event) => setDeadline(event.target.value)}>
+              <option value="">Alla deadlines</option><option value="OVERDUE">Försenade</option><option value="TODAY">Idag</option><option value="UPCOMING">Kommande sju dagar</option>
+            </select>
+            <select className="input" aria-label="Filtrera på uppgiftsstatus" value={taskStatus} onChange={(event) => setTaskStatus(event.target.value)}>
+              <option value="">Alla statusar</option>{Object.entries(taskStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+            {isManager ? (
+              <select className="input" aria-label="Filtrera på ansvarig" value={assigneeId} onChange={(event) => setAssigneeId(event.target.value)}>
+                <option value="">Alla ansvariga</option>{users?.filter((item) => item.active && item.role !== 'ACCOUNTANT').map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+              </select>
+            ) : <div className="flex min-h-11 items-center text-sm text-graphite-600">Visar dina uppgifter</div>}
+          </div>
+
+          {!data?.items.length ? (
+            <EmptyState title="Inga projekt matchar filtret" description="Justera sökningen eller filtren." />
+          ) : (
+            <div className="border-t border-graphite-200 bg-white">
+              <div className="hidden grid-cols-[minmax(180px,1.2fr)_minmax(220px,1.5fr)_140px_120px_44px] gap-4 px-3 py-2 text-xs font-semibold text-graphite-500 md:grid">
+                <span>Projekt</span><span>Nästa uppgift</span><span>Ansvarig</span><span>Deadline</span><span className="sr-only">Visa</span>
+              </div>
+              {data.items.map((project) => (
+                <ProjectControlRow
+                  key={project.id}
+                  project={project}
+                  open={expanded.has(project.id)}
+                  isManager={isManager}
+                  showDone={taskStatus === 'DONE'}
+                  onToggle={() => toggleExpanded(project.id)}
+                  onAddTask={() => setTaskDialog({ project })}
+                  onEditTask={(task) => setTaskDialog({ project, task })}
+                  onEditProject={() => loadProjectMutation.mutate(project.id)}
+                  onInactivateProject={() => setProjectToInactivate(project)}
+                />
+              ))}
+            </div>
           )}
-
-          <select className="input" value={activeFilter} onChange={(event) => setActiveFilter(event.target.value)} aria-label="Visa projekt">
-            <option value="ACTIVE">Aktiva projekt</option>
-            <option value="INACTIVE">Inaktiva projekt</option>
-            <option value="ALL">Alla projekt</option>
-          </select>
-        </div>
-
-        <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm lg:col-span-3">
-          {statusFilters.map((filter) => (
-            <button
-              key={filter.id}
-              type="button"
-              onClick={() => setStatusFilter(filter.id)}
-              className={`border-b-2 pb-1 font-semibold transition ${
-                statusFilter === filter.id
-                  ? 'border-primary-600 text-primary-800'
-                  : 'border-transparent text-graphite-500 hover:border-graphite-300 hover:text-graphite-900'
-              }`}
-            >
-              {filter.label}
-            </button>
-          ))}
-        </div>
-      </Toolbar>
-
-      <section className="space-y-3">
-        <div className="flex flex-col gap-2 text-sm leading-6 text-graphite-700 lg:flex-row lg:items-center lg:justify-between">
-          <p>
-            Visar <strong>{filteredProjects.length}</strong> projekt. Totalt <strong>{formatHours(totals.hours)}</strong>
-            {totals.hasWeeklyHours && <>, varav <strong>{formatHours(totals.weekHours)}</strong> denna vecka.</>}
-            {totals.risk > 0 && <span className="ml-1 font-semibold text-rose-700">{totals.risk} projekt behöver kollas.</span>}
-            {totals.missingBudget > 0 && <span className="ml-1">{totals.missingBudget} löpande jobb saknar budget.</span>}
-          </p>
-        </div>
-
-        {!filteredProjects.length ? (
-          <EmptyState title="Inga projekt matchar filtret" description="Justera filtren eller skapa ett nytt projekt." />
-        ) : (
-          <ProjectTable
-            projects={filteredProjects}
-            isManager={isManager}
-            onEdit={(project) => {
-              setEditingProject(project);
-              setIsModalOpen(true);
-            }}
-            onDelete={(project) => window.confirm('Inaktivera projekt?') && deleteMutation.mutate(project.id)}
-          />
-        )}
-
-        {totals.withFinancials && (
-          <p className="border-t border-graphite-200 pt-3 text-sm leading-6 text-graphite-600">
-            Materialkostnad i urvalet: <strong>{formatCurrency(totals.material)}</strong>. Resultat i urvalet:{' '}
-            <strong className={totals.result < 0 ? 'text-rose-700' : 'text-emerald-700'}>{formatCurrency(totals.result)}</strong>.
-          </p>
-        )}
-      </section>
-
-      {isManager && isModalOpen && (
-        <ProjectModal
-          editingProject={editingProject}
-          customers={customers}
-          suggestedCode={nextProjectCode}
-          isSaving={createMutation.isPending || updateMutation.isPending}
-          onClose={closeModal}
-          onSubmit={handleSubmit}
-        />
+        </>
       )}
+
+      {taskDialog && <TaskDialog context={taskDialog} projects={data?.items || []} users={(users || []) as User[]} isManager={isManager} onClose={() => setTaskDialog(null)} onSaved={() => { setTaskDialog(null); refetch(); }} />}
+      {projectDialog && <ProjectDialog project={projectDialog.project} onClose={() => setProjectDialog(null)} onSaved={() => { setProjectDialog(null); refetch(); }} />}
+      <ConfirmDialog open={Boolean(projectToInactivate)} onClose={() => setProjectToInactivate(null)} onConfirm={() => projectToInactivate && inactivateProjectMutation.mutate(projectToInactivate.id)} title="Inaktivera projektet?" description={projectToInactivate ? `${projectToInactivate.code} · ${projectToInactivate.name} försvinner från aktiva projekt. Historiken sparas.` : undefined} confirmLabel="Inaktivera" isLoading={inactivateProjectMutation.isPending} />
     </AppShell>
   );
 }
 
-function ProjectTable({
-  projects,
-  isManager,
-  onEdit,
-  onDelete,
-}: {
-  projects: ProjectListItem[];
-  isManager: boolean;
-  onEdit: (project: ProjectListItem) => void;
-  onDelete: (project: ProjectListItem) => void;
-}) {
-  const canSeeFinancials = projects.some((project) => project.financialsVisibleToCurrentUser);
+function ProjectControlRow({ project, open, isManager, showDone, onToggle, onAddTask, onEditTask, onEditProject, onInactivateProject }: { project: ProjectControlItem; open: boolean; isManager: boolean; showDone: boolean; onToggle: () => void; onAddTask: () => void; onEditTask: (task: ProjectTask) => void; onEditProject: () => void; onInactivateProject: () => void }) {
+  const queryClient = useQueryClient();
+  const statusMutation = useMutation({
+    mutationFn: ({ task, status }: { task: ProjectTask; status: ProjectTaskStatus }) => projectTasksApi.updateStatus(task.id, { status }),
+    onSuccess: () => { toast.success('Uppgiften uppdaterades'); queryClient.invalidateQueries({ queryKey: ['project-control'] }); },
+    onError: (error: Error) => toast.error(error.message),
+  });
+  const rowTone = project.overdueCount > 0 ? 'bg-rose-50/70' : project.dueTodayCount > 0 ? 'bg-orange-50/70' : project.upcomingCount > 0 ? 'bg-amber-50/60' : '';
+  const visibleTasks = project.tasks.filter((task) => showDone ? task.status === 'DONE' : task.status !== 'DONE');
+
+  const changeStatus = (task: ProjectTask, status: ProjectTaskStatus) => {
+    if (status === 'WAITING') onEditTask({ ...task, status });
+    else statusMutation.mutate({ task, status });
+  };
 
   return (
-    <>
-      <div className="divide-y divide-graphite-100 border-y border-graphite-200 bg-white md:hidden">
-        {projects.map((project) => (
-          <MobileProjectRow
-            key={project.id}
-            project={project}
-            isManager={isManager}
-            canSeeFinancials={canSeeFinancials}
-            onEdit={() => onEdit(project)}
-            onDelete={() => onDelete(project)}
-          />
-        ))}
+    <article className={`border-b border-graphite-200 ${rowTone}`}>
+      <div className="grid min-h-[76px] grid-cols-[minmax(0,1fr)_44px] gap-2 px-3 py-3 md:grid-cols-[minmax(180px,1.2fr)_minmax(220px,1.5fr)_140px_120px_44px] md:gap-4 md:items-center">
+        <div className="col-start-1 row-start-1 min-w-0">
+          <Link to={`/projects/${project.id}`} className="font-semibold text-graphite-950 hover:text-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400">{project.code} · {project.name}</Link>
+          <p className="mt-1 text-xs text-graphite-600">{project.status === 'PLANNED' ? 'Planerad' : project.status === 'COMPLETED' ? 'Avslutad' : 'Pågående'} · {project.customer?.name || 'Intern'}{project.site ? ` · ${project.site}` : ''}</p>
+          <p className="mt-1 text-xs text-graphite-500">{formatActivity(project.lastActivityAt)}</p>
+        </div>
+        <div className="col-span-2 col-start-1 row-start-2 min-w-0 md:col-span-1 md:col-start-2 md:row-start-1">
+          <p className="font-semibold text-graphite-900">{project.nextTask?.title || 'Ingen öppen uppgift'}</p>
+          <p className="mt-1 text-xs text-graphite-600">{formatTaskSummary(project)}</p>
+        </div>
+        <div className="col-span-2 col-start-1 row-start-3 text-sm text-graphite-700 md:col-span-1 md:col-start-3 md:row-start-1">{project.nextTask?.assignee.name || '—'}</div>
+        <div className={`col-span-2 col-start-1 row-start-4 text-sm font-semibold md:col-span-1 md:col-start-4 md:row-start-1 ${project.nextTask?.deadlineBucket === 'OVERDUE' ? 'text-rose-700' : project.nextTask?.deadlineBucket === 'TODAY' ? 'text-amber-800' : 'text-graphite-700'}`}>
+          {project.nextTask ? (project.nextTask.deadlineBucket === 'OVERDUE' ? `Försenad · ${formatTaskDate(project.nextTask.dueDate)}` : project.nextTask.deadlineBucket === 'TODAY' ? 'Idag' : formatTaskDate(project.nextTask.dueDate)) : '—'}
+        </div>
+        <button type="button" className="icon-button col-start-2 row-start-1 self-start border-0 md:col-start-5 md:row-start-1 md:self-center" onClick={onToggle} aria-expanded={open} aria-controls={`project-tasks-${project.id}`} aria-label={`${open ? 'Dölj' : 'Visa'} uppgifter för ${project.name}`}>
+          <ChevronDown aria-hidden="true" className={`h-5 w-5 transition ${open ? 'rotate-180' : ''}`} />
+        </button>
       </div>
-
-      <div className="hidden overflow-x-auto border-y border-graphite-200 bg-white/90 md:block">
-      <table className={`${canSeeFinancials ? 'min-w-[1160px]' : 'min-w-[700px]'} w-full text-sm`}>
-        <thead className="sticky top-0 z-10 border-b border-graphite-200 bg-[#f3f6f4] text-left text-xs font-semibold uppercase tracking-normal text-graphite-500">
-          <tr>
-            <th className="px-3 py-3">Projektnr</th>
-            <th className="px-3 py-3">Projekt</th>
-            <th className="px-3 py-3">Kund och plats</th>
-            <th className="px-3 py-3">Status</th>
-            {canSeeFinancials && <th className="px-3 py-3">Projekttyp</th>}
-            {canSeeFinancials && <th className="px-3 py-3">Aktivitet/risk</th>}
-            <th className="px-3 py-3 text-right">Timmar</th>
-            {canSeeFinancials && <th className="px-3 py-3">Budget</th>}
-            {canSeeFinancials && <th className="px-3 py-3">Senast</th>}
-            {canSeeFinancials && <th className="px-3 py-3 text-right">Resultat</th>}
-            <th className="px-3 py-3 text-right">Öppna</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-graphite-100">
-          {projects.map((project) => (
-            <ProjectRow
-              key={project.id}
-              project={project}
-              isManager={isManager}
-              canSeeFinancials={canSeeFinancials}
-              onEdit={() => onEdit(project)}
-              onDelete={() => onDelete(project)}
-            />
+      {open && (
+        <div id={`project-tasks-${project.id}`} className="mx-3 mb-3 rounded-lg border border-graphite-200 bg-white px-3">
+          <div className="flex min-h-12 flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold text-graphite-950">{showDone ? 'Klara uppgifter' : 'Öppna uppgifter'}</h2>
+            {isManager && <div className="flex flex-wrap items-center gap-1"><button type="button" className="min-h-11 px-2 text-sm font-semibold text-primary-700" onClick={onAddTask}>Lägg till uppgift</button><button type="button" className="min-h-11 px-2 text-sm font-semibold text-graphite-700" onClick={onEditProject}>Redigera projekt</button><button type="button" className="min-h-11 px-2 text-sm font-semibold text-rose-700" onClick={onInactivateProject}>Inaktivera</button></div>}
+          </div>
+          {!visibleTasks.length ? <p className="border-t border-graphite-200 py-4 text-sm text-graphite-600">{showDone ? 'Inga klara uppgifter.' : 'Inga öppna uppgifter.'}</p> : visibleTasks.map((task) => (
+            <div key={task.id} className="grid gap-2 border-t border-graphite-200 py-3 md:grid-cols-[minmax(180px,1fr)_150px_140px_44px] md:items-center">
+              <button type="button" className="min-h-11 text-left text-sm font-medium text-graphite-950 hover:text-primary-700" onClick={() => onEditTask(task)}>{task.title}</button>
+              <span className="text-sm text-graphite-600">{task.assignee.name} · {formatTaskDate(task.dueDate)}</span>
+              <select className="input" aria-label={`Status för ${task.title}`} value={task.status} disabled={statusMutation.isPending} onChange={(event) => changeStatus(task, event.target.value as ProjectTaskStatus)}>
+                {Object.entries(taskStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select>
+              <ChevronRight className="hidden h-4 w-4 text-graphite-400 md:block" aria-hidden="true" />
+            </div>
           ))}
-        </tbody>
-      </table>
-      </div>
-    </>
-  );
-}
-
-function MobileProjectRow({
-  project,
-  isManager,
-  canSeeFinancials,
-  onEdit,
-  onDelete,
-}: {
-  project: ProjectListItem;
-  isManager: boolean;
-  canSeeFinancials: boolean;
-  onEdit: () => void;
-  onDelete: () => void;
-}) {
-  const metrics = project.metrics;
-  const visibleHours = project.totalHours ?? metrics?.totalHours;
-  const projectStatus = projectStatusDisplay[project.status]
-    ?? { label: 'Okänd', tone: 'gray' };
-  const usagePercent = metrics?.budgetUsagePercent ?? null;
-
-  return (
-    <div
-      className={`px-3 py-4 text-sm ${!project.active ? 'opacity-65' : ''}`}
-      title="Öppna projekt"
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <Link to={`/projects/${project.id}`} className="font-semibold text-graphite-950 hover:text-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400">{project.code} - {project.name}</Link>
-          <p className="mt-1 text-graphite-600">{project.customer?.name || 'Intern'}{project.site ? ` · ${project.site}` : ''}</p>
-        </div>
-        <ChevronRight className="mt-1 h-5 w-5 shrink-0 text-graphite-400" />
-      </div>
-
-      <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3">
-        <div>
-          <dt className="text-xs font-semibold text-graphite-500">Status</dt>
-          <dd className="mt-1">
-            <StatusBadge label={projectStatus.label} tone={projectStatus.tone} />
-          </dd>
-        </div>
-        {canSeeFinancials && <div>
-          <dt className="text-xs font-semibold text-graphite-500">Projekttyp</dt>
-          <dd className="mt-1 text-sm font-semibold text-graphite-800">
-            {getBillingModelLabel(project.billingModel)}
-          </dd>
-        </div>}
-        {canSeeFinancials && <div className="col-span-2">
-          <dt className="text-xs font-semibold text-graphite-500">Aktivitet/risk</dt>
-          <dd className="mt-1">
-            {metrics?.status
-              ? <StatusBadge label={metrics.status.label} tone={metrics.status.tone} />
-              : <span className="text-sm text-graphite-500">Ej angiven</span>}
-          </dd>
-        </div>}
-      </dl>
-
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <span className="font-semibold text-graphite-950">{formatHours(visibleHours)}</span>
-        {canSeeFinancials && <span className="text-graphite-500">{project.budgetHours ? `${formatPercent(usagePercent)} av budget` : 'Utan timbudget'}</span>}
-      </div>
-
-      {isManager && (
-        <div className="mt-3 flex gap-2">
-          <button type="button" onClick={onEdit} className="icon-button text-graphite-700" title="Redigera" aria-label="Redigera projekt">
-            <Edit2 className="h-4 w-4" />
-          </button>
-          <button type="button" onClick={onDelete} className="icon-button border-rose-200 text-rose-600 hover:bg-rose-50" title="Inaktivera" aria-label="Inaktivera projekt">
-            <Trash2 className="h-4 w-4" />
-          </button>
         </div>
       )}
-    </div>
+    </article>
   );
 }
 
-function ProjectRow({
-  project,
-  isManager,
-  canSeeFinancials,
-  onEdit,
-  onDelete,
-}: {
-  project: ProjectListItem;
-  isManager: boolean;
-  canSeeFinancials: boolean;
-  onEdit: () => void;
-  onDelete: () => void;
-}) {
-  const metrics = project.metrics;
-  const visibleHours = project.totalHours ?? metrics?.totalHours;
-  const projectStatus = projectStatusDisplay[project.status]
-    ?? { label: 'Okänd', tone: 'gray' };
-  const usagePercent = metrics?.budgetUsagePercent ?? null;
-  const isRisk = metrics?.status.code === 'RISK' || (usagePercent ?? 0) >= 100;
-  const isWarning = !isRisk && (!project.budgetHours || (usagePercent ?? 0) >= 80);
-  const progressClass = isRisk ? 'bg-rose-500' : isWarning ? 'bg-amber-500' : 'bg-emerald-500';
-  const progressWidth = `${Math.max(0, Math.min(usagePercent || 0, 100))}%`;
-
-  return (
-    <tr
-      className={`transition hover:bg-primary-50/60 ${!project.active ? 'opacity-65' : ''}`}
-      title="Öppna projekt"
-    >
-      <td className="whitespace-nowrap px-3 py-3 font-semibold text-graphite-900 tabular-nums"><Link to={`/projects/${project.id}`} className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400">{project.code}</Link></td>
-      <td className="px-3 py-3">
-        <Link to={`/projects/${project.id}`} className="font-semibold text-graphite-950 hover:text-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400">{project.name}</Link>
-        {canSeeFinancials && metrics?.warnings?.length ? (
-          <p className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-amber-800">
-            <AlertTriangle className="h-3.5 w-3.5" />
-            {metrics.warnings[0]}
-          </p>
-        ) : null}
-      </td>
-      <td className="px-3 py-3 text-graphite-700">
-        <p>{project.customer?.name || 'Intern'}</p>
-        {project.site && (
-          <p className="mt-1 inline-flex max-w-[220px] items-center gap-1 text-xs text-graphite-500">
-            <MapPin className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">{project.site}</span>
-          </p>
-        )}
-      </td>
-      <td className="px-3 py-3">
-        <StatusBadge label={projectStatus.label} tone={projectStatus.tone} />
-      </td>
-      {canSeeFinancials && <td className="whitespace-nowrap px-3 py-3 font-medium text-graphite-800">
-        {getBillingModelLabel(project.billingModel)}
-      </td>}
-      {canSeeFinancials && <td className="px-3 py-3">
-        {metrics?.status
-          ? <StatusBadge label={metrics.status.label} tone={metrics.status.tone} />
-          : <span className="text-graphite-500">Ej angiven</span>}
-      </td>}
-      <td className="whitespace-nowrap px-3 py-3 text-right font-semibold text-graphite-950 tabular-nums">
-        {formatHours(visibleHours)}
-        {canSeeFinancials && <p className="text-xs font-normal text-graphite-500">{formatHours(metrics?.weekHours)} denna vecka</p>}
-      </td>
-      {canSeeFinancials && <td className="px-3 py-3">
-        <div className="min-w-[150px]">
-          <div className="mb-1 flex items-center justify-between gap-2 text-xs text-graphite-500 tabular-nums">
-            <span>{project.budgetHours ? formatHours(project.budgetHours) : 'Ingen timbudget'}</span>
-            <span>{project.budgetHours ? formatPercent(usagePercent) : ''}</span>
-          </div>
-          {project.budgetHours && (
-            <div className="h-1 overflow-hidden bg-graphite-100">
-              <div className={`h-full ${progressClass}`} style={{ width: progressWidth }} />
-            </div>
-          )}
-        </div>
-      </td>}
-      {canSeeFinancials && <td className="whitespace-nowrap px-3 py-3 text-graphite-700">{metrics?.lastActivityAt ? formatDate(metrics.lastActivityAt) : '-'}</td>}
-      {canSeeFinancials && <td className={`whitespace-nowrap px-3 py-3 text-right font-semibold tabular-nums ${metrics?.projectResult != null && metrics.projectResult < 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
-        {metrics?.projectResult != null ? formatCurrency(metrics.projectResult) : metrics ? '-' : 'Dolt'}
-      </td>}
-      <td className="whitespace-nowrap px-3 py-3 text-right">
-        <div className="inline-flex items-center justify-end gap-1">
-          {isManager && (
-            <>
-              <button type="button" onClick={onEdit} className="icon-button border-0 text-graphite-500 hover:bg-white hover:text-primary-700" title="Redigera" aria-label="Redigera projekt">
-                <Edit2 className="h-4 w-4" />
-              </button>
-              <button type="button" onClick={onDelete} className="icon-button border-0 text-rose-600 hover:bg-white" title="Inaktivera" aria-label="Inaktivera projekt">
-                <Trash2 className="h-4 w-4" />
-              </button>
-            </>
-          )}
-          <ChevronRight className="h-5 w-5 text-graphite-400" />
-        </div>
-      </td>
-    </tr>
-  );
-}
-
-function ProjectModal({
-  editingProject,
-  customers,
-  suggestedCode,
-  isSaving,
-  onClose,
-  onSubmit,
-}: {
-  editingProject: Project | null;
-  customers?: Array<{ id: string; name: string }>;
-  suggestedCode: string;
-  isSaving: boolean;
-  onClose: () => void;
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
-}) {
-  const isEditing = Boolean(editingProject);
-  const codeDefault = editingProject?.code || suggestedCode;
-
-  return (
-    <Dialog
-      open
-      onClose={onClose}
-      title={isEditing ? 'Redigera projekt' : 'Nytt projekt'}
-      description={!isEditing && suggestedCode ? `Nästa lediga projektnummer är förifyllt: ${suggestedCode}.` : undefined}
-      footer={
-        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-          <button type="button" onClick={onClose} className="btn-secondary">Avbryt</button>
-          <button type="submit" form="project-form" className="btn-primary" disabled={isSaving}>
-            {isEditing ? 'Spara' : 'Skapa'}
-          </button>
-        </div>
-      }
-    >
-        <form id="project-form" onSubmit={onSubmit} className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <label className="md:col-span-2">
-            <span className="label">Kund</span>
-            <select name="customerId" defaultValue={editingProject?.customerId || ''} className="input">
-              <option value="">Intern</option>
-              {customers?.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}
-            </select>
-          </label>
-          <Field name="name" label="Projektnamn" defaultValue={editingProject?.name} required />
-          <Field
-            key={codeDefault || 'project-code'}
-            name="code"
-            label="Projektnummer"
-            defaultValue={codeDefault}
-            placeholder={suggestedCode || 'Skapas automatiskt'}
-            required={isEditing}
-          />
-          <Field name="site" label="Arbetsplats" defaultValue={editingProject?.site} />
-          <label>
-            <span className="label">Status</span>
-            <select name="status" defaultValue={editingProject?.status || 'PLANNED'} className="input">
-              <option value="PLANNED">Planerad</option>
-              <option value="ONGOING">Pågående</option>
-              <option value="COMPLETED">Avslutad</option>
-            </select>
-          </label>
-          <Field name="budgetHours" label="Budget timmar" defaultValue={editingProject?.budgetHours} placeholder="80" />
-          <label>
-            <span className="label">Debitering</span>
-            <select name="billingModel" defaultValue={editingProject?.billingModel || 'HOURLY'} className="input">
-              <option value="HOURLY">Löpande</option>
-              <option value="FIXED">Fast pris</option>
-            </select>
-          </label>
-          <Field
-            name="defaultRate"
-            label="Timpris till kund (kr/tim)"
-            defaultValue={editingProject?.defaultRate ?? ''}
-            placeholder="Exempel: 650"
-            inputMode="decimal"
-          />
-          <Field
-            name="fixedPrice"
-            label="Anbud / fast pris (exkl. moms)"
-            defaultValue={editingProject?.fixedPrice ?? ''}
-            placeholder="150 000"
-            inputMode="decimal"
-          />
-          <label className="md:col-span-2">
-            <span className="label">Anteckningar</span>
-            <textarea name="notes" defaultValue={editingProject?.notes || ''} className="input" rows={3} />
-          </label>
-          <label className="md:col-span-2 flex items-center gap-3 border border-graphite-200 bg-graphite-50 p-3 text-sm">
-            <input name="employeeCanSeeResults" type="checkbox" defaultChecked={editingProject?.employeeCanSeeResults || false} />
-            Visa projekttimmar för anställda
-          </label>
-        </form>
+function TaskDialog({ context, projects, users, isManager, onClose, onSaved }: { context: { project?: ProjectControlItem; task?: ProjectTask }; projects: ProjectControlItem[]; users: User[]; isManager: boolean; onClose: () => void; onSaved: () => void }) {
+  const queryClient = useQueryClient();
+  const task = context.task;
+  const [confirmArchive, setConfirmArchive] = useState(false);
+  const [dialogStatus, setDialogStatus] = useState<ProjectTaskStatus>(task?.status || 'TODO');
+  const today = toDateInputValue(new Date());
+  const initialDueDate = task?.deadlineBucket === 'OVERDUE' && task.status === 'WAITING' ? today : task?.dueDate || today;
+  const saveMutation = useMutation({
+    mutationFn: (data: { projectId: string; title: string; note?: string; assigneeId: string; priority: ProjectTaskPriority; status: ProjectTaskStatus; dueDate: string }) => task
+      ? isManager ? projectTasksApi.update(task.id, data) : projectTasksApi.updateStatus(task.id, { status: data.status, ...(data.status === 'WAITING' ? { dueDate: data.dueDate } : {}) })
+      : projectTasksApi.create(data.projectId, { title: data.title, note: data.note, assigneeId: data.assigneeId, priority: data.priority, status: data.status, dueDate: data.dueDate }),
+    onSuccess: () => { toast.success(task ? 'Uppgiften sparades' : 'Uppgiften skapades'); queryClient.invalidateQueries({ queryKey: ['project-control'] }); onSaved(); },
+    onError: (error: Error) => toast.error(error.message),
+  });
+  const archiveMutation = useMutation({
+    mutationFn: () => projectTasksApi.archive(task!.id),
+    onSuccess: () => { toast.success('Uppgiften arkiverades'); queryClient.invalidateQueries({ queryKey: ['project-control'] }); onSaved(); },
+    onError: (error: Error) => toast.error(error.message),
+  });
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    saveMutation.mutate({ projectId: String(form.get('projectId') || context.project?.id || ''), title: String(form.get('title') || task?.title || ''), note: String(form.get('note') || task?.note || '') || undefined, assigneeId: String(form.get('assigneeId') || task?.assigneeId || ''), priority: String(form.get('priority') || task?.priority || 'NORMAL') as ProjectTaskPriority, status: String(form.get('status')) as ProjectTaskStatus, dueDate: String(form.get('dueDate') || task?.dueDate || '') });
+  };
+  const availableUsers = users.filter((item) => item.active && item.role !== 'ACCOUNTANT');
+  return <>
+    <Dialog open={!confirmArchive} onClose={onClose} title={task ? 'Redigera uppgift' : 'Ny uppgift'} description={context.project ? `${context.project.code} · ${context.project.name}` : 'Välj projekt och ansvarig.'} footer={<div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">{task && isManager ? <button type="button" className="btn-danger" onClick={() => setConfirmArchive(true)}>Arkivera</button> : <span />}<div className="flex flex-col-reverse gap-2 sm:flex-row"><button type="button" className="btn-secondary" onClick={onClose}>Avbryt</button><button type="submit" form="project-task-form" className="btn-primary" disabled={saveMutation.isPending}>Spara uppgift</button></div></div>}>
+      <form id="project-task-form" onSubmit={handleSubmit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        {!context.project && <label className="sm:col-span-2"><span className="label">Projekt</span><select name="projectId" className="input" required defaultValue=""><option value="" disabled>Välj projekt</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.code} · {project.name}</option>)}</select></label>}
+        <label className="sm:col-span-2"><span className="label">Vad ska göras?</span><input autoFocus name="title" className="input" required maxLength={160} defaultValue={task?.title || ''} disabled={!isManager && Boolean(task)} /></label>
+        {isManager ? <label><span className="label">Ansvarig</span><select name="assigneeId" className="input" required defaultValue={task?.assigneeId || availableUsers[0]?.id || ''}>{availableUsers.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label> : <div><span className="label">Ansvarig</span><div className="flex min-h-11 items-center text-sm text-graphite-800">{task?.assignee.name}</div></div>}
+        <label><span className="label">Deadline / uppföljning</span><input name="dueDate" className="input" type="date" required min={dialogStatus === 'WAITING' ? today : undefined} defaultValue={initialDueDate} disabled={!isManager && dialogStatus !== 'WAITING'} /></label>
+        <label><span className="label">Status</span><select name="status" className="input" value={dialogStatus} onChange={(event) => setDialogStatus(event.target.value as ProjectTaskStatus)}>{Object.entries(taskStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+        <label><span className="label">Prioritet</span><select name="priority" className="input" defaultValue={task?.priority || 'NORMAL'} disabled={!isManager}>{Object.entries(priorityLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+        <label className="sm:col-span-2"><span className="label">Anteckning, valfri</span><textarea name="note" className="input min-h-24" maxLength={2000} defaultValue={task?.note || ''} disabled={!isManager} /></label>
+      </form>
     </Dialog>
-  );
+    {task && <ConfirmDialog open={confirmArchive} onClose={() => setConfirmArchive(false)} onConfirm={() => archiveMutation.mutate()} title="Arkivera uppgiften?" description={`”${task.title}” tas bort från projektets arbetslista men historiken sparas.`} confirmLabel="Arkivera" isLoading={archiveMutation.isPending} />}
+  </>;
 }
 
-function Field({ label, ...props }: InputHTMLAttributes<HTMLInputElement> & { label: string }) {
-  return (
-    <label>
-      <span className="label">{label}</span>
-      <input {...props} className="input" />
-    </label>
-  );
+function ProjectDialog({ project, onClose, onSaved }: { project?: Project; onClose: () => void; onSaved: () => void }) {
+  const { data: customers } = useQuery({ queryKey: ['customers', 'active'], queryFn: () => customersApi.list(true) });
+  const { data: nextCode } = useQuery({ queryKey: ['projects', 'next-code'], queryFn: projectsApi.nextCode, enabled: !project });
+  const createMutation = useMutation({ mutationFn: projectsApi.create, onSuccess: () => { toast.success('Projektet skapades'); onSaved(); }, onError: (error: Error) => toast.error(error.message) });
+  const updateMutation = useMutation({ mutationFn: (data: Partial<Project>) => projectsApi.update(project!.id, data), onSuccess: () => { toast.success('Projektet uppdaterades'); onSaved(); }, onError: (error: Error) => toast.error(error.message) });
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const budgetText = String(form.get('budgetHours') || '').trim();
+    const fixedPriceText = String(form.get('fixedPrice') || '').trim();
+    const defaultRateText = String(form.get('defaultRate') || '').trim();
+    const budgetHours = budgetText ? parseSwedishNumber(budgetText) : undefined;
+    const fixedPrice = fixedPriceText ? parseSwedishNumber(fixedPriceText) : null;
+    const defaultRate = defaultRateText ? parseSwedishNumber(defaultRateText) : null;
+    const billingModel = String(form.get('billingModel')) as Project['billingModel'];
+    if ((budgetText && (!Number.isFinite(budgetHours) || (budgetHours ?? 0) < 0)) || (fixedPriceText && !Number.isFinite(fixedPrice)) || (defaultRateText && (!Number.isFinite(defaultRate) || (defaultRate ?? 0) < 0))) {
+      toast.error('Kontrollera budget, timpris och fast pris.');
+      return;
+    }
+    if (billingModel === 'FIXED' && fixedPrice == null) {
+      toast.error('Ange anbud eller fast pris för ett fastprisprojekt.');
+      return;
+    }
+    const data = { name: String(form.get('name')), code: String(form.get('code')), customerId: String(form.get('customerId') || '') || undefined, site: String(form.get('site') || '') || undefined, status: String(form.get('status')) as Project['status'], budgetHours, billingModel, fixedPrice, defaultRate, notes: String(form.get('notes') || '') || undefined, employeeCanSeeResults: form.get('employeeCanSeeResults') === 'on' };
+    if (project) updateMutation.mutate(data); else createMutation.mutate(data);
+  };
+  const saving = createMutation.isPending || updateMutation.isPending;
+  return <Dialog open onClose={onClose} title={project ? 'Redigera projekt' : 'Nytt projekt'} description={!project && nextCode?.code ? `Nästa lediga projektnummer är förifyllt: ${nextCode.code}.` : undefined} footer={<div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><button type="button" className="btn-secondary" onClick={onClose}>Avbryt</button><button type="submit" form="project-form" className="btn-primary" disabled={saving}>{project ? 'Spara' : 'Skapa projekt'}</button></div>}><form id="project-form" onSubmit={handleSubmit} className="grid grid-cols-1 gap-4 sm:grid-cols-2"><label className="sm:col-span-2"><span className="label">Kund</span><select name="customerId" className="input" defaultValue={project?.customerId || ''}><option value="">Intern</option>{customers?.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><ProjectField autoFocus name="name" label="Projektnamn" defaultValue={project?.name} required /><ProjectField key={project?.code || nextCode?.code || 'code'} name="code" label="Projektnummer" defaultValue={project?.code || nextCode?.code || ''} required /><ProjectField name="site" label="Arbetsplats" defaultValue={project?.site} /><label><span className="label">Status</span><select name="status" className="input" defaultValue={project?.status || 'PLANNED'}><option value="PLANNED">Planerad</option><option value="ONGOING">Pågående</option><option value="COMPLETED">Avslutad</option></select></label><ProjectField name="budgetHours" label="Budget timmar" defaultValue={project?.budgetHours} inputMode="decimal" placeholder="80" /><label><span className="label">Debitering</span><select name="billingModel" className="input" defaultValue={project?.billingModel || 'HOURLY'}><option value="HOURLY">Löpande</option><option value="FIXED">Fast pris</option></select></label><ProjectField name="defaultRate" label="Timpris till kund (kr/tim)" defaultValue={project?.defaultRate ?? ''} inputMode="decimal" placeholder="650" /><ProjectField name="fixedPrice" label="Anbud / fast pris (exkl. moms)" defaultValue={project?.fixedPrice ?? ''} inputMode="decimal" placeholder="150 000" /><label className="sm:col-span-2"><span className="label">Anteckningar</span><textarea name="notes" className="input min-h-24" defaultValue={project?.notes || ''} /></label><label className="sm:col-span-2 flex min-h-11 items-center gap-3 border-y border-graphite-200 py-3 text-sm"><input name="employeeCanSeeResults" type="checkbox" defaultChecked={project?.employeeCanSeeResults || false} /><span>Visa attesterade projekttimmar för medarbetare</span></label></form></Dialog>;
+}
+
+function ProjectField({ label, ...props }: InputHTMLAttributes<HTMLInputElement> & { label: string }) {
+  return <label><span className="label">{label}</span><input {...props} className="input" /></label>;
 }

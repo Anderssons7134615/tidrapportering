@@ -6,7 +6,8 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "test": "tsx --test src/lib/dateOnly.test.ts src/lib/csv.test.ts src/lib/projectCode.test.ts src/lib/projectUpdatePreview.test.ts src/lib/weekVacation.test.ts src/lib/weeklyReminder.test.ts src/lib/pushEndpoint.test.ts src/lib/materialNaming.test.ts src/lib/materialCatalogImport.test.ts src/lib/materialCatalogMatching.test.ts src/lib/integrationAuth.test.ts src/lib/integrationMaterialBatch.test.ts src/lib/integrationProjectCreate.test.ts src/lib/integrationProjectProvision.test.ts src/lib/integrationProvision.test.ts src/lib/safety.test.ts src/lib/offlineSync.test.ts src/services/pushDelivery.test.ts",
+    "test": "tsx --test src/lib/dateOnly.test.ts src/lib/csv.test.ts src/lib/projectCode.test.ts src/lib/projectUpdatePreview.test.ts src/lib/weekVacation.test.ts src/lib/weeklyReminder.test.ts src/lib/pushEndpoint.test.ts src/lib/materialNaming.test.ts src/lib/materialCatalogImport.test.ts src/lib/materialCatalogMatching.test.ts src/lib/integrationAuth.test.ts src/lib/integrationMaterialBatch.test.ts src/lib/integrationProjectCreate.test.ts src/lib/integrationProjectProvision.test.ts src/lib/integrationProvision.test.ts src/lib/safety.test.ts src/lib/offlineSync.test.ts src/lib/projectControl.test.ts src/routes/projectTasks.route.test.ts src/services/pushDelivery.test.ts",
+    "test:project-control": "tsx --test src/lib/projectControl.test.ts",
     "build": "prisma generate && tsc",
     "start": "node dist/index.js",
     "start:migrate": "prisma migrate deploy && node dist/index.js",

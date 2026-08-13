@@ -98,6 +98,66 @@ export interface ProjectMetrics {
 export type ProjectListItem = Project & { metrics: ProjectMetrics | null };
 export type ProjectDetailSummary = Project & { metrics: ProjectMetrics | null };
 
+export type ProjectTaskStatus = 'TODO' | 'IN_PROGRESS' | 'WAITING' | 'DONE';
+export type ProjectTaskPriority = 'LOW' | 'NORMAL' | 'HIGH';
+export type ProjectTaskDeadlineBucket = 'OVERDUE' | 'TODAY' | 'UPCOMING' | 'LATER';
+
+export interface ProjectTask {
+  id: string;
+  projectId: string;
+  title: string;
+  note?: string | null;
+  assigneeId: string;
+  assignee: { id: string; name: string };
+  priority: ProjectTaskPriority;
+  status: ProjectTaskStatus;
+  dueDate: string;
+  deadlineBucket: ProjectTaskDeadlineBucket | null;
+  createdByUserId: string;
+  createdByUser: { id: string; name: string };
+  completedAt?: string | null;
+  archivedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProjectControlItem {
+  id: string;
+  code: string;
+  name: string;
+  site?: string | null;
+  status: Project['status'];
+  active: boolean;
+  customer?: { id: string; name: string } | null;
+  nextTask: ProjectTask | null;
+  tasks: ProjectTask[];
+  overdueCount: number;
+  dueTodayCount: number;
+  upcomingCount: number;
+  waitingCount: number;
+  lastActivityAt: string | null;
+}
+
+export interface ProjectControlResponse {
+  summary: { active: number; overdue: number; dueToday: number; upcoming: number };
+  items: ProjectControlItem[];
+}
+
+export interface ProjectPortfolioItem {
+  project: { id: string; code: string; name: string; status: Project['status']; customer?: { id: string; name: string } | null };
+  reportedHours: number;
+  approvedHours: number;
+  unapprovedHours: number;
+  budgetHours?: number | null;
+  billingModel: Project['billingModel'];
+  revenue: number | null;
+  laborCost: number;
+  materialCost: number;
+  result: number | null;
+  marginPercent: number | null;
+  warnings: string[];
+}
+
 export interface MaterialArticle {
   id: string;
   name: string;

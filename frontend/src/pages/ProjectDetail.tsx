@@ -247,9 +247,9 @@ export default function ProjectDetail() {
     return Array.from(rows.values()).sort((a, b) => b.hours - a.hours);
   }, [entries]);
 
-  const budgetUsage = metrics?.budgetUsagePercent ?? projectSummary?.metrics?.budgetUsagePercent ?? null;
-  const result = projectSummary?.totals.result ?? metrics?.projectResult ?? null;
-  const margin = projectSummary?.totals.marginPercent ?? metrics?.marginPercent ?? null;
+  const budgetUsage = p?.budgetHours && projectSummary?.totals.totalHours != null ? (projectSummary.totals.totalHours / p.budgetHours) * 100 : null;
+  const result = projectSummary?.totals.result ?? null;
+  const margin = projectSummary?.totals.marginPercent ?? null;
   const summaryTone = result == null ? 'slate' : result >= 0 ? 'green' : 'red';
 
   const startEditMaterial = (item: ProjectMaterial) => {
@@ -315,7 +315,7 @@ export default function ProjectDetail() {
       />
 
       <div className={`grid grid-cols-1 gap-3 sm:grid-cols-2 ${canSeeMoney ? 'xl:grid-cols-4' : ''}`}>
-        <KpiCard label="Attesterade timmar" value={formatHours(projectSummary?.totals.totalHours ?? p.totalHours ?? metrics?.totalHours)} tone="blue" />
+        <KpiCard label="Attesterade timmar" value={projectSummary?.totals.totalHours != null ? formatHours(projectSummary.totals.totalHours) : !canSeeMoney && p.totalHours != null ? formatHours(p.totalHours) : '—'} tone="blue" />
         {canSeeMoney && <>
           <KpiCard label="Budgetläge" value={p.budgetHours ? formatPercent(budgetUsage) : 'Löpande'} hint={p.budgetHours ? `${formatHours(p.budgetHours)} budget` : 'Ingen timbudget'} tone={(budgetUsage || 0) >= 80 ? 'red' : 'green'} />
           <KpiCard label="Materialkostnad" value={formatCurrency(projectSummary?.totals.materialCost ?? materialsResponse?.totals.amount)} tone="orange" />
@@ -336,8 +336,8 @@ export default function ProjectDetail() {
               <StatusBadge label={p.status === 'COMPLETED' ? 'Avslutad' : p.status === 'ONGOING' ? 'Pågående' : 'Planerad'} tone={p.status === 'COMPLETED' ? 'gray' : 'green'} />
             </div>
             {canSeeMoney && <>
-              <BudgetPanel budgetHours={p.budgetHours} totalHours={projectSummary?.totals.totalHours ?? metrics?.totalHours} usage={budgetUsage} />
-              <WarningList warnings={[...(metrics?.warnings || []), ...(projectSummary?.warnings || [])]} />
+              <BudgetPanel budgetHours={p.budgetHours} totalHours={projectSummary?.totals.totalHours} usage={budgetUsage} />
+              <WarningList warnings={projectSummary?.warnings || []} />
             </>}
           </TaskSection>
 
@@ -356,7 +356,7 @@ export default function ProjectDetail() {
                 />
                 <Line label="Intäkt" value={formatCurrency(projectSummary?.totals.revenue)} />
                 <Line label="Arbetskostnad" value={formatCurrency(projectSummary?.totals.laborCost)} />
-                <Line label="Materialkostnad" value={formatCurrency(projectSummary?.totals.materialCost ?? metrics?.materialCost)} />
+                <Line label="Materialkostnad" value={formatCurrency(projectSummary?.totals.materialCost ?? materialsResponse?.totals.amount)} />
                 <Line label="Resultat" value={formatCurrency(result)} strong tone={result != null && result < 0 ? 'red' : 'green'} />
               </div>
             }

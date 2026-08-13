@@ -393,7 +393,7 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     const workbook = new ExcelJS.Workbook();
-    workbook.creator = 'TidApp';
+    workbook.creator = 'Arbetsyta';
     workbook.created = new Date();
     const worksheet = workbook.addWorksheet('Materialregister');
     worksheet.columns = [
@@ -450,7 +450,7 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [requireAdminOrSupervisor],
   }, async (_request, reply) => {
     const workbook = new ExcelJS.Workbook();
-    workbook.creator = 'TidApp';
+    workbook.creator = 'Arbetsyta';
     workbook.created = new Date();
     const worksheet = workbook.addWorksheet('Materialmall');
     worksheet.columns = [

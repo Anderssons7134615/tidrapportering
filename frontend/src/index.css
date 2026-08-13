@@ -12,7 +12,7 @@
     --color-text: #151a17;
     --color-text-muted: #626860;
     --color-border: #d6dcd5;
-    --color-focus: #bd491d;
+    --color-focus: #1b7169;
 
     --radius-sm: 0.625rem;
     --radius-md: 0.875rem;
@@ -27,9 +27,7 @@
   }
 
   body {
-    @apply bg-[#edf0ec] text-graphite-900 antialiased;
-    background: linear-gradient(180deg, #f4f6f2 0%, #edf0ec 38rem, #e9ede8 100%);
-    background-attachment: fixed;
+    @apply bg-[#eef2f1] text-graphite-900 antialiased;
     font-feature-settings: "cv02", "cv05", "ss03";
   }
 
@@ -38,7 +36,7 @@
   }
 
   ::selection {
-    background: rgba(189, 73, 29, 0.2);
+    background: rgba(27, 113, 105, 0.2);
   }
 
   input,
@@ -343,8 +341,7 @@
   }
 
   .app-sidebar {
-    background: linear-gradient(180deg, #111613 0%, #171c19 100%);
-    box-shadow: 18px 0 50px rgba(13, 18, 16, 0.08);
+    background: #171b1a;
   }
 
   .app-main {
@@ -357,9 +354,7 @@
 
   .mobile-header,
   .mobile-bottom-nav {
-    background: rgba(250, 251, 249, 0.9);
-    -webkit-backdrop-filter: blur(18px) saturate(150%);
-    backdrop-filter: blur(18px) saturate(150%);
+    background: #fbfcfa;
   }
 
   .login-shell {
@@ -372,20 +367,11 @@
 
   .login-brand-panel {
     @apply relative flex flex-col justify-between overflow-hidden bg-graphite-950 px-6 py-8 text-white sm:px-10 sm:py-10 lg:px-14 lg:py-14;
-    background-image: linear-gradient(145deg, #111613 0%, #1d2420 72%, #2c211b 100%);
+    background: #174a47;
   }
 
   .login-brand-panel::after {
-    content: '';
-    position: absolute;
-    right: -5rem;
-    bottom: -7rem;
-    width: 22rem;
-    height: 22rem;
-    border: 1px solid rgba(246, 173, 114, 0.14);
-    border-radius: 50%;
-    box-shadow: 0 0 0 4rem rgba(246, 173, 114, 0.035), 0 0 0 8rem rgba(246, 173, 114, 0.02);
-    pointer-events: none;
+    content: none;
   }
 
   .login-form-panel {
@@ -471,6 +457,55 @@
       white-space: nowrap;
       border-width: 0;
     }
+  }
+}
+
+@layer components {
+  .btn {
+    @apply rounded-lg font-semibold active:translate-y-0;
+  }
+
+  .btn-primary,
+  .btn-secondary {
+    box-shadow: none;
+  }
+
+  .btn-primary:hover,
+  .btn-secondary:hover,
+  .choice-tile:hover {
+    transform: none;
+  }
+
+  .input {
+    @apply rounded-lg focus:ring-2;
+    box-shadow: none;
+  }
+
+  .task-section,
+  .card,
+  .hero-card,
+  .soft-panel,
+  .premium-panel,
+  .dashboard-command,
+  .work-panel,
+  .filter-strip,
+  .toolbar,
+  .table-wrap,
+  .login-form-surface {
+    @apply rounded-lg shadow-none;
+  }
+
+  .work-panel:hover {
+    transform: none;
+    box-shadow: none;
+  }
+
+  .toolbar {
+    @apply border-x-0;
+  }
+
+  .page-title {
+    @apply text-2xl font-bold tracking-normal;
   }
 }
 

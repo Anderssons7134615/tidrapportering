@@ -5,10 +5,10 @@ self.addEventListener('push', (event) => {
   try {
     payload = event.data.json();
   } catch (error) {
-    payload = { title: 'TidApp', body: event.data.text() };
+    payload = { title: 'Arbetsyta', body: event.data.text() };
   }
 
-  const title = payload.title || 'TidApp';
+  const title = payload.title || 'Arbetsyta';
   const options = {
     body: payload.body || 'Du har en ny påminnelse',
     icon: '/pwa-192x192.png',

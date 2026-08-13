@@ -261,7 +261,7 @@ export default function Settings() {
               <p className="border-y border-graphite-200 py-4 text-sm text-graphite-600">Kontrollerar notisstatus...</p>
             ) : pushStatus?.requiresHomeScreenInstall ? (
               <div className="border-y border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
-                På iPhone behöver TidApp ligga på hemskärmen. Öppna sidan i Safari, välj Dela och sedan Lägg till på hemskärmen. Öppna därefter TidApp från hemskärmen.
+                På iPhone behöver arbetsytan ligga på hemskärmen. Öppna sidan i Safari, välj Dela och sedan Lägg till på hemskärmen. Öppna därefter arbetsytan från hemskärmen.
               </div>
             ) : !pushStatus?.supported ? (
               <p className="border-y border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
@@ -290,7 +290,7 @@ export default function Settings() {
                   </div>
                 </div>
 
-                <p className="max-w-[65ch] text-sm leading-6 text-graphite-600">TidApp påminner på fredagar när veckan ännu inte har skickats in. Varje mobil och dator aktiveras separat.</p>
+                <p className="max-w-[65ch] text-sm leading-6 text-graphite-600">Du får en påminnelse på fredagar när veckan ännu inte har skickats in. Varje mobil och dator aktiveras separat.</p>
 
                 <div className="flex flex-col gap-2 sm:flex-row">
                   {!currentDeviceActive ? (
