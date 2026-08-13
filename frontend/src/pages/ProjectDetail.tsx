@@ -74,7 +74,7 @@ export default function ProjectDetail() {
   const { data: timeEntries } = useQuery({
     queryKey: ['project', id, 'time-entries'],
     queryFn: () => projectsApi.listTimeEntries(id),
-    enabled: !!id && Boolean(project?.resultsVisibleToCurrentUser || project?.employeeCanSeeResults || isManager),
+    enabled: !!id && Boolean(project?.hoursVisibleToCurrentUser || project?.employeeCanSeeResults || isManager),
   });
 
   const { data: managerSummary } = useQuery({
@@ -118,7 +118,13 @@ export default function ProjectDetail() {
   const activeMaterialArticles = (materialArticles || []) as MaterialArticle[];
   const projectSummary = summary as ProjectSummary | undefined;
   const updates = (projectUpdates || []) as ProjectUpdate[];
-  const canSeeMoney = Boolean(p?.resultsVisibleToCurrentUser || materialsResponse?.costVisibleToCurrentUser || projectSummary?.resultsVisibleToCurrentUser);
+  const canSeeMoney = Boolean(
+    p?.financialsVisibleToCurrentUser
+      || materialsResponse?.costVisibleToCurrentUser
+      || projectSummary?.financialsVisibleToCurrentUser
+  );
+  const hoursOnly = Boolean(p?.hoursVisibleToCurrentUser && !canSeeMoney);
+  const visibleTabs = canSeeMoney ? tabs : tabs.filter((tab) => tab.id !== 'summary');
   const selectedMaterialArticle = activeMaterialArticles.find((article) => article.id === materialForm.articleId);
 
   const handleMaterialMutationError = (error: Error) => {
@@ -308,31 +314,35 @@ export default function ProjectDetail() {
         }
       />
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label="Attesterade timmar" value={formatHours(projectSummary?.totals.totalHours ?? metrics?.totalHours)} tone="blue" />
-        <KpiCard label="Budgetläge" value={p.budgetHours ? formatPercent(budgetUsage) : 'Löpande'} hint={p.budgetHours ? `${formatHours(p.budgetHours)} budget` : 'Ingen timbudget'} tone={(budgetUsage || 0) >= 80 ? 'red' : 'green'} />
-        <KpiCard label="Materialkostnad" value={canSeeMoney ? formatCurrency(projectSummary?.totals.materialCost ?? materialsResponse?.totals.amount) : `${materials.length} rader`} tone="orange" />
-        <KpiCard label={p.status === 'COMPLETED' ? 'Slutresultat' : 'Preliminärt resultat'} value={canSeeMoney ? formatCurrency(result) : 'Ej synligt'} hint={canSeeMoney ? formatPercent(margin) : undefined} tone={summaryTone} />
+      <div className={`grid grid-cols-1 gap-3 sm:grid-cols-2 ${canSeeMoney ? 'xl:grid-cols-4' : ''}`}>
+        <KpiCard label="Attesterade timmar" value={formatHours(projectSummary?.totals.totalHours ?? p.totalHours ?? metrics?.totalHours)} tone="blue" />
+        {canSeeMoney && <>
+          <KpiCard label="Budgetläge" value={p.budgetHours ? formatPercent(budgetUsage) : 'Löpande'} hint={p.budgetHours ? `${formatHours(p.budgetHours)} budget` : 'Ingen timbudget'} tone={(budgetUsage || 0) >= 80 ? 'red' : 'green'} />
+          <KpiCard label="Materialkostnad" value={formatCurrency(projectSummary?.totals.materialCost ?? materialsResponse?.totals.amount)} tone="orange" />
+          <KpiCard label={p.status === 'COMPLETED' ? 'Slutresultat' : 'Preliminärt resultat'} value={formatCurrency(result)} hint={formatPercent(margin)} tone={summaryTone} />
+        </>}
       </div>
 
-      <Tabs tabs={tabs} active={activeTab} onChange={setActiveTab} />
+      <Tabs tabs={visibleTabs} active={activeTab} onChange={setActiveTab} />
 
       {activeTab === 'overview' && (
-        <div className="grid grid-cols-1 gap-5 xl:grid-cols-[1.1fr_0.9fr]">
+        <div className={`grid grid-cols-1 gap-5 ${canSeeMoney ? 'xl:grid-cols-[1.1fr_0.9fr]' : ''}`}>
           <TaskSection className="space-y-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <h2 className="section-title">Projektläge</h2>
-                <p className="mt-1 text-sm text-slate-500">Budget, timmar och senaste händelser i ett snabbare arbetsläge.</p>
+                <p className="mt-1 text-sm text-slate-500">{canSeeMoney ? 'Budget, timmar och senaste händelser i ett snabbare arbetsläge.' : 'Attesterade projekttimmar för teamet.'}</p>
               </div>
               <StatusBadge label={p.status === 'COMPLETED' ? 'Avslutad' : p.status === 'ONGOING' ? 'Pågående' : 'Planerad'} tone={p.status === 'COMPLETED' ? 'gray' : 'green'} />
             </div>
-            <BudgetPanel budgetHours={p.budgetHours} totalHours={projectSummary?.totals.totalHours ?? metrics?.totalHours} usage={budgetUsage} />
-            <WarningList warnings={[...(metrics?.warnings || []), ...(projectSummary?.warnings || [])]} />
+            {canSeeMoney && <>
+              <BudgetPanel budgetHours={p.budgetHours} totalHours={projectSummary?.totals.totalHours ?? metrics?.totalHours} usage={budgetUsage} />
+              <WarningList warnings={[...(metrics?.warnings || []), ...(projectSummary?.warnings || [])]} />
+            </>}
           </TaskSection>
 
-          <TaskSection title="Ekonomi">
-            {canSeeMoney ? (
+          {canSeeMoney && <TaskSection title="Ekonomi">
+            {
               <div className="space-y-2 text-sm">
                 <Line
                   label={p.billingModel === 'FIXED' ? 'Anbud / fast pris' : 'Timpris till kund'}
@@ -349,10 +359,8 @@ export default function ProjectDetail() {
                 <Line label="Materialkostnad" value={formatCurrency(projectSummary?.totals.materialCost ?? metrics?.materialCost)} />
                 <Line label="Resultat" value={formatCurrency(result)} strong tone={result != null && result < 0 ? 'red' : 'green'} />
               </div>
-            ) : (
-              <EmptyState title="Ekonomi är dold" description="Projektet visar inte kostnader eller resultat för din roll." />
-            )}
-          </TaskSection>
+            }
+          </TaskSection>}
 
           <TaskSection title="Senaste tidrader">
             <SimpleEntries entries={(projectSummary?.recentEntries?.length ? projectSummary.recentEntries : entries).slice(0, 6)} />
@@ -520,11 +528,11 @@ export default function ProjectDetail() {
       )}
 
       {activeTab === 'hours' && (
-        <TaskSection title="Tid">
+        <TaskSection title={hoursOnly ? 'Attesterade projekttimmar' : 'Tid'}>
           <DataTable>
             <table className="min-w-full text-sm">
               <thead className="table-head">
-                <tr><th className="px-3 py-2">Datum</th><th className="px-3 py-2">Anställd</th><th className="px-3 py-2">Arbetsmoment</th><th className="px-3 py-2">Timmar</th><th className="px-3 py-2">Status</th><th className="px-3 py-2">Kommentar</th></tr>
+                <tr><th className="px-3 py-2">Datum</th><th className="px-3 py-2">Anställd</th><th className="px-3 py-2">Arbetsmoment</th><th className="px-3 py-2">Timmar</th>{!hoursOnly && <><th className="px-3 py-2">Status</th><th className="px-3 py-2">Kommentar</th></>}</tr>
               </thead>
               <tbody>
                 {entries.map((entry) => (
@@ -536,8 +544,7 @@ export default function ProjectDetail() {
                       <div className="text-xs text-slate-500">{entry.activity?.code || '-'}</div>
                     </td>
                     <td className="px-3 py-2 font-semibold">{formatHours(entry.hours)}</td>
-                    <td className="px-3 py-2">{entry.status}</td>
-                    <td className="px-3 py-2">{entry.note || '-'}</td>
+                    {!hoursOnly && <><td className="px-3 py-2">{entry.status}</td><td className="px-3 py-2">{entry.note || '-'}</td></>}
                   </tr>
                 ))}
               </tbody>
@@ -549,7 +556,7 @@ export default function ProjectDetail() {
         </TaskSection>
       )}
 
-      {activeTab === 'summary' && (
+      {activeTab === 'summary' && canSeeMoney && (
         <SummaryPanel summary={projectSummary} project={p} canSeeMoney={canSeeMoney} />
       )}
 

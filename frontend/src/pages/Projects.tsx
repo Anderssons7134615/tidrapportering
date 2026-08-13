@@ -121,8 +121,11 @@ export default function Projects() {
     return filteredProjects.reduce(
       (acc, project) => {
         const metrics = project.metrics;
-        acc.hours += metrics?.totalHours || 0;
-        acc.weekHours += metrics?.weekHours || 0;
+        acc.hours += project.totalHours ?? metrics?.totalHours ?? 0;
+        if (metrics?.weekHours != null) {
+          acc.weekHours += metrics.weekHours;
+          acc.hasWeeklyHours = true;
+        }
         acc.material += metrics?.materialCost || 0;
         acc.result += metrics?.projectResult || 0;
         acc.risk += metrics?.status.code === 'RISK' ? 1 : 0;
@@ -131,7 +134,7 @@ export default function Projects() {
         acc.withFinancials ||= metrics?.projectResult != null || Boolean(metrics?.materialCost);
         return acc;
       },
-      { hours: 0, weekHours: 0, material: 0, result: 0, risk: 0, missingBudget: 0, completed: 0, withFinancials: false }
+      { hours: 0, weekHours: 0, hasWeeklyHours: false, material: 0, result: 0, risk: 0, missingBudget: 0, completed: 0, withFinancials: false }
     );
   }, [filteredProjects]);
 
@@ -246,8 +249,8 @@ export default function Projects() {
       <section className="space-y-3">
         <div className="flex flex-col gap-2 text-sm leading-6 text-graphite-700 lg:flex-row lg:items-center lg:justify-between">
           <p>
-            Visar <strong>{filteredProjects.length}</strong> projekt. Totalt <strong>{formatHours(totals.hours)}</strong>,
-            {' '}varav <strong>{formatHours(totals.weekHours)}</strong> denna vecka.
+            Visar <strong>{filteredProjects.length}</strong> projekt. Totalt <strong>{formatHours(totals.hours)}</strong>
+            {totals.hasWeeklyHours && <>, varav <strong>{formatHours(totals.weekHours)}</strong> denna vecka.</>}
             {totals.risk > 0 && <span className="ml-1 font-semibold text-rose-700">{totals.risk} projekt behöver kollas.</span>}
             {totals.missingBudget > 0 && <span className="ml-1">{totals.missingBudget} löpande jobb saknar budget.</span>}
           </p>
@@ -300,6 +303,8 @@ function ProjectTable({
   onEdit: (project: ProjectListItem) => void;
   onDelete: (project: ProjectListItem) => void;
 }) {
+  const canSeeFinancials = projects.some((project) => project.financialsVisibleToCurrentUser);
+
   return (
     <>
       <div className="divide-y divide-graphite-100 border-y border-graphite-200 bg-white md:hidden">
@@ -308,6 +313,7 @@ function ProjectTable({
             key={project.id}
             project={project}
             isManager={isManager}
+            canSeeFinancials={canSeeFinancials}
             onEdit={() => onEdit(project)}
             onDelete={() => onDelete(project)}
           />
@@ -315,19 +321,19 @@ function ProjectTable({
       </div>
 
       <div className="hidden overflow-x-auto border-y border-graphite-200 bg-white/90 md:block">
-      <table className="min-w-[1160px] w-full text-sm">
+      <table className={`${canSeeFinancials ? 'min-w-[1160px]' : 'min-w-[700px]'} w-full text-sm`}>
         <thead className="sticky top-0 z-10 border-b border-graphite-200 bg-[#f3f6f4] text-left text-xs font-semibold uppercase tracking-normal text-graphite-500">
           <tr>
             <th className="px-3 py-3">Projektnr</th>
             <th className="px-3 py-3">Projekt</th>
             <th className="px-3 py-3">Kund och plats</th>
             <th className="px-3 py-3">Status</th>
-            <th className="px-3 py-3">Projekttyp</th>
-            <th className="px-3 py-3">Aktivitet/risk</th>
+            {canSeeFinancials && <th className="px-3 py-3">Projekttyp</th>}
+            {canSeeFinancials && <th className="px-3 py-3">Aktivitet/risk</th>}
             <th className="px-3 py-3 text-right">Timmar</th>
-            <th className="px-3 py-3">Budget</th>
-            <th className="px-3 py-3">Senast</th>
-            <th className="px-3 py-3 text-right">Resultat</th>
+            {canSeeFinancials && <th className="px-3 py-3">Budget</th>}
+            {canSeeFinancials && <th className="px-3 py-3">Senast</th>}
+            {canSeeFinancials && <th className="px-3 py-3 text-right">Resultat</th>}
             <th className="px-3 py-3 text-right">Öppna</th>
           </tr>
         </thead>
@@ -337,6 +343,7 @@ function ProjectTable({
               key={project.id}
               project={project}
               isManager={isManager}
+              canSeeFinancials={canSeeFinancials}
               onEdit={() => onEdit(project)}
               onDelete={() => onDelete(project)}
             />
@@ -351,15 +358,18 @@ function ProjectTable({
 function MobileProjectRow({
   project,
   isManager,
+  canSeeFinancials,
   onEdit,
   onDelete,
 }: {
   project: ProjectListItem;
   isManager: boolean;
+  canSeeFinancials: boolean;
   onEdit: () => void;
   onDelete: () => void;
 }) {
   const metrics = project.metrics;
+  const visibleHours = project.totalHours ?? metrics?.totalHours;
   const projectStatus = projectStatusDisplay[project.status]
     ?? { label: 'Okänd', tone: 'gray' };
   const usagePercent = metrics?.budgetUsagePercent ?? null;
@@ -384,25 +394,25 @@ function MobileProjectRow({
             <StatusBadge label={projectStatus.label} tone={projectStatus.tone} />
           </dd>
         </div>
-        <div>
+        {canSeeFinancials && <div>
           <dt className="text-xs font-semibold text-graphite-500">Projekttyp</dt>
           <dd className="mt-1 text-sm font-semibold text-graphite-800">
             {getBillingModelLabel(project.billingModel)}
           </dd>
-        </div>
-        <div className="col-span-2">
+        </div>}
+        {canSeeFinancials && <div className="col-span-2">
           <dt className="text-xs font-semibold text-graphite-500">Aktivitet/risk</dt>
           <dd className="mt-1">
             {metrics?.status
               ? <StatusBadge label={metrics.status.label} tone={metrics.status.tone} />
               : <span className="text-sm text-graphite-500">Ej angiven</span>}
           </dd>
-        </div>
+        </div>}
       </dl>
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <span className="font-semibold text-graphite-950">{formatHours(metrics?.totalHours)}</span>
-        <span className="text-graphite-500">{project.budgetHours ? `${formatPercent(usagePercent)} av budget` : 'Utan timbudget'}</span>
+        <span className="font-semibold text-graphite-950">{formatHours(visibleHours)}</span>
+        {canSeeFinancials && <span className="text-graphite-500">{project.budgetHours ? `${formatPercent(usagePercent)} av budget` : 'Utan timbudget'}</span>}
       </div>
 
       {isManager && (
@@ -422,15 +432,18 @@ function MobileProjectRow({
 function ProjectRow({
   project,
   isManager,
+  canSeeFinancials,
   onEdit,
   onDelete,
 }: {
   project: ProjectListItem;
   isManager: boolean;
+  canSeeFinancials: boolean;
   onEdit: () => void;
   onDelete: () => void;
 }) {
   const metrics = project.metrics;
+  const visibleHours = project.totalHours ?? metrics?.totalHours;
   const projectStatus = projectStatusDisplay[project.status]
     ?? { label: 'Okänd', tone: 'gray' };
   const usagePercent = metrics?.budgetUsagePercent ?? null;
@@ -447,7 +460,7 @@ function ProjectRow({
       <td className="whitespace-nowrap px-3 py-3 font-semibold text-graphite-900 tabular-nums"><Link to={`/projects/${project.id}`} className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400">{project.code}</Link></td>
       <td className="px-3 py-3">
         <Link to={`/projects/${project.id}`} className="font-semibold text-graphite-950 hover:text-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400">{project.name}</Link>
-        {metrics?.warnings?.length ? (
+        {canSeeFinancials && metrics?.warnings?.length ? (
           <p className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-amber-800">
             <AlertTriangle className="h-3.5 w-3.5" />
             {metrics.warnings[0]}
@@ -466,19 +479,19 @@ function ProjectRow({
       <td className="px-3 py-3">
         <StatusBadge label={projectStatus.label} tone={projectStatus.tone} />
       </td>
-      <td className="whitespace-nowrap px-3 py-3 font-medium text-graphite-800">
+      {canSeeFinancials && <td className="whitespace-nowrap px-3 py-3 font-medium text-graphite-800">
         {getBillingModelLabel(project.billingModel)}
-      </td>
-      <td className="px-3 py-3">
+      </td>}
+      {canSeeFinancials && <td className="px-3 py-3">
         {metrics?.status
           ? <StatusBadge label={metrics.status.label} tone={metrics.status.tone} />
           : <span className="text-graphite-500">Ej angiven</span>}
-      </td>
+      </td>}
       <td className="whitespace-nowrap px-3 py-3 text-right font-semibold text-graphite-950 tabular-nums">
-        {formatHours(metrics?.totalHours)}
-        <p className="text-xs font-normal text-graphite-500">{formatHours(metrics?.weekHours)} denna vecka</p>
+        {formatHours(visibleHours)}
+        {canSeeFinancials && <p className="text-xs font-normal text-graphite-500">{formatHours(metrics?.weekHours)} denna vecka</p>}
       </td>
-      <td className="px-3 py-3">
+      {canSeeFinancials && <td className="px-3 py-3">
         <div className="min-w-[150px]">
           <div className="mb-1 flex items-center justify-between gap-2 text-xs text-graphite-500 tabular-nums">
             <span>{project.budgetHours ? formatHours(project.budgetHours) : 'Ingen timbudget'}</span>
@@ -490,11 +503,11 @@ function ProjectRow({
             </div>
           )}
         </div>
-      </td>
-      <td className="whitespace-nowrap px-3 py-3 text-graphite-700">{metrics?.lastActivityAt ? formatDate(metrics.lastActivityAt) : '-'}</td>
-      <td className={`whitespace-nowrap px-3 py-3 text-right font-semibold tabular-nums ${metrics?.projectResult != null && metrics.projectResult < 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
+      </td>}
+      {canSeeFinancials && <td className="whitespace-nowrap px-3 py-3 text-graphite-700">{metrics?.lastActivityAt ? formatDate(metrics.lastActivityAt) : '-'}</td>}
+      {canSeeFinancials && <td className={`whitespace-nowrap px-3 py-3 text-right font-semibold tabular-nums ${metrics?.projectResult != null && metrics.projectResult < 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
         {metrics?.projectResult != null ? formatCurrency(metrics.projectResult) : metrics ? '-' : 'Dolt'}
-      </td>
+      </td>}
       <td className="whitespace-nowrap px-3 py-3 text-right">
         <div className="inline-flex items-center justify-end gap-1">
           {isManager && (

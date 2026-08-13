@@ -17,6 +17,34 @@ type ProjectSummaryEntryInput = {
   activity?: { id: string; name: string; code: string; category?: string | null } | null;
 };
 
+type ProjectTimeEntryInput = {
+  id: string;
+  userId: string;
+  projectId?: string | null;
+  activityId: string;
+  date: Date;
+  startTime?: string | null;
+  endTime?: string | null;
+  hours: number;
+  billable: boolean;
+  note?: string | null;
+  status: string;
+  submittedAt?: Date | null;
+  approvedAt?: Date | null;
+  user: { id: string; name: string };
+  activity: { id: string; name: string; code: string };
+};
+
+type ProjectHoursEntryInput = {
+  id: string;
+  userId: string;
+  date: Date;
+  hours: number;
+  status: string;
+  user: { id: string; name: string };
+  activity: { id: string; name: string; code: string };
+};
+
 export const permanentDeletionDisabledMessage =
   'Permanent radering är avstängd för att skydda tid, attest och ekonomiskt underlag. Inaktivera eller arkivera i stället.';
 
@@ -37,6 +65,31 @@ export const materialMutationErrors = {
 
 export function canApproveWeek(reviewerId: string, weekOwnerId: string) {
   return reviewerId !== weekOwnerId;
+}
+
+export function canViewProjectHours(role: string, employeeCanSeeResults: boolean) {
+  return ['ADMIN', 'SUPERVISOR'].includes(role)
+    || (role === 'EMPLOYEE' && employeeCanSeeResults);
+}
+
+export function canViewProjectFinancials(role: string) {
+  return ['ADMIN', 'SUPERVISOR'].includes(role);
+}
+
+type ApprovedHoursPrisma = {
+  timeEntry: {
+    aggregate: (args: { where: { projectId: string; status: 'APPROVED' }; _sum: { hours: true } }) => Promise<{
+      _sum: { hours: number | null };
+    }>;
+  };
+};
+
+export async function getApprovedProjectHours(prisma: ApprovedHoursPrisma, projectId: string) {
+  const result = await prisma.timeEntry.aggregate({
+    where: { projectId, status: 'APPROVED' },
+    _sum: { hours: true },
+  });
+  return result._sum.hours ?? 0;
 }
 
 export function getMaterialMutationError(projectActive: boolean, invoiceStatus?: string | null) {
@@ -81,6 +134,80 @@ export function toPublicProjectSummaryEntry(entry: ProjectSummaryEntryInput) {
           ...(entry.activity.category ? { category: entry.activity.category } : {}),
         }
       : null,
+  };
+}
+
+// This list can be viewed by employees when a supervisor enables project
+// results. Keep colleagues' location, financial, invoice and sync data out.
+export function toPublicProjectTimeEntry(entry: ProjectTimeEntryInput) {
+  return {
+    id: entry.id,
+    userId: entry.userId,
+    projectId: entry.projectId ?? null,
+    activityId: entry.activityId,
+    date: entry.date,
+    startTime: entry.startTime ?? null,
+    endTime: entry.endTime ?? null,
+    hours: entry.hours,
+    billable: entry.billable,
+    note: entry.note ?? null,
+    status: entry.status,
+    submittedAt: entry.submittedAt ?? null,
+    approvedAt: entry.approvedAt ?? null,
+    user: { id: entry.user.id, name: entry.user.name },
+    activity: { id: entry.activity.id, name: entry.activity.name, code: entry.activity.code },
+  };
+}
+
+// `employeeCanSeeResults` is labelled "Visa projekttimmar fÃ¶r anstÃ¤llda".
+// Its contract is deliberately narrower than the manager project time list.
+export function toPublicProjectHoursEntry(entry: ProjectHoursEntryInput) {
+  return {
+    id: entry.id,
+    userId: entry.userId,
+    date: entry.date,
+    hours: entry.hours,
+    status: entry.status,
+    user: { id: entry.user.id, name: entry.user.name },
+    activity: { id: entry.activity.id, name: entry.activity.name, code: entry.activity.code },
+  };
+}
+
+type ProjectMaterialInput = {
+  purchasePrice?: number | null;
+  unitPrice?: number | null;
+  quantity: number;
+  invoiceStatus?: string | null;
+  invoicedAt?: Date | null;
+  invoiceReference?: string | null;
+  integrationOperationId?: string | null;
+  integrationRowIndex?: number | null;
+  [key: string]: unknown;
+};
+
+export function toPublicProjectMaterial(item: ProjectMaterialInput, canViewFinancials: boolean, canViewInvoiceStatus = false) {
+  const {
+    integrationOperationId: _integrationOperationId,
+    integrationRowIndex: _integrationRowIndex,
+    invoiceStatus: _invoiceStatus,
+    invoicedAt: _invoicedAt,
+    invoiceReference: _invoiceReference,
+    ...publicMaterial
+  } = item;
+  const lineTotal = item.purchasePrice != null ? item.quantity * item.purchasePrice : null;
+
+  return {
+    ...publicMaterial,
+    purchasePrice: canViewFinancials ? item.purchasePrice : null,
+    unitPrice: null,
+    lineTotal: canViewFinancials ? lineTotal : null,
+    ...(canViewInvoiceStatus
+      ? {
+          invoiceStatus: _invoiceStatus,
+          invoicedAt: _invoicedAt,
+          invoiceReference: _invoiceReference,
+        }
+      : {}),
   };
 }
 

@@ -38,10 +38,12 @@ export interface Project {
   defaultRate?: number | null;
   notes?: string | null;
   employeeCanSeeResults?: boolean;
+  hoursVisibleToCurrentUser?: boolean;
+  financialsVisibleToCurrentUser?: boolean;
   resultsVisibleToCurrentUser?: boolean;
   active: boolean;
-  totalHours?: number;
-  billableHours?: number;
+  totalHours?: number | null;
+  billableHours?: number | null;
   metrics?: ProjectMetrics | null;
 }
 
@@ -157,6 +159,8 @@ export interface ProjectMaterialsResponse {
 export interface ProjectSummary {
   project: Project;
   period: { from: string | null; to: string | null };
+  hoursVisibleToCurrentUser?: boolean;
+  financialsVisibleToCurrentUser?: boolean;
   resultsVisibleToCurrentUser: boolean;
   metrics: Partial<ProjectMetrics> | null;
   totals: {

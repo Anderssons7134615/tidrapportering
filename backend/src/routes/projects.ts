@@ -6,7 +6,18 @@ import { prisma } from '../index.js';
 import { calculateProjectFinancials, getHourlyCost, getHourlyCostValue, getProjectMetrics, getRate } from '../lib/projectMetrics.js';
 import { enqueueMaterialChanged, enqueueProjectChanged, enqueueTimeEntryChanged } from '../lib/obsidianSync.js';
 import { requireRoles } from '../lib/authorization.js';
-import { getMaterialMutationError, materialMutationErrors, permanentDeletionDisabledMessage, toPublicProjectSummaryEntry } from '../lib/safety.js';
+import {
+  canViewProjectFinancials,
+  canViewProjectHours,
+  getApprovedProjectHours,
+  getMaterialMutationError,
+  materialMutationErrors,
+  permanentDeletionDisabledMessage,
+  toPublicProjectHoursEntry,
+  toPublicProjectMaterial,
+  toPublicProjectSummaryEntry,
+  toPublicProjectTimeEntry,
+} from '../lib/safety.js';
 import { endOfUtcDay, getDateOnlyInTimeZone, getWeekStartUtc, parseDateOnly } from '../lib/dateOnly.js';
 import { getNextProjectCodeFromCodes } from '../lib/projectCode.js';
 import {
@@ -92,14 +103,37 @@ const requireProjectAccess = async (request: any, reply: any) => {
   }
 };
 
-const shouldHideResultsForEmployee = (role: string, project: { employeeCanSeeResults: boolean }) => {
-  return role === 'EMPLOYEE' && !project.employeeCanSeeResults;
-};
-
 const canManageMaterials = (role: string) => ['ADMIN', 'SUPERVISOR'].includes(role);
-const canViewFinancials = (role: string, project: { employeeCanSeeResults: boolean }) => {
-  return ['ADMIN', 'SUPERVISOR', 'ACCOUNTANT'].includes(role) || !shouldHideResultsForEmployee(role, project);
-};
+
+// `/:id/time-entries` may be shown to employees. An explicit select prevents
+// Prisma from serializing GPS, rates, invoice information or offline metadata.
+const projectTimeEntrySelect = {
+  id: true,
+  userId: true,
+  projectId: true,
+  activityId: true,
+  date: true,
+  startTime: true,
+  endTime: true,
+  hours: true,
+  billable: true,
+  note: true,
+  status: true,
+  submittedAt: true,
+  approvedAt: true,
+  user: { select: { id: true, name: true } },
+  activity: { select: { id: true, name: true, code: true } },
+} as const;
+
+const employeeProjectHoursSelect = {
+  id: true,
+  userId: true,
+  date: true,
+  hours: true,
+  status: true,
+  user: { select: { id: true, name: true } },
+  activity: { select: { id: true, name: true, code: true } },
+} as const;
 
 function sanitizeProjectForRole<T extends Record<string, any>>(project: T, canView: boolean): T {
   if (canView) return project;
@@ -135,19 +169,7 @@ async function customerBelongsToCompany(customerId: string | null | undefined, c
   return Boolean(customer);
 }
 
-function mapMaterialForRole(item: any, canView: boolean, canViewInvoiceStatus = false) {
-  // Project logs always show the actual purchase cost, never the sales price.
-  const lineTotal = item.purchasePrice != null ? item.quantity * item.purchasePrice : null;
-  return {
-    ...item,
-    purchasePrice: canView ? item.purchasePrice : null,
-    unitPrice: null,
-    lineTotal: canView ? lineTotal : null,
-    invoiceStatus: canViewInvoiceStatus ? item.invoiceStatus : undefined,
-    invoicedAt: canViewInvoiceStatus ? item.invoicedAt : undefined,
-    invoiceReference: canViewInvoiceStatus ? item.invoiceReference : undefined,
-  };
-}
+const mapMaterialForRole = toPublicProjectMaterial;
 
 function parseOptionalNumber(value: unknown): number | null {
   if (value == null || value === '') return null;
@@ -308,15 +330,21 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
     // Beräkna totala timmar per projekt
     const projectsWithHours = await Promise.all(
       projects.map(async (project) => {
-        const metrics = await getProjectMetrics(prisma, project);
-        const canView = canViewFinancials(request.user.role, project);
+        const hoursVisible = canViewProjectHours(request.user.role, project.employeeCanSeeResults);
+        const financialsVisible = canViewProjectFinancials(request.user.role);
+        const metrics = financialsVisible ? await getProjectMetrics(prisma, project) : null;
+        const approvedHours = hoursVisible && !financialsVisible
+          ? await getApprovedProjectHours(prisma, project.id)
+          : null;
 
         return {
-          ...sanitizeProjectForRole(project, canView),
-          resultsVisibleToCurrentUser: canView,
-          totalHours: canView ? metrics.totalHours : null,
-          billableHours: canView ? metrics.billableHours : null,
-          metrics: canView ? metrics : null,
+          ...sanitizeProjectForRole(project, financialsVisible),
+          hoursVisibleToCurrentUser: hoursVisible,
+          financialsVisibleToCurrentUser: financialsVisible,
+          resultsVisibleToCurrentUser: financialsVisible,
+          totalHours: financialsVisible ? metrics!.totalHours : approvedHours,
+          billableHours: financialsVisible ? metrics!.billableHours : null,
+          metrics: financialsVisible ? metrics : null,
         };
       })
     );
@@ -785,11 +813,14 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(404).send({ error: 'Projekt hittades inte' });
     }
 
-    const canView = canViewFinancials(request.user.role, project);
-    if (!canView) {
+    const hoursVisible = canViewProjectHours(request.user.role, project.employeeCanSeeResults);
+    const financialsVisible = canViewProjectFinancials(request.user.role);
+    if (!financialsVisible) {
       return {
         project: sanitizeProjectForRole(project, false),
         period: { from: from || null, to: to || null },
+        hoursVisibleToCurrentUser: hoursVisible,
+        financialsVisibleToCurrentUser: false,
         resultsVisibleToCurrentUser: false,
         metrics: null,
         totals: {
@@ -887,6 +918,8 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
     return {
       project: sanitizeProjectForRole(project, true),
       period: { from: from || null, to: to || null },
+      hoursVisibleToCurrentUser: true,
+      financialsVisibleToCurrentUser: true,
       resultsVisibleToCurrentUser: true,
       metrics: {
         totalHours,
@@ -1108,17 +1141,18 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(404).send({ error: 'Projekt hittades inte' });
     }
 
-    const canView = canViewFinancials(request.user.role, project);
-    const metrics = await getProjectMetrics(prisma, project);
+    const hoursVisible = canViewProjectHours(request.user.role, project.employeeCanSeeResults);
+    const financialsVisible = canViewProjectFinancials(request.user.role);
+    const metrics = hoursVisible ? await getProjectMetrics(prisma, project) : null;
 
-    const stats = !canView
+    const stats = !hoursVisible
       ? null
       : await prisma.timeEntry.aggregate({
-          where: { projectId: id },
+          where: { projectId: id, ...(financialsVisible ? {} : { status: 'APPROVED' }) },
           _sum: { hours: true },
         });
 
-    const billableStats = !canView
+    const billableStats = !financialsVisible
       ? null
       : await prisma.timeEntry.aggregate({
           where: { projectId: id, billable: true },
@@ -1126,11 +1160,13 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
         });
 
     return {
-      ...sanitizeProjectForRole(project, canView),
-      resultsVisibleToCurrentUser: canView,
-      totalHours: canView ? (stats?._sum.hours || 0) : null,
-      billableHours: canView ? (billableStats?._sum.hours || 0) : null,
-      metrics: canView ? metrics : null,
+      ...sanitizeProjectForRole(project, financialsVisible),
+      hoursVisibleToCurrentUser: hoursVisible,
+      financialsVisibleToCurrentUser: financialsVisible,
+      resultsVisibleToCurrentUser: financialsVisible,
+      totalHours: hoursVisible ? (stats?._sum.hours || 0) : null,
+      billableHours: financialsVisible ? (billableStats?._sum.hours || 0) : null,
+      metrics: financialsVisible ? metrics : null,
     };
   });
 
@@ -1144,7 +1180,7 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(404).send({ error: 'Projekt hittades inte' });
     }
 
-    const canView = canViewFinancials(request.user.role, project);
+    const canView = canViewProjectFinancials(request.user.role);
 
     const items = await prisma.projectMaterial.findMany({
       where: { projectId: id },
@@ -1264,7 +1300,7 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
         },
       });
 
-      return reply.status(201).send(mapMaterialForRole(material, canViewFinancials(request.user.role, project), canManageMaterials(request.user.role)));
+      return reply.status(201).send(mapMaterialForRole(material, canViewProjectFinancials(request.user.role), canManageMaterials(request.user.role)));
     } catch (error) {
       if (error instanceof z.ZodError) {
         return reply.status(400).send({ error: 'Ogiltig data', details: error.errors });
@@ -1401,7 +1437,7 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
         },
       });
 
-      return mapMaterialForRole(updated, canViewFinancials(request.user.role, project), canManageMaterials(request.user.role));
+      return mapMaterialForRole(updated, canViewProjectFinancials(request.user.role), canManageMaterials(request.user.role));
     } catch (error) {
       if (error instanceof z.ZodError) {
         return reply.status(400).send({ error: 'Ogiltig data', details: error.errors });
@@ -1492,62 +1528,41 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const { from, to } = request.query as { from?: string; to?: string };
-    const accountant = request.user.role === 'ACCOUNTANT';
-
     // Verify project belongs to company
     const project = await prisma.project.findUnique({ where: { id } });
     if (!project || project.companyId !== request.user.companyId) {
       return reply.status(404).send({ error: 'Projekt hittades inte' });
     }
 
-    if (shouldHideResultsForEmployee(request.user.role, project)) {
-      return reply.status(403).send({ error: 'Projektresultat är inte synliga för anställda i detta projekt' });
+    const hoursVisible = canViewProjectHours(request.user.role, project.employeeCanSeeResults);
+    if (!hoursVisible) {
+      return reply.status(403).send({ error: 'Projekttimmar är inte synliga för anställda i detta projekt' });
     }
 
     const dateFilter = parseDateFilter(from, to);
     if (!dateFilter) return reply.status(400).send({ error: 'Ange giltiga datum som YYYY-MM-DD där from inte är efter to' });
     const where: any = {
       projectId: id,
-      ...(accountant ? { status: 'APPROVED' } : {}),
+      ...(request.user.role === 'EMPLOYEE' ? { status: 'APPROVED' } : {}),
       ...(Object.keys(dateFilter).length ? { date: dateFilter } : {}),
     };
 
+    if (request.user.role === 'EMPLOYEE') {
+      const entries = await prisma.timeEntry.findMany({
+        where,
+        select: employeeProjectHoursSelect,
+        orderBy: { date: 'desc' },
+      });
+      return entries.map(toPublicProjectHoursEntry);
+    }
+
     const entries = await prisma.timeEntry.findMany({
       where,
-      ...(accountant
-        ? {
-            select: {
-              id: true,
-              userId: true,
-              projectId: true,
-              activityId: true,
-              date: true,
-              startTime: true,
-              endTime: true,
-              hours: true,
-              billable: true,
-              note: true,
-              status: true,
-              submittedAt: true,
-              approvedAt: true,
-              approverId: true,
-              rejectNote: true,
-              createdAt: true,
-              updatedAt: true,
-              user: { select: { id: true, name: true } },
-              activity: { select: { id: true, name: true, code: true } },
-            },
-          }
-        : {
-            include: {
-              user: { select: { id: true, name: true } },
-              activity: { select: { id: true, name: true, code: true } },
-            },
-          }),
+      select: projectTimeEntrySelect,
       orderBy: { date: 'desc' },
-    } as any);
+    });
 
-    return entries;
+    return entries.map(toPublicProjectTimeEntry);
   });
 
   // Manager summary by employee for project
