@@ -128,6 +128,28 @@ const integrationRoutes: FastifyPluginAsync = async (fastify) => {
     return project;
   });
 
+  // Read-only project index for external follow-up. Keep this deliberately
+  // narrow: project identity and current status only, with no financial data.
+  fastify.get('/projects/list', {
+    preHandler: [requireIntegrationPermission('READ_ONLY')],
+  }, async (request) => {
+    const projects = await prisma.project.findMany({
+      where: { companyId: request.integrationScope!.companyId, active: true },
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        site: true,
+        status: true,
+        active: true,
+        customer: { select: { id: true, name: true } },
+      },
+      orderBy: [{ status: 'asc' }, { code: 'asc' }],
+    });
+
+    return { items: projects };
+  });
+
   fastify.get('/projects/:id/materials', {
     preHandler: [requireIntegrationPermission('READ_ONLY')],
   }, async (request, reply) => {
