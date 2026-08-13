@@ -42,6 +42,7 @@ Bygg en pålitlig TidApp för medarbetare, arbetsledare och ekonomi. Prioritera 
 
 ## Stora uppgifter och granskning
 
+- **Subagenter är obligatoriska i varje TidApp-uppgift.** Starta alltid minst en riktad, läsande subagent innan kod ändras eller ett resultat levereras. Använd `tidapp_fullstack_reviewer` för slutdiffen vid appändringar och välj `tidapp_explorer` eller UI-granskare när uppgiften berör deras område.
 - Behåll en skrivande huvudagent. Vid större, oberoende läsarbete kan du använda `tidapp_explorer` för kartläggning. Använd alltid den läsande `tidapp_fullstack_reviewer` i den obligatoriska leveransgranskningen; vänta in resultatet innan kod ändras eller levereras.
 - Använd aldrig parallella skrivande agenter i samma arbetskopia.
 
