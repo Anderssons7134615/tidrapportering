@@ -15,14 +15,13 @@ const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [fastify.authenticate],
     },
-    async (request) => {
+    async (request, reply) => {
+      if (request.user.role === 'ACCOUNTANT') {
+        return reply.status(403).send({ error: 'Lön och ekonomi använder rapporter med attesterad tid' });
+      }
       const isAdminOrSupervisor = ['ADMIN', 'SUPERVISOR'].includes(request.user.role);
       const period = getPeriodBounds(getDateOnlyInTimeZone());
       const userFilter = getUserFilter(request.user.id, request.user.companyId, isAdminOrSupervisor);
-
-      if (isAdminOrSupervisor) {
-        await backfillDraftWeeksToSubmitted(request.user.companyId);
-      }
 
       const [monthStats, billableMonthStats, weekStats, billableWeekEntries, pendingApprovals, myPendingWeeks, recentEntries, weeklyEntries, projectMetrics] =
         await Promise.all([
@@ -466,89 +465,6 @@ async function getMyPendingWeeks(userId: string, currentWeekStart: Date) {
     .map((week) => new Date(week))
     .filter((week) => week < currentWeekStart)
     .sort((a, b) => b.getTime() - a.getTime());
-}
-
-async function backfillDraftWeeksToSubmitted(companyId: string) {
-  const draftEntries = await prisma.timeEntry.findMany({
-    where: {
-      status: 'DRAFT',
-      user: { companyId },
-    },
-    select: { id: true, userId: true, date: true },
-  });
-
-  if (!draftEntries.length) return;
-
-  const weekPairs = new Map<string, { userId: string; weekStartDate: Date }>();
-  const weekKeyByEntryId = new Map<string, string>();
-  for (const entry of draftEntries) {
-    const weekStartDate = getWeekStartUtc(entry.date);
-    const key = `${entry.userId}_${weekStartDate.toISOString()}`;
-    weekKeyByEntryId.set(entry.id, key);
-    weekPairs.set(key, {
-      userId: entry.userId,
-      weekStartDate,
-    });
-  }
-
-  const existingLocks = await prisma.weekLock.findMany({
-    where: {
-      OR: Array.from(weekPairs.values()).map((pair) => ({
-        userId: pair.userId,
-        weekStartDate: pair.weekStartDate,
-      })),
-    },
-    select: { userId: true, weekStartDate: true, status: true },
-  });
-  const protectedWeeks = new Set(
-    existingLocks
-      .filter((lock) => ['APPROVED', 'REJECTED'].includes(lock.status))
-      .map((lock) => `${lock.userId}_${lock.weekStartDate.toISOString()}`)
-  );
-  const eligibleEntryIds = draftEntries
-    .filter((entry) => !protectedWeeks.has(weekKeyByEntryId.get(entry.id) || ''))
-    .map((entry) => entry.id);
-  const eligibleWeekPairs = Array.from(weekPairs.entries())
-    .filter(([key]) => !protectedWeeks.has(key))
-    .map(([, pair]) => pair);
-
-  if (!eligibleEntryIds.length) return;
-
-  await prisma.$transaction(async (tx) => {
-    await tx.timeEntry.updateMany({
-      where: {
-        id: { in: eligibleEntryIds },
-        status: 'DRAFT',
-      },
-      data: {
-        status: 'SUBMITTED',
-        submittedAt: new Date(),
-      },
-    });
-
-    for (const pair of eligibleWeekPairs) {
-      await tx.weekLock.upsert({
-        where: {
-          userId_weekStartDate: {
-            userId: pair.userId,
-            weekStartDate: pair.weekStartDate,
-          },
-        },
-        update: {
-          status: 'SUBMITTED',
-          submittedAt: new Date(),
-          reviewedAt: null,
-          reviewerId: null,
-          comment: null,
-        },
-        create: {
-          userId: pair.userId,
-          weekStartDate: pair.weekStartDate,
-          status: 'SUBMITTED',
-        },
-      });
-    }
-  });
 }
 
 export default dashboardRoutes;

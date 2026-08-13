@@ -22,6 +22,8 @@ import type {
   ProjectUpdateType,
   MaterialImportResult,
   MaterialImportPreview,
+  OfflineSyncEntry,
+  OfflineSyncResult,
 } from '../types';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
@@ -55,6 +57,8 @@ async function fetchApi<T>(
     const thrown = new Error(error.error || 'Ett fel uppstod');
     (thrown as any).errors = error.errors;
     (thrown as any).details = error.details;
+    (thrown as any).code = error.code;
+    (thrown as any).status = response.status;
     throw thrown;
   }
 
@@ -107,7 +111,7 @@ export const authApi = {
     }),
   me: () => fetchApi<User>('/auth/me'),
   changePassword: (currentPassword: string, newPassword: string) =>
-    fetchApi<{ message: string }>('/auth/change-password', {
+    fetchApi<{ message: string; token: string }>('/auth/change-password', {
       method: 'POST',
       body: JSON.stringify({ currentPassword, newPassword }),
     }),
@@ -122,8 +126,6 @@ export const usersApi = {
   update: (id: string, data: Partial<User>) =>
     fetchApi<User>(`/users/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   delete: (id: string) => fetchApi<{ message: string }>(`/users/${id}`, { method: 'DELETE' }),
-  gdprDelete: (id: string) =>
-    fetchApi<{ message: string }>(`/users/${id}/gdpr`, { method: 'DELETE' }),
 };
 
 // Customers
@@ -273,7 +275,6 @@ export const projectsApi = {
   update: (id: string, data: Partial<Project>) =>
     fetchApi<Project>(`/projects/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   delete: (id: string) => fetchApi<{ message: string }>(`/projects/${id}`, { method: 'DELETE' }),
-  permanentDelete: (id: string) => fetchApi<{ message: string }>(`/projects/${id}/permanent`, { method: 'DELETE' }),
 };
 
 // Activities
@@ -319,8 +320,8 @@ export const timeEntriesApi = {
   update: (id: string, data: Partial<TimeEntry>) =>
     fetchApi<TimeEntry>(`/time-entries/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   delete: (id: string) => fetchApi<{ message: string }>(`/time-entries/${id}`, { method: 'DELETE' }),
-  sync: (entries: any[]) =>
-    fetchApi<{ results: any[] }>('/time-entries/sync', {
+  sync: (entries: OfflineSyncEntry[]) =>
+    fetchApi<{ results: OfflineSyncResult[] }>('/time-entries/sync', {
       method: 'POST',
       body: JSON.stringify(entries),
     }),

@@ -10,7 +10,7 @@ import { AppShell, PageHeader } from '../components/ui/design';
 
 export default function Settings() {
   const queryClient = useQueryClient();
-  const { user } = useAuthStore();
+  const { user, setAuth } = useAuthStore();
   const isAdmin = user?.role === 'ADMIN';
 
   const [currentPassword, setCurrentPassword] = useState('');
@@ -47,7 +47,8 @@ export default function Settings() {
 
   const changePasswordMutation = useMutation({
     mutationFn: () => authApi.changePassword(currentPassword, newPassword),
-    onSuccess: () => {
+    onSuccess: ({ token }) => {
+      if (user) setAuth(token, user);
       toast.success('Lösenord ändrat');
       setCurrentPassword('');
       setNewPassword('');

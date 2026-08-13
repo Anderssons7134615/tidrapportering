@@ -7,7 +7,7 @@ import { isValidReminderTime } from '../lib/weeklyReminder.js';
 const settingsSchema = z.object({
   companyName: z.string().optional(),
   vatRate: z.number().min(0).max(100).optional(),
-  weekStartDay: z.number().min(0).max(6).optional(),
+  weekStartDay: z.literal(1).optional(),
   csvDelimiter: z.enum([';', ',', '\\t']).optional(),
   defaultCurrency: z.string().optional(),
   reminderTime: z.string().refine(isValidReminderTime, 'Påminnelsetid måste anges som HH:mm').optional(),
@@ -32,7 +32,7 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
       });
     }
 
-    return settings;
+    return { ...settings, weekStartDay: 1 };
   });
 
   // Update settings
@@ -49,11 +49,11 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
       if (settings) {
         settings = await prisma.settings.update({
           where: { companyId: request.user.companyId },
-          data: body,
+          data: { ...body, weekStartDay: 1 },
         });
       } else {
         settings = await prisma.settings.create({
-          data: { ...body, companyId: request.user.companyId },
+          data: { ...body, weekStartDay: 1, companyId: request.user.companyId },
         });
       }
 
@@ -76,7 +76,7 @@ const settingsRoutes: FastifyPluginAsync = async (fastify) => {
         },
       });
 
-      return settings;
+      return { ...settings, weekStartDay: 1 };
     } catch (error) {
       if (error instanceof z.ZodError) {
         return reply.status(400).send({ error: 'Ogiltig data', details: error.errors });

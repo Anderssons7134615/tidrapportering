@@ -7,28 +7,37 @@ import { CheckCircle, ChevronDown, Loader2, PencilLine, Plus, Trash2, Unlock, XC
 import toast from 'react-hot-toast';
 import { timeEntriesApi, weekLocksApi } from '../services/api';
 import { ApprovalSkeleton } from '../components/ui/Skeleton';
+import { useAuthStore } from '../stores/authStore';
 import type { TimeEntry, WeekLock } from '../types';
 import { AppShell, ConfirmDialog, DataList, DataRow, DataTable, EmptyState, PageHeader, ReviewSummary, StatusBadge, TaskSection } from '../components/ui/design';
+import { QueryError } from '../components/ui/QueryError';
 import { formatHours, parseDateOnlyLocal, toDateInputValue } from '../utils/format';
 
 const weekdayLabels = ['Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör', 'Sön'];
 
 export default function Approval() {
   const queryClient = useQueryClient();
+  const user = useAuthStore((state) => state.user);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [rejectComment, setRejectComment] = useState('');
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [approvalCandidate, setApprovalCandidate] = useState<WeekLock | null>(null);
   const [unlockCandidate, setUnlockCandidate] = useState<WeekLock | null>(null);
 
-  const { data: weekLocks, isLoading } = useQuery({
+  const { data: weekLocks, isLoading, isError: isWeekLocksError, error: weekLocksError, refetch: refetchWeekLocks } = useQuery({
     queryKey: ['weekLocks'],
     queryFn: () => weekLocksApi.list(),
   });
 
   const expandedLock = weekLocks?.find((lock) => lock.id === expandedId);
 
-  const { data: weekDetails, isLoading: isLoadingDetails } = useQuery({
+  const {
+    data: weekDetails,
+    isLoading: isLoadingDetails,
+    isError: isWeekDetailsError,
+    error: weekDetailsError,
+    refetch: refetchWeekDetails,
+  } = useQuery({
     queryKey: ['weekDetails', expandedId],
     queryFn: () => {
       if (!expandedLock) return null;
@@ -115,6 +124,18 @@ export default function Approval() {
   };
 
   if (isLoading) return <ApprovalSkeleton />;
+  if (isWeekLocksError) {
+    return (
+      <AppShell>
+        <PageHeader title="Attestering" description="Veckor behöver kunna hämtas innan du kan granska eller attestera." />
+        <QueryError
+          title="Veckorna kunde inte hämtas"
+          description={weekLocksError instanceof Error ? weekLocksError.message : 'Kontrollera anslutningen och försök igen. Inget har ändrats.'}
+          onRetry={() => void refetchWeekLocks()}
+        />
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell>
@@ -165,12 +186,16 @@ export default function Approval() {
                         lock,
                         entries: weekDetails?.entries || [],
                         isLoading: isLoadingDetails,
+                        isError: isWeekDetailsError,
+                        error: weekDetailsError,
+                        onRetry: () => void refetchWeekDetails(),
                         rejectingId,
                         rejectComment,
                         setRejectComment,
                         setRejectingId,
                         rejectMutation,
                         deleteEntryMutation,
+                        canApprove: lock.userId !== user?.id,
                         onApprove: () => setApprovalCandidate(lock),
                       })}
                     </div>
@@ -231,12 +256,12 @@ export default function Approval() {
                       <td className="px-3 py-3 text-right">
                         <button
                           onClick={() => setApprovalCandidate(lock)}
-                          disabled={approveMutation.isPending || lock.isCompleteForApproval === false}
+                          disabled={approveMutation.isPending || !detailsLoaded || isLoadingDetails || isWeekDetailsError || lock.isCompleteForApproval === false || lock.userId === user?.id}
                           className="btn-success disabled:cursor-not-allowed disabled:opacity-50"
-                          title={lock.isCompleteForApproval === false ? 'Kan inte godkänna: veckan saknar tid måndag-fredag' : 'Godkänn vecka'}
+                          title={!detailsLoaded ? 'Öppna veckan och granska tidraderna innan du godkänner' : lock.userId === user?.id ? 'En annan arbetsledare eller admin måste godkänna din egen vecka' : lock.isCompleteForApproval === false ? 'Kan inte godkänna: veckan saknar tid måndag-fredag' : 'Godkänn vecka'}
                         >
                           <CheckCircle className="h-4 w-4" />
-                          {lock.isCompleteForApproval === false ? 'Ej komplett' : 'Godkänn'}
+                          {!detailsLoaded ? 'Granska först' : lock.userId === user?.id ? 'Egen vecka' : lock.isCompleteForApproval === false ? 'Ej komplett' : 'Godkänn'}
                         </button>
                       </td>
                     </tr>
@@ -245,14 +270,18 @@ export default function Approval() {
                         <td id={`approval-details-${lock.id}`} colSpan={13} className="px-3 py-4">
                           {renderWeekDetails({
                             lock,
-                            entries: weekDetails?.entries || [],
-                            isLoading: isLoadingDetails,
-                            rejectingId,
+                        entries: weekDetails?.entries || [],
+                        isLoading: isLoadingDetails,
+                        isError: isWeekDetailsError,
+                        error: weekDetailsError,
+                        onRetry: () => void refetchWeekDetails(),
+                        rejectingId,
                             rejectComment,
                             setRejectComment,
                             setRejectingId,
                             rejectMutation,
                             deleteEntryMutation,
+                            canApprove: lock.userId !== user?.id,
                             onApprove: () => setApprovalCandidate(lock),
                           })}
                         </td>
@@ -318,26 +347,43 @@ function renderWeekDetails({
   lock,
   entries,
   isLoading,
+  isError,
+  error,
+  onRetry,
   rejectingId,
   rejectComment,
   setRejectComment,
   setRejectingId,
   rejectMutation,
   deleteEntryMutation,
+  canApprove,
   onApprove,
 }: {
   lock: WeekLock;
   entries: TimeEntry[];
   isLoading: boolean;
+  isError: boolean;
+  error: unknown;
+  onRetry: () => void;
   rejectingId: string | null;
   rejectComment: string;
   setRejectComment: (value: string) => void;
   setRejectingId: (value: string | null) => void;
   rejectMutation: any;
   deleteEntryMutation: any;
+  canApprove: boolean;
   onApprove: () => void;
 }) {
   if (isLoading) return <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-graphite-500" /></div>;
+  if (isError) {
+    return (
+      <QueryError
+        title="Tidraderna kunde inte hämtas"
+        description={error instanceof Error ? error.message : 'Kontrollera anslutningen och försök igen. Veckan kan inte attesteras förrän tidraderna visas.'}
+        onRetry={onRetry}
+      />
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -396,9 +442,9 @@ function renderWeekDetails({
         </div>
       ) : (
         <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={onApprove} disabled={lock.isCompleteForApproval === false} className="btn-success" title={lock.isCompleteForApproval === false ? 'Veckan saknar tid måndag-fredag' : 'Godkänn vecka'}>
+          <button type="button" onClick={onApprove} disabled={lock.isCompleteForApproval === false || !canApprove} className="btn-success" title={!canApprove ? 'En annan arbetsledare eller admin måste godkänna din egen vecka' : lock.isCompleteForApproval === false ? 'Veckan saknar tid måndag-fredag' : 'Godkänn vecka'}>
             <CheckCircle className="h-4 w-4" />
-            Godkänn vecka
+            {canApprove ? 'Godkänn vecka' : 'Egen vecka'}
           </button>
           <button type="button" onClick={() => setRejectingId(lock.id)} className="btn-secondary">
             <XCircle className="h-4 w-4" />

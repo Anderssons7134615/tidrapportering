@@ -2,6 +2,7 @@ import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../index.js';
 import { requireRoles } from '../lib/authorization.js';
+import { withoutActivityRate } from '../lib/safety.js';
 
 const activitySchema = z.object({
   name: z.string().min(2),
@@ -30,7 +31,7 @@ const activityRoutes: FastifyPluginAsync = async (fastify) => {
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
     });
 
-    return activities;
+    return ['EMPLOYEE', 'ACCOUNTANT'].includes(request.user.role) ? activities.map(withoutActivityRate) : activities;
   });
 
   // Get activity by ID
@@ -47,7 +48,7 @@ const activityRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(404).send({ error: 'Aktivitet hittades inte' });
     }
 
-    return activity;
+    return ['EMPLOYEE', 'ACCOUNTANT'].includes(request.user.role) ? withoutActivityRate(activity) : activity;
   });
 
   // Create activity

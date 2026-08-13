@@ -61,7 +61,7 @@ export default function Layout() {
   useSync();
 
   const { token, user, setUser, logout } = useAuthStore();
-  const { isOnline, pendingEntries } = useOfflineStore();
+  const { isOnline, pendingEntries, retryPendingEntries } = useOfflineStore();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const location = useLocation();
@@ -87,6 +87,21 @@ export default function Layout() {
   const activeItem = filteredNavItems.find((item) => item.to !== '/' && location.pathname.startsWith(item.to))
     || filteredNavItems.find((item) => location.pathname === item.to);
   const pendingEntryCount = pendingEntries.filter((entry) => entry.ownerUserId === user?.id).length;
+  const syncIssues = pendingEntries.filter((entry) => entry.ownerUserId === user?.id && entry.syncError);
+  const legacySyncIssues = syncIssues.filter((entry) => entry.syncErrorCode === 'LEGACY_SYNC_REQUIRES_REVIEW');
+  const retryableSyncIssues = syncIssues.filter((entry) => entry.syncErrorCode !== 'LEGACY_SYNC_REQUIRES_REVIEW');
+
+  const downloadSavedOfflineEntries = () => {
+    const blob = new Blob([JSON.stringify(legacySyncIssues, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'tidapp-sparade-offline-rader.json';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
 
   const handleLogout = () => {
     queryClient.clear();
@@ -121,6 +136,31 @@ export default function Layout() {
           <TopStatus isOnline={isOnline} pendingEntries={pendingEntryCount} userName={user?.name} onLogout={handleLogout} />
         </div>
       </header>
+
+      {syncIssues.length > 0 && (
+        <div className="border-b border-amber-200 bg-amber-50 px-4 py-3" role="alert">
+          <div className="mx-auto flex max-w-[96rem] flex-col gap-2 text-sm text-amber-950 sm:flex-row sm:items-center sm:justify-between">
+            <p>
+              <span className="font-semibold">{syncIssues.length} offline-rad(er) kräver åtgärd.</span>{' '}
+              {legacySyncIssues.length > 0
+                ? 'Äldre sparade rader synkas inte automatiskt. Hämta dem först och jämför sedan med rapporterad tid, så att inget dubbleras.'
+                : syncIssues[0]?.syncError}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {legacySyncIssues.length > 0 && (
+                <button type="button" className="btn-secondary shrink-0" onClick={downloadSavedOfflineEntries}>
+                  Hämta sparade rader
+                </button>
+              )}
+              {retryableSyncIssues.length > 0 && (
+                <button type="button" className="btn-secondary shrink-0" onClick={() => retryPendingEntries(retryableSyncIssues.map((entry) => entry.localId))}>
+                  Försök synka igen
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="app-frame">
         <aside className="app-sidebar sticky top-0 hidden h-[100dvh] w-72 shrink-0 flex-col border-r border-white/10 text-white lg:flex">

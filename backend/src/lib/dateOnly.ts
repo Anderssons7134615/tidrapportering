@@ -57,6 +57,17 @@ export function getWeekEndUtc(weekStart: Date): Date {
   return result;
 }
 
+export function getIsoWeekInfo(date: Date): { week: number; year: number } {
+  const result = startOfUtcDay(date);
+  const dayNumber = result.getUTCDay() || 7;
+  result.setUTCDate(result.getUTCDate() + 4 - dayNumber);
+  const yearStart = new Date(Date.UTC(result.getUTCFullYear(), 0, 1));
+  return {
+    week: Math.ceil((((result.getTime() - yearStart.getTime()) / 86400000) + 1) / 7),
+    year: result.getUTCFullYear(),
+  };
+}
+
 export function addUtcDays(date: Date, days: number): Date {
   const result = startOfUtcDay(date);
   result.setUTCDate(result.getUTCDate() + days);

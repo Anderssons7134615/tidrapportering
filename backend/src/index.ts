@@ -110,10 +110,15 @@ fastify.decorate('authenticate', async function (request: any, reply: any) {
     // Säkerställ att användare + företag fortfarande finns (viktigt efter reseed/reset av DB)
     const user = await prisma.user.findUnique({
       where: { id: request.user.id },
-      select: { id: true, email: true, role: true, active: true, companyId: true },
+      select: { id: true, email: true, role: true, active: true, companyId: true, sessionVersion: true },
     });
 
-    if (!user || !user.active || user.companyId !== request.user.companyId) {
+    if (
+      !user
+      || !user.active
+      || user.companyId !== request.user.companyId
+      || user.sessionVersion !== request.user.sessionVersion
+    ) {
       return reply.status(401).send({ error: 'Sessionen är inte längre giltig, logga in igen' });
     }
 
@@ -125,6 +130,7 @@ fastify.decorate('authenticate', async function (request: any, reply: any) {
       email: user.email,
       role: user.role,
       companyId: user.companyId,
+      sessionVersion: user.sessionVersion,
     };
   } catch (err) {
     return reply.status(401).send({ error: 'Unauthorized' });
@@ -147,6 +153,7 @@ fastify.setErrorHandler((error: any, request, reply) => {
 
   return reply.status(statusCode).send({
     error: statusCode >= 500 ? 'Ett internt serverfel uppstod' : error.message,
+    ...(typeof error.code === 'string' ? { code: error.code } : {}),
   });
 });
 
@@ -159,8 +166,8 @@ declare module 'fastify' {
 
 declare module '@fastify/jwt' {
   interface FastifyJWT {
-    payload: { id: string; email: string; role: string; companyId: string };
-    user: { id: string; email: string; role: string; companyId: string };
+    payload: { id: string; email: string; role: string; companyId: string; sessionVersion: number };
+    user: { id: string; email: string; role: string; companyId: string; sessionVersion: number };
   }
 }
 

@@ -4,6 +4,8 @@ import { z } from 'zod';
 import { prisma } from '../index.js';
 import { requireRoles } from '../lib/authorization.js';
 import { addUtcDays, dateOnlySchema, getWeekEndUtc, getWeekStartUtc, toDateKey } from '../lib/dateOnly.js';
+import { canApproveWeek } from '../lib/safety.js';
+import { captureFinancialSnapshot } from '../lib/projectMetrics.js';
 
 const getWeekStart = getWeekStartUtc;
 const requireTimeWriter = requireRoles(['ADMIN', 'SUPERVISOR', 'EMPLOYEE']);
@@ -25,107 +27,12 @@ const getMissingRequiredWeekdays = (weekStartDate: Date, entries: Array<{ date: 
   return getRequiredWeekdayKeys(weekStartDate).filter((key) => (hoursByDate.get(key) || 0) <= 0);
 };
 
-const backfillDraftWeeksToSubmitted = async (companyId: string) => {
-  const draftEntries = await prisma.timeEntry.findMany({
-    where: {
-      status: 'DRAFT',
-      user: { companyId },
-    },
-    select: { id: true, userId: true, date: true },
-  });
-
-  if (!draftEntries.length) {
-    return { entriesUpdated: 0, weekLocksUpserted: 0 };
-  }
-
-  const weekKeySet = new Set<string>();
-  const weekPairs: Array<{ userId: string; weekStartDate: Date }> = [];
-  const weekKeyByEntryId = new Map<string, string>();
-
-  for (const entry of draftEntries) {
-    const weekStartDate = getWeekStart(entry.date);
-    const key = `${entry.userId}_${weekStartDate.toISOString()}`;
-    weekKeyByEntryId.set(entry.id, key);
-    if (!weekKeySet.has(key)) {
-      weekKeySet.add(key);
-      weekPairs.push({ userId: entry.userId, weekStartDate });
-    }
-  }
-
-  const existingLocks = await prisma.weekLock.findMany({
-    where: {
-      OR: weekPairs.map((pair) => ({
-        userId: pair.userId,
-        weekStartDate: pair.weekStartDate,
-      })),
-    },
-    select: { userId: true, weekStartDate: true, status: true },
-  });
-  const protectedWeeks = new Set(
-    existingLocks
-      .filter((lock) => ['APPROVED', 'REJECTED'].includes(lock.status))
-      .map((lock) => `${lock.userId}_${lock.weekStartDate.toISOString()}`)
-  );
-  const eligibleEntryIds = draftEntries
-    .filter((entry) => !protectedWeeks.has(weekKeyByEntryId.get(entry.id) || ''))
-    .map((entry) => entry.id);
-  const eligibleWeekPairs = weekPairs.filter(
-    (pair) => !protectedWeeks.has(`${pair.userId}_${pair.weekStartDate.toISOString()}`)
-  );
-
-  if (!eligibleEntryIds.length) {
-    return { entriesUpdated: 0, weekLocksUpserted: 0 };
-  }
-
-  await prisma.timeEntry.updateMany({
-    where: {
-      id: { in: eligibleEntryIds },
-      status: 'DRAFT',
-    },
-    data: {
-      status: 'SUBMITTED',
-      submittedAt: new Date(),
-    },
-  });
-
-  for (const pair of eligibleWeekPairs) {
-    await prisma.weekLock.upsert({
-      where: {
-        userId_weekStartDate: {
-          userId: pair.userId,
-          weekStartDate: pair.weekStartDate,
-        },
-      },
-      update: {
-        status: 'SUBMITTED',
-        submittedAt: new Date(),
-        reviewedAt: null,
-        reviewerId: null,
-        comment: null,
-      },
-      create: {
-        userId: pair.userId,
-        weekStartDate: pair.weekStartDate,
-        status: 'SUBMITTED',
-      },
-    });
-  }
-
-  return {
-    entriesUpdated: eligibleEntryIds.length,
-    weekLocksUpserted: eligibleWeekPairs.length,
-  };
-};
-
 const weekLockRoutes: FastifyPluginAsync = async (fastify) => {
   // List week locks (pending approval for admin/supervisor)
   fastify.get('/', {
     preHandler: [fastify.authenticate],
   }, async (request) => {
-    if (['ADMIN', 'SUPERVISOR'].includes(request.user.role)) {
-      await backfillDraftWeeksToSubmitted(request.user.companyId);
-    }
-
+    if (request.user.role === 'ACCOUNTANT') return [];
     const { status, userId } = request.query as { status?: string; userId?: string };
 
     const where: any = { user: { companyId: request.user.companyId } };
@@ -214,21 +121,6 @@ const weekLockRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     return { count };
-  });
-
-  // Backfill legacy draft rows to submitted (admin/supervisor)
-  fastify.post('/backfill-drafts', {
-    preHandler: [fastify.authenticate],
-  }, async (request, reply) => {
-    if (!['ADMIN', 'SUPERVISOR'].includes(request.user.role)) {
-      return reply.status(403).send({ error: 'Åtkomst nekad' });
-    }
-
-    const result = await backfillDraftWeeksToSubmitted(request.user.companyId);
-    return {
-      message: 'Backfill klar',
-      ...result,
-    };
   });
 
   // Submit week for approval
@@ -355,6 +247,10 @@ const weekLockRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(404).send({ error: 'Veckolås hittades inte' });
     }
 
+    if (!canApproveWeek(request.user.id, weekLock.userId)) {
+      return reply.status(403).send({ error: 'Du kan inte godkänna din egen vecka. En annan arbetsledare eller admin måste attestera den.' });
+    }
+
     if (weekLock.status !== 'SUBMITTED') {
       return reply.status(400).send({ error: 'Veckan kan inte godkännas' });
     }
@@ -368,7 +264,11 @@ const weekLockRoutes: FastifyPluginAsync = async (fastify) => {
             userId: weekLock.userId,
             date: { gte: weekLock.weekStartDate, lte: weekEnd },
           },
-          select: { date: true, hours: true, status: true },
+          include: {
+            user: { select: { hourlyCost: true } },
+            activity: { select: { rateOverride: true } },
+            project: { select: { defaultRate: true, customer: { select: { defaultRate: true } } } },
+          },
         });
         const missingRequiredWeekdays = getMissingRequiredWeekdays(weekLock.weekStartDate, entries);
         if (missingRequiredWeekdays.length > 0) {
@@ -393,18 +293,16 @@ const weekLockRoutes: FastifyPluginAsync = async (fastify) => {
           throw Object.assign(new Error('Veckan har redan ändrats av någon annan'), { statusCode: 409 });
         }
 
-        await tx.timeEntry.updateMany({
-          where: {
-            userId: weekLock.userId,
-            date: { gte: weekLock.weekStartDate, lte: weekEnd },
-            status: 'SUBMITTED',
-          },
+        const approvedAt = new Date();
+        await Promise.all(entries.map((entry) => tx.timeEntry.update({
+          where: { id: entry.id },
           data: {
             status: 'APPROVED',
-            approvedAt: new Date(),
+            approvedAt,
             approverId: request.user.id,
+            ...captureFinancialSnapshot(entry, approvedAt),
           },
-        });
+        })));
 
         await tx.auditLog.create({
           data: {
@@ -561,6 +459,9 @@ const weekLockRoutes: FastifyPluginAsync = async (fastify) => {
           approvedAt: null,
           approverId: null,
           rejectNote: null,
+          approvedHourlyCostSnapshot: null,
+          approvedBillingRateSnapshot: null,
+          financialSnapshotCapturedAt: null,
         },
       });
 

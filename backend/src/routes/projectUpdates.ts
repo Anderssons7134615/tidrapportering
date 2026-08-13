@@ -15,6 +15,10 @@ import {
 } from '../lib/projectUpdatePreview.js';
 
 const requireAdminOrSupervisor = requireRoles(['ADMIN', 'SUPERVISOR']);
+const requireProjectWorkspaceViewer = requireRoles(
+  ['ADMIN', 'SUPERVISOR', 'EMPLOYEE'],
+  'Lön och ekonomi använder rapporter med attesterad tid'
+);
 
 const projectUpdateBodySchema = z.object({
   type: z.enum(PROJECT_UPDATE_TYPES),
@@ -179,7 +183,7 @@ async function createProjectUpdate(
 
 const projectUpdateRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get('/projects/:id/updates', {
-    preHandler: [fastify.authenticate],
+    preHandler: [requireProjectWorkspaceViewer],
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const query = listQuerySchema.parse(request.query);

@@ -11,6 +11,8 @@ import { enqueueTimeEntryChanged } from '../lib/obsidianSync.js';
 import { ensureUploadDir } from '../lib/uploads.js';
 import { deleteAttachmentFiles } from '../lib/attachments.js';
 import { requireRoles } from '../lib/authorization.js';
+import { isAccountant } from '../lib/safety.js';
+import { createOfflineTimeEntryPayloadHash } from '../lib/offlineSync.js';
 import { buildWeekVacationRows } from '../lib/weekVacation.js';
 import {
   dateOnlySchema,
@@ -37,10 +39,27 @@ const timeEntrySchema = z.object({
 
 const bulkSyncSchema = z.array(
   timeEntrySchema.extend({
-    localId: z.string().optional(),
+    localId: z.string().uuid().optional(),
     id: z.string().uuid().optional(),
   })
-).max(100);
+).max(100).superRefine((entries, ctx) => {
+  entries.forEach((entry, index) => {
+    if (!entry.id && !entry.localId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [index, 'localId'],
+        message: 'localId krävs för en ny offline-tidrad',
+      });
+    }
+    if (!entry.id && entry.billable === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [index, 'billable'],
+        message: 'billable krävs för en ny offline-tidrad',
+      });
+    }
+  });
+});
 
 const weekVacationSchema = z.object({
   weekStart: dateOnlySchema,
@@ -68,6 +87,8 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
 
     const where: any = { user: { companyId: request.user.companyId } };
 
+    const accountant = isAccountant(request.user.role);
+
     // Medarbetare ser bara sina egna
     if (request.user.role === 'EMPLOYEE') {
       where.userId = request.user.id;
@@ -86,19 +107,54 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
       where.date = { ...where.date, lte: endOfUtcDay(parsedTo) };
     }
     if (projectId) where.projectId = projectId;
-    if (status) where.status = status;
+    if (accountant) {
+      if (status && status !== 'APPROVED') {
+        return reply.status(403).send({ error: 'Lön och ekonomi kan bara se attesterad tid', code: 'APPROVED_TIME_ONLY' });
+      }
+      where.status = 'APPROVED';
+    } else if (status) {
+      where.status = status;
+    }
 
     const entries = await prisma.timeEntry.findMany({
       where,
-      include: {
-        user: { select: { id: true, name: true } },
-        project: { select: { id: true, name: true, code: true, customer: { select: { id: true, name: true } } } },
-        activity: { select: { id: true, name: true, code: true, category: true } },
-        attachments: true,
-        approver: { select: { id: true, name: true } },
-      },
+      ...(accountant
+        ? {
+            select: {
+              id: true,
+              userId: true,
+              projectId: true,
+              activityId: true,
+              date: true,
+              startTime: true,
+              endTime: true,
+              hours: true,
+              billable: true,
+              note: true,
+              status: true,
+              submittedAt: true,
+              approvedAt: true,
+              approverId: true,
+              rejectNote: true,
+              createdAt: true,
+              updatedAt: true,
+              user: { select: { id: true, name: true } },
+              project: { select: { id: true, name: true, code: true, customer: { select: { id: true, name: true } } } },
+              activity: { select: { id: true, name: true, code: true, category: true } },
+              approver: { select: { id: true, name: true } },
+            },
+          }
+        : {
+            include: {
+              user: { select: { id: true, name: true } },
+              project: { select: { id: true, name: true, code: true, customer: { select: { id: true, name: true } } } },
+              activity: { select: { id: true, name: true, code: true, category: true } },
+              attachments: true,
+              approver: { select: { id: true, name: true } },
+            },
+          }),
       orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
-    });
+    } as any);
 
     return entries;
   });
@@ -335,6 +391,7 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
   }, async (request, reply) => {
     const { weekStart } = request.params as { weekStart: string };
     const { userId } = request.query as { userId?: string };
+    const accountant = isAccountant(request.user.role);
 
     const startDate = parseDateOnly(weekStart);
     if (!startDate) return reply.status(400).send({ error: 'Ogiltigt veckodatum' });
@@ -356,28 +413,59 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
     const entries = await prisma.timeEntry.findMany({
       where: {
         userId: targetUserId,
+        ...(accountant ? { status: 'APPROVED' } : {}),
         date: {
           gte: startDate,
           lte: endDate,
         },
       },
-      include: {
-        project: { select: { id: true, name: true, code: true, site: true } },
-        activity: { select: { id: true, name: true, code: true, category: true } },
-        attachments: true,
-      },
+      ...(accountant
+        ? {
+            select: {
+              id: true,
+              userId: true,
+              projectId: true,
+              activityId: true,
+              date: true,
+              startTime: true,
+              endTime: true,
+              hours: true,
+              billable: true,
+              note: true,
+              status: true,
+              submittedAt: true,
+              approvedAt: true,
+              approverId: true,
+              rejectNote: true,
+              createdAt: true,
+              updatedAt: true,
+              project: { select: { id: true, name: true, code: true, site: true } },
+              activity: { select: { id: true, name: true, code: true, category: true } },
+            },
+          }
+        : {
+            include: {
+              project: { select: { id: true, name: true, code: true, site: true } },
+              activity: { select: { id: true, name: true, code: true, category: true } },
+              attachments: true,
+            },
+          }),
       orderBy: [{ date: 'asc' }, { createdAt: 'asc' }],
-    });
+    } as any);
 
     // Hämta veckolås
-    const weekLock = await prisma.weekLock.findUnique({
-      where: {
-        userId_weekStartDate: {
-          userId: targetUserId,
-          weekStartDate: startDate,
-        },
-      },
-    });
+    const weekLock = accountant
+      ? await prisma.weekLock.findFirst({
+          where: { userId: targetUserId, weekStartDate: startDate, status: 'APPROVED' },
+        })
+      : await prisma.weekLock.findUnique({
+          where: {
+            userId_weekStartDate: {
+              userId: targetUserId,
+              weekStartDate: startDate,
+            },
+          },
+        });
 
     // Summera timmar per dag
     const dailyTotals: Record<string, number> = {};
@@ -519,17 +607,46 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [fastify.authenticate],
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
+    const accountant = isAccountant(request.user.role);
 
     const entry = await prisma.timeEntry.findFirst({
-      where: { id, user: { companyId: request.user.companyId } },
-      include: {
-        user: { select: { id: true, name: true } },
-        project: { select: { id: true, name: true, code: true, customer: { select: { id: true, name: true } } } },
-        activity: { select: { id: true, name: true, code: true } },
-        attachments: true,
-        approver: { select: { id: true, name: true } },
-      },
-    });
+      where: { id, user: { companyId: request.user.companyId }, ...(accountant ? { status: 'APPROVED' } : {}) },
+      ...(accountant
+        ? {
+            select: {
+              id: true,
+              userId: true,
+              projectId: true,
+              activityId: true,
+              date: true,
+              startTime: true,
+              endTime: true,
+              hours: true,
+              billable: true,
+              note: true,
+              status: true,
+              submittedAt: true,
+              approvedAt: true,
+              approverId: true,
+              rejectNote: true,
+              createdAt: true,
+              updatedAt: true,
+              user: { select: { id: true, name: true } },
+              project: { select: { id: true, name: true, code: true, customer: { select: { id: true, name: true } } } },
+              activity: { select: { id: true, name: true, code: true } },
+              approver: { select: { id: true, name: true } },
+            },
+          }
+        : {
+            include: {
+              user: { select: { id: true, name: true } },
+              project: { select: { id: true, name: true, code: true, customer: { select: { id: true, name: true } } } },
+              activity: { select: { id: true, name: true, code: true } },
+              attachments: true,
+              approver: { select: { id: true, name: true } },
+          },
+          }),
+    } as any);
 
     if (!entry) {
       return reply.status(404).send({ error: 'Tidrad hittades inte' });
@@ -669,6 +786,36 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
           ? data.userId
           : (existing?.userId || request.user.id);
 
+        // A completed offline create must replay before validating today's
+        // references or lock status. Those may have changed after a response
+        // was lost, but the original time row must still be acknowledged.
+        if (!id && localId) {
+          const replayPayload = {
+            ...data,
+            userId: targetUserId,
+            billable: data.billable as boolean,
+          };
+          const replayPayloadHash = createOfflineTimeEntryPayloadHash(replayPayload);
+          const replay = await prisma.timeEntry.findFirst({
+            where: { offlineActorUserId: request.user.id, offlineLocalId: localId },
+            select: { id: true, offlinePayloadHash: true },
+          });
+          if (replay) {
+            if (replay.offlinePayloadHash !== replayPayloadHash) {
+              results.push({
+                localId,
+                id: replay.id,
+                outcome: 'REJECTED',
+                code: 'OFFLINE_IDEMPOTENCY_CONFLICT',
+                error: 'Offline-id:t har redan använts för en annan tidrad',
+              });
+            } else {
+              results.push({ localId, id: replay.id, outcome: 'REPLAYED', replayed: true });
+            }
+            continue;
+          }
+        }
+
         const validation = await validateEntryReferences({
           companyId: request.user.companyId,
           targetUserId,
@@ -700,7 +847,14 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
           continue;
         }
 
-        const safeData = { ...data, userId: targetUserId };
+        const safeData = {
+          ...data,
+          userId: targetUserId,
+          billable: data.billable ?? validation.activity?.billableDefault ?? true,
+        };
+        const offlinePayloadHash = !id && localId
+          ? createOfflineTimeEntryPayloadHash(safeData)
+          : null;
 
         if (id) {
           const updated = await prisma.$transaction(async (tx) => {
@@ -745,13 +899,16 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
             return row;
           }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
-          results.push({ localId, id: updated.id, synced: true });
+          results.push({ localId, id: updated.id, outcome: 'UPDATED' });
         } else {
+          try {
           const created = await prisma.$transaction(async (tx) => {
             const row = await tx.timeEntry.create({
               data: {
                 ...safeData,
-                billable: data.billable ?? validation.activity?.billableDefault ?? true,
+                offlineActorUserId: request.user.id,
+                offlineLocalId: localId,
+                offlinePayloadHash,
                 status: 'SUBMITTED',
                 submittedAt: new Date(),
                 rejectNote: null,
@@ -776,7 +933,29 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
             return row;
           }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
-          results.push({ localId, id: created.id, synced: true });
+          results.push({ localId, id: created.id, outcome: 'CREATED' });
+          } catch (error) {
+            if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002' || !localId || !offlinePayloadHash) {
+              throw error;
+            }
+
+            const replay = await prisma.timeEntry.findFirst({
+              where: { offlineActorUserId: request.user.id, offlineLocalId: localId },
+              select: { id: true, offlinePayloadHash: true },
+            });
+            if (!replay) throw error;
+            if (replay.offlinePayloadHash !== offlinePayloadHash) {
+              results.push({
+                localId,
+                id: replay.id,
+                outcome: 'REJECTED',
+                code: 'OFFLINE_IDEMPOTENCY_CONFLICT',
+                error: 'Offline-id:t har redan använts för en annan tidrad',
+              });
+            } else {
+              results.push({ localId, id: replay.id, outcome: 'REPLAYED', replayed: true });
+            }
+          }
         }
       }
 
@@ -1056,6 +1235,10 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [fastify.authenticate],
   }, async (request, reply) => {
     const { id, attachmentId } = request.params as { id: string; attachmentId: string };
+
+    if (isAccountant(request.user.role)) {
+      return reply.status(404).send({ error: 'Bilaga hittades inte' });
+    }
 
     const attachment = await prisma.attachment.findFirst({
       where: {

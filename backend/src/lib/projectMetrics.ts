@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { addUtcDays, getDateOnlyInTimeZone, getWeekEndUtc, getWeekStartUtc } from './dateOnly.js';
 
 export type ProjectComputedStatus =
   | 'PLANNED'
@@ -40,24 +41,36 @@ const STATUS: Record<ProjectComputedStatus, ProjectStatusInfo> = {
   INACTIVE: { code: 'INACTIVE', label: 'Inaktiv', tone: 'gray', priority: 0 },
 };
 
-function getWeekStart(date: Date): Date {
-  const d = new Date(date);
-  const day = d.getDay();
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-  d.setDate(diff);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-function getWeekEnd(date: Date): Date {
-  const d = new Date(date);
-  d.setDate(d.getDate() + 6);
-  d.setHours(23, 59, 59, 999);
-  return d;
-}
-
 export function getRate(entry: any): number {
+  if (entry.financialSnapshotCapturedAt) {
+    return entry.approvedBillingRateSnapshot ?? 0;
+  }
   return entry.activity?.rateOverride ?? entry.project?.defaultRate ?? entry.project?.customer?.defaultRate ?? 0;
+}
+
+export function getHourlyCost(entry: any): number {
+  if (entry.financialSnapshotCapturedAt) {
+    return entry.approvedHourlyCostSnapshot ?? 0;
+  }
+  return entry.user?.hourlyCost ?? 0;
+}
+
+export function getHourlyCostValue(entry: any): number | null {
+  if (entry.financialSnapshotCapturedAt) {
+    return entry.approvedHourlyCostSnapshot ?? null;
+  }
+  return entry.user?.hourlyCost ?? null;
+}
+
+export function captureFinancialSnapshot(entry: any, capturedAt = new Date()) {
+  return {
+    approvedHourlyCostSnapshot: entry.user?.hourlyCost ?? null,
+    approvedBillingRateSnapshot: entry.activity?.rateOverride
+      ?? entry.project?.defaultRate
+      ?? entry.project?.customer?.defaultRate
+      ?? null,
+    financialSnapshotCapturedAt: capturedAt,
+  };
 }
 
 export function calculateProjectFinancials(input: {
@@ -93,10 +106,10 @@ export async function getProjectMetrics(
   project: any,
   referenceDate = new Date()
 ): Promise<ProjectMetrics> {
-  const weekStart = getWeekStart(referenceDate);
-  const weekEnd = getWeekEnd(weekStart);
-  const nowMinus30Days = new Date(referenceDate);
-  nowMinus30Days.setDate(nowMinus30Days.getDate() - 30);
+  const referenceDay = getDateOnlyInTimeZone(referenceDate);
+  const weekStart = getWeekStartUtc(referenceDay);
+  const weekEnd = getWeekEndUtc(weekStart);
+  const nowMinus30Days = addUtcDays(referenceDay, -30);
 
   const [entries, materials] = await Promise.all([
     prisma.timeEntry.findMany({
@@ -119,7 +132,7 @@ export async function getProjectMetrics(
   const billableEntries = entries.filter((entry) => entry.billable);
   const billableHours = billableEntries.reduce((sum, entry) => sum + entry.hours, 0);
   const billableValue = billableEntries.reduce((sum, entry) => sum + entry.hours * getRate(entry), 0);
-  const laborCost = entries.reduce((sum, entry) => sum + entry.hours * (entry.user?.hourlyCost || 0), 0);
+  const laborCost = entries.reduce((sum, entry) => sum + entry.hours * getHourlyCost(entry), 0);
   const materialCost = materials.reduce(
     (sum, item) => sum + item.quantity * (item.purchasePrice ?? 0),
     0
@@ -144,8 +157,11 @@ export async function getProjectMetrics(
 
   if (project.billingModel === 'FIXED' && project.fixedPrice == null) warnings.push('Fast pris saknas');
   else if (!['FIXED', 'HOURLY'].includes(project.billingModel)) warnings.push('Projekttyp saknas eller är ogiltig');
-  if (entries.some((entry) => entry.user?.hourlyCost == null)) {
+  if (entries.some((entry) => getHourlyCostValue(entry) == null)) {
     warnings.push('Timkostnad saknas på minst en användare');
+  }
+  if (entries.some((entry) => entry.status === 'APPROVED' && !entry.financialSnapshotCapturedAt)) {
+    warnings.push('Äldre attesterad tid saknar sparad prisbild och beräknas med aktuella priser');
   }
   if (project.billingModel === 'HOURLY' && billableEntries.some((entry) => getRate(entry) <= 0)) {
     warnings.push('Timpris saknas för debiterbar tid');

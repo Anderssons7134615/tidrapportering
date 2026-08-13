@@ -121,6 +121,19 @@ export default function ProjectDetail() {
   const canSeeMoney = Boolean(p?.resultsVisibleToCurrentUser || materialsResponse?.costVisibleToCurrentUser || projectSummary?.resultsVisibleToCurrentUser);
   const selectedMaterialArticle = activeMaterialArticles.find((article) => article.id === materialForm.articleId);
 
+  const handleMaterialMutationError = (error: Error) => {
+    const code = (error as Error & { code?: string }).code;
+    const message = code === 'PROJECT_INACTIVE'
+      ? 'Projektet är inaktivt. Materialhistoriken kan läsas men inte ändras.'
+      : code === 'MATERIAL_INVOICED'
+        ? 'Materialraden är fakturerad och kan inte ändras eller tas bort.'
+        : error.message;
+    if (code === 'PROJECT_INACTIVE' || code === 'MATERIAL_INVOICED') {
+      void queryClient.invalidateQueries({ queryKey: ['project', id, 'materials'] });
+    }
+    toast.error(message);
+  };
+
   const recentMaterialArticles = useMemo(() => {
     const seen = new Set<string>();
     const recent: MaterialArticle[] = [];
@@ -157,7 +170,7 @@ export default function ProjectDetail() {
       setMaterialPickerOpen(false);
       invalidateProjectData(queryClient, id);
     },
-    onError: (error: Error) => toast.error(error.message),
+    onError: handleMaterialMutationError,
   });
 
   const updateMaterialMutation = useMutation({
@@ -177,7 +190,7 @@ export default function ProjectDetail() {
       setMaterialPickerOpen(false);
       invalidateProjectData(queryClient, id);
     },
-    onError: (error: Error) => toast.error(error.message),
+    onError: handleMaterialMutationError,
   });
 
   const deleteMaterialMutation = useMutation({
@@ -186,7 +199,7 @@ export default function ProjectDetail() {
       toast.success('Materialrad borttagen');
       invalidateProjectData(queryClient, id);
     },
-    onError: (error: Error) => toast.error(error.message),
+    onError: handleMaterialMutationError,
   });
 
   const importMutation = useMutation({
@@ -199,7 +212,7 @@ export default function ProjectDetail() {
     },
     onError: async (error: Error) => {
       setImportErrors(((error as any).errors || []) as Array<{ row: number; message: string }>);
-      toast.error(error.message || 'Importen misslyckades');
+      handleMaterialMutationError(error);
     },
   });
 
@@ -285,7 +298,7 @@ export default function ProjectDetail() {
         action={
           <div className="flex flex-wrap items-center gap-2">
             {metrics?.status && <StatusBadge label={metrics.status.label} tone={metrics.status.tone} />}
-            {isManager && (
+            {isManager && p.active && (
               <button type="button" className="btn-secondary" onClick={() => setActiveTab('materials')}>
                 <Plus className="h-4 w-4" />
                 Lägg material
@@ -372,7 +385,7 @@ export default function ProjectDetail() {
               <h2 className="section-title">Registrera material</h2>
               <p className="mt-1 text-sm text-slate-500">Sök fram artikeln, ange antal och spara. Datumet är förvalt till idag.</p>
             </div>
-            {isManager && (
+            {isManager && p.active && (
               <div className="flex flex-wrap gap-2">
                 <input
                   ref={fileInputRef}
@@ -398,6 +411,12 @@ export default function ProjectDetail() {
               </div>
             )}
           </div>
+
+          {!p.active && (
+            <div className="mb-4 border-y border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950" role="status">
+              Projektet är inaktivt. Materialhistoriken kan läsas, men material kan inte registreras, importeras, ändras eller tas bort.
+            </div>
+          )}
 
           {importErrors.length > 0 && (
             <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
@@ -434,7 +453,7 @@ export default function ProjectDetail() {
               />
               {isManager && <Link to="/materials" className="text-link mt-3 inline-flex">Öppna materialregistret</Link>}
             </div>
-          ) : (
+          ) : p.active ? (
             <form onSubmit={onMaterialSubmit} className="material-entry-form">
               <MaterialArticlePicker
                 articles={activeMaterialArticles}
@@ -484,7 +503,7 @@ export default function ProjectDetail() {
                 </div>
               </div>
             </form>
-          )}
+          ) : null}
 
           <div className="mb-3 flex items-center justify-between gap-3">
             <h3 className="text-sm font-semibold text-graphite-950">Använt material</h3>
@@ -493,6 +512,7 @@ export default function ProjectDetail() {
           <MaterialsTable
             materials={materials}
             canSeeMoney={canSeeMoney}
+            canChange={p.active}
             onEdit={startEditMaterial}
             onDelete={(item) => deleteMaterialMutation.mutate(item.id)}
           />
@@ -975,11 +995,13 @@ function MaterialArticlePicker({
 function MaterialsTable({
   materials,
   canSeeMoney,
+  canChange,
   onEdit,
   onDelete,
 }: {
   materials: ProjectMaterial[];
   canSeeMoney: boolean;
+  canChange: boolean;
   onEdit: (item: ProjectMaterial) => void;
   onDelete: (item: ProjectMaterial) => void;
 }) {
@@ -1004,16 +1026,21 @@ function MaterialsTable({
               <td className="px-3 py-2">
                 <div className="font-semibold text-slate-900">{item.articleName}</div>
                 <div className="text-xs text-slate-500">{item.articleNumber || '-'}</div>
+                {item.invoiceStatus === 'INVOICED' && (
+                  <div className="mt-1">
+                    <StatusBadge label={item.invoiceReference ? `Fakturerad · ${item.invoiceReference}` : 'Fakturerad'} tone="green" />
+                  </div>
+                )}
               </td>
               <td className="px-3 py-2">{item.quantity.toLocaleString('sv-SE')} {item.unit}</td>
               {canSeeMoney && <td className="px-3 py-2 font-semibold">{formatCurrency(item.lineTotal)}</td>}
               <td className="px-3 py-2">{item.note || '-'}</td>
               <td className="px-3 py-2 text-right">
                 <div className="inline-flex gap-1">
-                  <button type="button" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900" onClick={() => onEdit(item)} title="Redigera">
+                  <button type="button" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-40" onClick={() => onEdit(item)} title={!canChange ? 'Projektet är inaktivt' : item.invoiceStatus === 'INVOICED' ? 'Fakturerat material kan inte ändras' : 'Redigera'} disabled={!canChange || item.invoiceStatus === 'INVOICED'}>
                     <Edit2 className="h-4 w-4" />
                   </button>
-                  <button type="button" className="rounded-lg p-2 text-rose-600 hover:bg-rose-50" onClick={() => window.confirm('Ta bort materialraden?') && onDelete(item)} title="Ta bort">
+                  <button type="button" className="rounded-lg p-2 text-rose-600 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40" onClick={() => window.confirm('Ta bort materialraden?') && onDelete(item)} title={!canChange ? 'Projektet är inaktivt' : item.invoiceStatus === 'INVOICED' ? 'Fakturerat material kan inte tas bort' : 'Ta bort'} disabled={!canChange || item.invoiceStatus === 'INVOICED'}>
                     <Trash2 className="h-4 w-4" />
                   </button>
                 </div>

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { usersApi } from '../services/api';
 import type { User } from '../types';
-import { Plus, Edit2, Trash2, Loader2, Shield } from 'lucide-react';
+import { Plus, Edit2, Trash2, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ListSkeleton } from '../components/ui/Skeleton';
 import { AppShell, ConfirmDialog, DataTable, Dialog, PageHeader, StatusBadge } from '../components/ui/design';
@@ -27,7 +27,6 @@ export default function UsersPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [deletingUser, setDeletingUser] = useState<User | null>(null);
-  const [gdprDeletingUser, setGdprDeletingUser] = useState<User | null>(null);
 
   const { data: users, isLoading } = useQuery({
     queryKey: ['users'],
@@ -60,16 +59,6 @@ export default function UsersPage() {
     onSuccess: () => {
       toast.success('Användare inaktiverad');
       setDeletingUser(null);
-      queryClient.invalidateQueries({ queryKey: ['users'] });
-    },
-    onError: (error: Error) => toast.error(error.message),
-  });
-
-  const gdprDeleteMutation = useMutation({
-    mutationFn: usersApi.gdprDelete,
-    onSuccess: () => {
-      toast.success('Användare raderad permanent');
-      setGdprDeletingUser(null);
       queryClient.invalidateQueries({ queryKey: ['users'] });
     },
     onError: (error: Error) => toast.error(error.message),
@@ -181,17 +170,7 @@ export default function UsersPage() {
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
-                    ) : (
-                      <button
-                        onClick={() => {
-                          setGdprDeletingUser(user);
-                        }}
-                        className="rounded-md p-2 text-rose-600 hover:bg-rose-50 hover:text-rose-700"
-                        title="GDPR: Radera permanent"
-                      >
-                        <Shield className="h-4 w-4" />
-                      </button>
-                    )}
+                    ) : null}
                   </div>
                 </td>
               </tr>
@@ -247,7 +226,6 @@ export default function UsersPage() {
             </form>
       </Dialog>
       <ConfirmDialog open={Boolean(deletingUser)} onClose={() => setDeletingUser(null)} onConfirm={() => deletingUser && deleteMutation.mutate(deletingUser.id)} title="Inaktivera användare" description={deletingUser ? `${deletingUser.name} kan inte längre logga in, men historik behålls.` : undefined} confirmLabel="Inaktivera" isLoading={deleteMutation.isPending} />
-      <ConfirmDialog open={Boolean(gdprDeletingUser)} onClose={() => setGdprDeletingUser(null)} onConfirm={() => gdprDeletingUser && gdprDeleteMutation.mutate(gdprDeletingUser.id)} title="Radera användare permanent" description={gdprDeletingUser ? `Radera ${gdprDeletingUser.name} och personens data permanent? Åtgärden kan inte ångras.` : undefined} confirmLabel="Radera permanent" isLoading={gdprDeleteMutation.isPending} />
     </AppShell>
   );
 }

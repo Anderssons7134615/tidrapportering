@@ -3,8 +3,8 @@ import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import { prisma } from '../index.js';
-import { deleteAttachmentFiles } from '../lib/attachments.js';
 import { requireRoles } from '../lib/authorization.js';
+import { permanentDeletionDisabledMessage, withoutHourlyCost } from '../lib/safety.js';
 
 const createUserSchema = z.object({
   email: z.string().email(),
@@ -45,7 +45,7 @@ const userRoutes: FastifyPluginAsync = async (fastify) => {
       orderBy: { name: 'asc' },
     });
 
-    return users;
+    return request.user.role === 'ACCOUNTANT' ? users.map(withoutHourlyCost) : users;
   });
 
   // Get user by ID
@@ -77,7 +77,7 @@ const userRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(404).send({ error: 'Användare hittades inte' });
     }
 
-    return user;
+    return ['EMPLOYEE', 'ACCOUNTANT'].includes(request.user.role) ? withoutHourlyCost(user) : user;
   });
 
   // Create user (same company)
@@ -260,50 +260,8 @@ const userRoutes: FastifyPluginAsync = async (fastify) => {
   // GDPR: Radera användare permanent
   fastify.delete('/:id/gdpr', {
     preHandler: [requireAdmin],
-  }, async (request, reply) => {
-    const { id } = request.params as { id: string };
-
-    if (request.user.id === id) {
-      return reply.status(400).send({ error: 'Du kan inte ta bort dig själv' });
-    }
-
-    const user = await prisma.user.findUnique({ where: { id } });
-    if (!user || user.companyId !== request.user.companyId) {
-      return reply.status(404).send({ error: 'Användare hittades inte' });
-    }
-
-    // Ta bort all användardata
-    const attachments = await prisma.attachment.findMany({
-      where: { timeEntry: { userId: id } },
-      select: { path: true },
-    });
-
-    await prisma.$transaction([
-      prisma.attachment.deleteMany({
-        where: { timeEntry: { userId: id } },
-      }),
-      prisma.timeEntry.deleteMany({ where: { userId: id } }),
-      prisma.weekLock.deleteMany({ where: { userId: id } }),
-      prisma.auditLog.updateMany({
-        where: { userId: id },
-        data: { userId: null },
-      }),
-      prisma.user.delete({ where: { id } }),
-    ]);
-    deleteAttachmentFiles(attachments, fastify.log);
-
-    // Audit log
-    await prisma.auditLog.create({
-      data: {
-        userId: request.user.id,
-        action: 'GDPR_DELETE',
-        entityType: 'User',
-        entityId: id,
-        oldValue: JSON.stringify({ email: user.email, name: user.name }),
-      },
-    });
-
-    return { message: 'Användare och all relaterad data har raderats permanent' };
+  }, async (_request, reply) => {
+    return reply.status(409).send({ error: permanentDeletionDisabledMessage });
   });
 };
 

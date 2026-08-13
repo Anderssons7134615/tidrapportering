@@ -2,6 +2,7 @@ import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import { prisma } from '../index.js';
+import { withoutHourlyCost } from '../lib/safety.js';
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -77,7 +78,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
       });
 
       const token = fastify.jwt.sign(
-        { id: user.id, email: user.email, role: user.role, companyId: user.companyId },
+        { id: user.id, email: user.email, role: user.role, companyId: user.companyId, sessionVersion: user.sessionVersion },
         { expiresIn: '7d' }
       );
 
@@ -173,6 +174,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
           email: result.user.email,
           role: result.user.role,
           companyId: result.company.id,
+          sessionVersion: result.user.sessionVersion,
         },
         { expiresIn: '7d' }
       );
@@ -211,7 +213,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
       throw { statusCode: 404, message: 'Användare hittades inte' };
     }
 
-    return {
+    const response = {
       id: user.id,
       email: user.email,
       name: user.name,
@@ -222,6 +224,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
       companyId: user.companyId,
       companyName: user.company.name,
     };
+    return ['EMPLOYEE', 'ACCOUNTANT'].includes(user.role) ? withoutHourlyCost(response) : response;
   });
 
   // Change password
@@ -251,12 +254,24 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
 
       const hashedPassword = await bcrypt.hash(body.newPassword, 10);
 
-      await prisma.user.update({
+      const updatedUser = await prisma.user.update({
         where: { id: user.id },
-        data: { password: hashedPassword },
+        data: { password: hashedPassword, sessionVersion: { increment: 1 } },
+        select: { sessionVersion: true },
       });
 
-      return { message: 'Lösenord ändrat' };
+      const token = fastify.jwt.sign(
+        {
+          id: user.id,
+          email: user.email,
+          role: user.role,
+          companyId: user.companyId,
+          sessionVersion: updatedUser.sessionVersion,
+        },
+        { expiresIn: '7d' }
+      );
+
+      return { message: 'Lösenord ändrat', token };
     } catch (error) {
       if (error instanceof z.ZodError) {
         return reply.status(400).send({ error: 'Ogiltig data', details: error.errors });

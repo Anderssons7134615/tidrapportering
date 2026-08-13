@@ -44,6 +44,7 @@ model User {
   role       String   @default("EMPLOYEE")
   hourlyCost Float?
   active     Boolean  @default(true)
+  sessionVersion Int  @default(0)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
@@ -248,7 +249,7 @@ model MaterialArticle {
 model ProjectMaterial {
   id               String          @id @default(uuid())
   projectId        String
-  project          Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project          Project         @relation(fields: [projectId], references: [id], onDelete: Restrict)
   articleId        String
   article          MaterialArticle @relation(fields: [articleId], references: [id])
   createdByUserId  String?
@@ -318,6 +319,12 @@ model TimeEntry {
   invoiceStatus String   @default("UNINVOICED")
   invoicedAt DateTime?
   invoiceReference String?
+  offlineActorUserId String?
+  offlineLocalId String?
+  offlinePayloadHash String?
+  approvedHourlyCostSnapshot Float?
+  approvedBillingRateSnapshot Float?
+  financialSnapshotCapturedAt DateTime?
   gpsLat      Float?
   gpsLng      Float?
   createdAt   DateTime  @default(now())
@@ -328,6 +335,7 @@ model TimeEntry {
   @@index([userId, date])
   @@index([projectId, date])
   @@index([status, date])
+  @@unique([offlineActorUserId, offlineLocalId])
 }
 
 model Attachment {

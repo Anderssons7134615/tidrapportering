@@ -10,6 +10,7 @@ import { useAuthStore } from '../stores/authStore';
 import { useOfflineStore } from '../stores/offlineStore';
 import { useHaptic } from '../hooks/useHaptic';
 import { AppShell, Button, DataList, DataRow, FormField, PageHeader, ReviewSummary, TaskSection } from '../components/ui/design';
+import { QueryError } from '../components/ui/QueryError';
 import { getDisabledReason, parseDateOnlyLocal, parseSwedishNumber, toDateInputValue } from '../utils/format';
 import type { Activity, Project, User } from '../types';
 
@@ -97,7 +98,13 @@ export default function TimeEntry() {
     queryFn: () => timeEntriesApi.list({ from: yesterday, to: yesterday, userId: effectiveListUserId }),
     enabled: false,
   });
-  const { data: existingEntry, isLoading: isLoadingEntry } = useQuery({
+  const {
+    data: existingEntry,
+    isLoading: isLoadingEntry,
+    isError: isExistingEntryError,
+    error: existingEntryError,
+    refetch: refetchExistingEntry,
+  } = useQuery({
     queryKey: ['timeEntry', entryId],
     queryFn: () => timeEntriesApi.get(entryId || ''),
     enabled: isEditMode,
@@ -282,6 +289,18 @@ export default function TimeEntry() {
 
   if (isEditMode && isLoadingEntry) {
     return <div className="task-section flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-graphite-500" /></div>;
+  }
+
+  if (isEditMode && isExistingEntryError) {
+    return (
+      <AppShell>
+        <QueryError
+          title="Kunde inte hämta tidraden"
+          description={existingEntryError instanceof Error ? existingEntryError.message : 'Försök igen innan du ändrar något.'}
+          onRetry={() => void refetchExistingEntry()}
+        />
+      </AppShell>
+    );
   }
 
   if (isEditMode && existingEntry && !canEditEntry) {

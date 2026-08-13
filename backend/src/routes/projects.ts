@@ -1,11 +1,12 @@
 import { FastifyPluginAsync } from 'fastify';
+import { Prisma } from '@prisma/client';
 import ExcelJS from 'exceljs';
 import { z } from 'zod';
 import { prisma } from '../index.js';
-import { calculateProjectFinancials, getProjectMetrics, getRate } from '../lib/projectMetrics.js';
+import { calculateProjectFinancials, getHourlyCost, getHourlyCostValue, getProjectMetrics, getRate } from '../lib/projectMetrics.js';
 import { enqueueMaterialChanged, enqueueProjectChanged, enqueueTimeEntryChanged } from '../lib/obsidianSync.js';
-import { deleteAttachmentFiles } from '../lib/attachments.js';
 import { requireRoles } from '../lib/authorization.js';
+import { getMaterialMutationError, materialMutationErrors, permanentDeletionDisabledMessage, toPublicProjectSummaryEntry } from '../lib/safety.js';
 import { endOfUtcDay, getDateOnlyInTimeZone, getWeekStartUtc, parseDateOnly } from '../lib/dateOnly.js';
 import { getNextProjectCodeFromCodes } from '../lib/projectCode.js';
 import {
@@ -85,6 +86,11 @@ const projectMaterialPatchSchema = z.object({
 
 
 const requireAdminOrSupervisor = requireRoles(['ADMIN', 'SUPERVISOR']);
+const requireProjectAccess = async (request: any, reply: any) => {
+  if (request.user.role === 'ACCOUNTANT') {
+    return reply.status(403).send({ error: 'Lön och ekonomi använder rapporter med attesterad tid' });
+  }
+};
 
 const shouldHideResultsForEmployee = (role: string, project: { employeeCanSeeResults: boolean }) => {
   return role === 'EMPLOYEE' && !project.employeeCanSeeResults;
@@ -129,7 +135,7 @@ async function customerBelongsToCompany(customerId: string | null | undefined, c
   return Boolean(customer);
 }
 
-function mapMaterialForRole(item: any, canView: boolean) {
+function mapMaterialForRole(item: any, canView: boolean, canViewInvoiceStatus = false) {
   // Project logs always show the actual purchase cost, never the sales price.
   const lineTotal = item.purchasePrice != null ? item.quantity * item.purchasePrice : null;
   return {
@@ -137,6 +143,9 @@ function mapMaterialForRole(item: any, canView: boolean) {
     purchasePrice: canView ? item.purchasePrice : null,
     unitPrice: null,
     lineTotal: canView ? lineTotal : null,
+    invoiceStatus: canViewInvoiceStatus ? item.invoiceStatus : undefined,
+    invoicedAt: canViewInvoiceStatus ? item.invoicedAt : undefined,
+    invoiceReference: canViewInvoiceStatus ? item.invoiceReference : undefined,
   };
 }
 
@@ -270,7 +279,7 @@ function duplicateArticleErrors(rows: MaterialCatalogRow[]) {
 const projectRoutes: FastifyPluginAsync = async (fastify) => {
   // List projects (same company)
   fastify.get('/', {
-    preHandler: [fastify.authenticate],
+    preHandler: [fastify.authenticate, requireProjectAccess],
   }, async (request) => {
     const { status, customerId, active } = request.query as {
       status?: string;
@@ -316,7 +325,7 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   fastify.get('/materials/articles', {
-    preHandler: [fastify.authenticate],
+    preHandler: [fastify.authenticate, requireProjectAccess],
   }, async (request) => {
     const { active } = request.query as { active?: string };
 
@@ -762,7 +771,7 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   fastify.get('/:id/summary', {
-    preHandler: [fastify.authenticate],
+    preHandler: [fastify.authenticate, requireProjectAccess],
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const { from, to } = request.query as { from?: string; to?: string };
@@ -812,7 +821,7 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
         where: { projectId: id, status: 'APPROVED', ...whereDate },
         include: {
           user: { select: { id: true, name: true, hourlyCost: true } },
-          project: { select: { defaultRate: true, customer: { select: { defaultRate: true } } } },
+          project: { select: { id: true, name: true, code: true, site: true, defaultRate: true, customer: { select: { defaultRate: true } } } },
           activity: { select: { id: true, name: true, code: true, category: true, rateOverride: true } },
         },
         orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
@@ -831,7 +840,7 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
     const billableEntries = approvedEntries.filter((entry) => entry.billable);
     const billableHours = billableEntries.reduce((sum, entry) => sum + entry.hours, 0);
     const billableValue = billableEntries.reduce((sum, entry) => sum + entry.hours * getRate(entry), 0);
-    const laborCost = approvedEntries.reduce((sum, entry) => sum + entry.hours * (entry.user.hourlyCost || 0), 0);
+    const laborCost = approvedEntries.reduce((sum, entry) => sum + entry.hours * getHourlyCost(entry), 0);
     const materialCost = materials.reduce((sum, item) => sum + item.quantity * (item.purchasePrice ?? 0), 0);
     const materialSalesValue = materials.reduce((sum, item) => sum + item.quantity * (item.unitPrice ?? 0), 0);
     const { revenue, result, marginPercent } = calculateProjectFinancials({
@@ -844,7 +853,8 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
     });
     const warnings: string[] = [];
     if (openEntryCount > 0) warnings.push(`${openEntryCount} tidrader är inte attesterade`);
-    if (approvedEntries.some((entry) => entry.user.hourlyCost == null)) warnings.push('Timkostnad saknas på minst en användare');
+    if (approvedEntries.some((entry) => getHourlyCostValue(entry) == null)) warnings.push('Timkostnad saknas på minst en användare');
+    if (approvedEntries.some((entry) => !entry.financialSnapshotCapturedAt)) warnings.push('Äldre attesterad tid saknar sparad prisbild och beräknas med aktuella priser');
     if (materials.some((item) => item.purchasePrice == null)) warnings.push('Inköpspris saknas på minst en materialrad');
     if (project.billingModel === 'FIXED' && project.fixedPrice == null) warnings.push('Fast pris saknas');
     else if (!['FIXED', 'HOURLY'].includes(project.billingModel)) warnings.push('Projekttyp saknas eller är ogiltig');
@@ -904,8 +914,8 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
       warnings,
       byActivity: Array.from(byActivity.values()).sort((a, b) => b.hours - a.hours),
       byUser: Array.from(byUser.values()).sort((a, b) => b.hours - a.hours),
-      recentEntries: approvedEntries.slice(0, 8),
-      recentMaterials: materials.slice(0, 8).map((item) => mapMaterialForRole(item, true)),
+      recentEntries: approvedEntries.slice(0, 8).map(toPublicProjectSummaryEntry),
+      recentMaterials: materials.slice(0, 8).map((item) => mapMaterialForRole(item, true, canManageMaterials(request.user.role))),
     };
   });
 
@@ -917,6 +927,8 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
     if (!project || project.companyId !== request.user.companyId) {
       return reply.status(404).send({ error: 'Projekt hittades inte' });
     }
+    const materialError = getMaterialMutationError(project.active);
+    if (materialError) return reply.status(409).send({ error: materialError.message, code: materialError.code });
 
     const file = await (request as any).file();
     if (!file) return reply.status(400).send({ error: 'Excel-fil saknas' });
@@ -985,6 +997,17 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
     if (!rows.length) return reply.status(400).send({ error: 'Inga materialrader att importera' });
 
     const result = await prisma.$transaction(async (tx) => {
+      const activeProject = await tx.project.findFirst({
+        where: { id, companyId: request.user.companyId, active: true },
+        select: { id: true },
+      });
+      if (!activeProject) {
+        throw Object.assign(new Error(materialMutationErrors.inactiveProject.message), {
+          statusCode: 409,
+          code: materialMutationErrors.inactiveProject.code,
+        });
+      }
+
       let createdArticles = 0;
       const createdMaterials: any[] = [];
 
@@ -1070,7 +1093,7 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
   // Project by ID is registered after material registry routes so static
   // material paths can never be interpreted as project ids.
   fastify.get('/:id', {
-    preHandler: [fastify.authenticate],
+    preHandler: [fastify.authenticate, requireProjectAccess],
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
 
@@ -1112,7 +1135,7 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   fastify.get('/:id/materials', {
-    preHandler: [fastify.authenticate],
+    preHandler: [fastify.authenticate, requireProjectAccess],
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
 
@@ -1133,7 +1156,7 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
       orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
     });
 
-    const mappedItems = items.map((item) => mapMaterialForRole(item, canView));
+    const mappedItems = items.map((item) => mapMaterialForRole(item, canView, canManageMaterials(request.user.role)));
 
     return {
       costVisibleToCurrentUser: canView,
@@ -1148,7 +1171,7 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   fastify.post('/:id/materials', {
-    preHandler: [fastify.authenticate],
+    preHandler: [fastify.authenticate, requireProjectAccess],
   }, async (request, reply) => {
     try {
       if (request.user.role === 'ACCOUNTANT') {
@@ -1162,6 +1185,8 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
       if (!project || project.companyId !== request.user.companyId) {
         return reply.status(404).send({ error: 'Projekt hittades inte' });
       }
+      const materialError = getMaterialMutationError(project.active);
+      if (materialError) return reply.status(409).send({ error: materialError.message, code: materialError.code });
 
       const article = await prisma.materialArticle.findUnique({
         where: { id: body.articleId },
@@ -1176,41 +1201,56 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(400).send({ error: 'Materialartikeln finns inte eller kan inte väljas' });
       }
 
-      const material = await prisma.projectMaterial.create({
-        data: {
-          projectId: id,
-          articleId: article.id,
-          createdByUserId: request.user.id,
-          articleName: article.name,
-          articleNumber: article.articleNumber,
-          unit: article.unit,
-          purchasePrice: article.purchasePrice,
-          unitPrice: article.defaultUnitPrice,
-          quantity: body.quantity,
-          date: body.date ? new Date(body.date) : new Date(),
-          note: body.note?.trim() || null,
-        },
-        include: {
-          createdByUser: {
-            select: { id: true, name: true },
-          },
-        },
-      });
+      const material = await prisma.$transaction(async (tx) => {
+        const activeProject = await tx.project.findFirst({
+          where: { id, companyId: request.user.companyId, active: true },
+          select: { id: true },
+        });
+        if (!activeProject) {
+          throw Object.assign(new Error(materialMutationErrors.inactiveProject.message), {
+            statusCode: 409,
+            code: materialMutationErrors.inactiveProject.code,
+          });
+        }
 
-      await prisma.auditLog.create({
-        data: {
-          userId: request.user.id,
-          action: 'CREATE',
-          entityType: 'ProjectMaterial',
-          entityId: material.id,
-          newValue: JSON.stringify({
+        const created = await tx.projectMaterial.create({
+          data: {
             projectId: id,
-            articleName: material.articleName,
-            quantity: material.quantity,
-            unit: material.unit,
-          }),
-        },
-      });
+            articleId: article.id,
+            createdByUserId: request.user.id,
+            articleName: article.name,
+            articleNumber: article.articleNumber,
+            unit: article.unit,
+            purchasePrice: article.purchasePrice,
+            unitPrice: article.defaultUnitPrice,
+            quantity: body.quantity,
+            date: body.date ? new Date(body.date) : new Date(),
+            note: body.note?.trim() || null,
+          },
+          include: {
+            createdByUser: {
+              select: { id: true, name: true },
+            },
+          },
+        });
+
+        await tx.auditLog.create({
+          data: {
+            userId: request.user.id,
+            action: 'CREATE',
+            entityType: 'ProjectMaterial',
+            entityId: created.id,
+            newValue: JSON.stringify({
+              projectId: id,
+              articleName: created.articleName,
+              quantity: created.quantity,
+              unit: created.unit,
+            }),
+          },
+        });
+
+        return created;
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
       await enqueueMaterialChanged(prisma, {
         companyId: request.user.companyId,
@@ -1224,7 +1264,7 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
         },
       });
 
-      return reply.status(201).send(mapMaterialForRole(material, canViewFinancials(request.user.role, project)));
+      return reply.status(201).send(mapMaterialForRole(material, canViewFinancials(request.user.role, project), canManageMaterials(request.user.role)));
     } catch (error) {
       if (error instanceof z.ZodError) {
         return reply.status(400).send({ error: 'Ogiltig data', details: error.errors });
@@ -1234,7 +1274,7 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   fastify.patch('/:id/materials/:materialId', {
-    preHandler: [fastify.authenticate],
+    preHandler: [fastify.authenticate, requireProjectAccess],
   }, async (request, reply) => {
     try {
       if (request.user.role === 'ACCOUNTANT') {
@@ -1248,79 +1288,106 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
       if (!project || project.companyId !== request.user.companyId) {
         return reply.status(404).send({ error: 'Projekt hittades inte' });
       }
+      const initialMaterialError = getMaterialMutationError(project.active);
+      if (initialMaterialError) return reply.status(409).send({ error: initialMaterialError.message, code: initialMaterialError.code });
 
-      const material = await prisma.projectMaterial.findUnique({ where: { id: materialId } });
-      if (!material || material.projectId !== id) {
-        return reply.status(404).send({ error: 'Materialraden hittades inte' });
-      }
+      const updated = await prisma.$transaction(async (tx) => {
+        const activeProject = await tx.project.findFirst({
+          where: { id, companyId: request.user.companyId, active: true },
+          select: { id: true },
+        });
+        if (!activeProject) {
+          throw Object.assign(new Error(materialMutationErrors.inactiveProject.message), {
+            statusCode: 409,
+            code: materialMutationErrors.inactiveProject.code,
+          });
+        }
 
-      const isOwner = material.createdByUserId === request.user.id;
-      const isManager = canManageMaterials(request.user.role);
-      if (!isOwner && !isManager) {
-        return reply.status(403).send({ error: 'Atkomst nekad' });
-      }
+        const material = await tx.projectMaterial.findUnique({ where: { id: materialId } });
+        if (!material || material.projectId !== id) {
+          throw Object.assign(new Error('Materialraden hittades inte'), { statusCode: 404 });
+        }
+        const materialError = getMaterialMutationError(true, material.invoiceStatus);
+        if (materialError) {
+          throw Object.assign(new Error(materialError.message), { statusCode: 409, code: materialError.code });
+        }
 
-      const touchesFinancials =
-        body.articleId !== undefined ||
-        body.purchasePrice !== undefined ||
-        body.unitPrice !== undefined ||
-        body.invoiceStatus !== undefined ||
-        body.invoiceReference !== undefined;
-      if (touchesFinancials && !isManager) {
-        return reply.status(403).send({ error: 'Endast admin eller arbetsledare kan ändra pris, artikel eller fakturastatus' });
-      }
+        const isOwner = material.createdByUserId === request.user.id;
+        const isManager = canManageMaterials(request.user.role);
+        if (!isOwner && !isManager) {
+          throw Object.assign(new Error('Åtkomst nekad'), { statusCode: 403 });
+        }
 
-      const data: any = {};
-      if (body.quantity !== undefined) data.quantity = body.quantity;
-      if (body.date !== undefined) data.date = new Date(body.date);
-      if (body.note !== undefined) data.note = body.note?.trim() || null;
-      if (body.purchasePrice !== undefined) data.purchasePrice = body.purchasePrice;
-      if (body.unitPrice !== undefined) data.unitPrice = body.unitPrice;
-      if (body.invoiceStatus !== undefined) {
-        data.invoiceStatus = body.invoiceStatus;
-        data.invoicedAt = body.invoiceStatus === 'INVOICED' ? new Date() : null;
-      }
-      if (body.invoiceReference !== undefined) data.invoiceReference = body.invoiceReference?.trim() || null;
+        const touchesFinancials =
+          body.articleId !== undefined ||
+          body.purchasePrice !== undefined ||
+          body.unitPrice !== undefined ||
+          body.invoiceStatus !== undefined ||
+          body.invoiceReference !== undefined;
+        if (touchesFinancials && !isManager) {
+          throw Object.assign(new Error('Endast admin eller arbetsledare kan ändra pris, artikel eller fakturastatus'), { statusCode: 403 });
+        }
+        if (body.invoiceStatus === 'INVOICED' && !(body.invoiceReference?.trim() || material.invoiceReference?.trim())) {
+          throw Object.assign(new Error(materialMutationErrors.invoiceReferenceRequired.message), {
+            statusCode: 400,
+            code: materialMutationErrors.invoiceReferenceRequired.code,
+          });
+        }
 
-      if (body.articleId) {
-        const article = await prisma.materialArticle.findFirst({
-          where: {
-            id: body.articleId,
-            companyId: request.user.companyId,
-            active: true,
-            ...(request.user.role === 'EMPLOYEE' ? { employeeVisible: true } : {}),
+        const data: any = {};
+        if (body.quantity !== undefined) data.quantity = body.quantity;
+        if (body.date !== undefined) data.date = new Date(body.date);
+        if (body.note !== undefined) data.note = body.note?.trim() || null;
+        if (body.purchasePrice !== undefined) data.purchasePrice = body.purchasePrice;
+        if (body.unitPrice !== undefined) data.unitPrice = body.unitPrice;
+        if (body.invoiceStatus !== undefined) {
+          data.invoiceStatus = body.invoiceStatus;
+          data.invoicedAt = body.invoiceStatus === 'INVOICED' ? new Date() : null;
+        }
+        if (body.invoiceReference !== undefined) data.invoiceReference = body.invoiceReference?.trim() || null;
+
+        if (body.articleId) {
+          const article = await tx.materialArticle.findFirst({
+            where: {
+              id: body.articleId,
+              companyId: request.user.companyId,
+              active: true,
+              ...(request.user.role === 'EMPLOYEE' ? { employeeVisible: true } : {}),
+            },
+          });
+          if (!article) throw Object.assign(new Error('Materialartikeln finns inte eller är inte aktiv'), { statusCode: 400 });
+          data.articleId = article.id;
+          data.articleName = article.name;
+          data.articleNumber = article.articleNumber;
+          data.unit = article.unit;
+          if (body.purchasePrice === undefined) data.purchasePrice = article.purchasePrice;
+          if (body.unitPrice === undefined) data.unitPrice = article.defaultUnitPrice;
+        }
+
+        const next = await tx.projectMaterial.update({
+          where: { id: materialId },
+          data,
+          include: { createdByUser: { select: { id: true, name: true } } },
+        });
+
+        await tx.auditLog.create({
+          data: {
+            userId: request.user.id,
+            action: 'UPDATE',
+            entityType: 'ProjectMaterial',
+            entityId: materialId,
+            oldValue: JSON.stringify({
+              articleName: material.articleName,
+              quantity: material.quantity,
+              unit: material.unit,
+              date: material.date,
+            }),
+            newValue: JSON.stringify(body),
           },
         });
-        if (!article) return reply.status(400).send({ error: 'Materialartikeln finns inte eller är inte aktiv' });
-        data.articleId = article.id;
-        data.articleName = article.name;
-        data.articleNumber = article.articleNumber;
-        data.unit = article.unit;
-        if (body.purchasePrice === undefined) data.purchasePrice = article.purchasePrice;
-        if (body.unitPrice === undefined) data.unitPrice = article.defaultUnitPrice;
-      }
 
-      const updated = await prisma.projectMaterial.update({
-        where: { id: materialId },
-        data,
-        include: { createdByUser: { select: { id: true, name: true } } },
-      });
-
-      await prisma.auditLog.create({
-        data: {
-          userId: request.user.id,
-          action: 'UPDATE',
-          entityType: 'ProjectMaterial',
-          entityId: materialId,
-          oldValue: JSON.stringify({
-            articleName: material.articleName,
-            quantity: material.quantity,
-            unit: material.unit,
-            date: material.date,
-          }),
-          newValue: JSON.stringify(body),
-        },
-      });
+        return next;
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
       await enqueueMaterialChanged(prisma, {
         companyId: request.user.companyId,
@@ -1334,7 +1401,7 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
         },
       });
 
-      return mapMaterialForRole(updated, canViewFinancials(request.user.role, project));
+      return mapMaterialForRole(updated, canViewFinancials(request.user.role, project), canManageMaterials(request.user.role));
     } catch (error) {
       if (error instanceof z.ZodError) {
         return reply.status(400).send({ error: 'Ogiltig data', details: error.errors });
@@ -1344,7 +1411,7 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   fastify.delete('/:id/materials/:materialId', {
-    preHandler: [fastify.authenticate],
+    preHandler: [fastify.authenticate, requireProjectAccess],
   }, async (request, reply) => {
     if (request.user.role === 'ACCOUNTANT') {
       return reply.status(403).send({ error: 'Revisorsrollen har endast läsbehörighet' });
@@ -1357,37 +1424,52 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(404).send({ error: 'Projekt hittades inte' });
     }
 
-    const material = await prisma.projectMaterial.findUnique({
-      where: { id: materialId },
-    });
+    const initialMaterialError = getMaterialMutationError(project.active);
+    if (initialMaterialError) return reply.status(409).send({ error: initialMaterialError.message, code: initialMaterialError.code });
 
-    if (!material || material.projectId !== id) {
-      return reply.status(404).send({ error: 'Materialraden hittades inte' });
-    }
+    const material = await prisma.$transaction(async (tx) => {
+      const activeProject = await tx.project.findFirst({
+        where: { id, companyId: request.user.companyId, active: true },
+        select: { id: true },
+      });
+      if (!activeProject) {
+        throw Object.assign(new Error(materialMutationErrors.inactiveProject.message), {
+          statusCode: 409,
+          code: materialMutationErrors.inactiveProject.code,
+        });
+      }
 
-    const isOwner = material.createdByUserId === request.user.id;
-    if (!isOwner && !canManageMaterials(request.user.role)) {
-      return reply.status(403).send({ error: 'Atkomst nekad' });
-    }
+      const current = await tx.projectMaterial.findUnique({ where: { id: materialId } });
+      if (!current || current.projectId !== id) {
+        throw Object.assign(new Error('Materialraden hittades inte'), { statusCode: 404 });
+      }
+      const materialError = getMaterialMutationError(true, current.invoiceStatus);
+      if (materialError) {
+        throw Object.assign(new Error(materialError.message), { statusCode: 409, code: materialError.code });
+      }
 
-    await prisma.projectMaterial.delete({
-      where: { id: materialId },
-    });
+      const isOwner = current.createdByUserId === request.user.id;
+      if (!isOwner && !canManageMaterials(request.user.role)) {
+        throw Object.assign(new Error('Åtkomst nekad'), { statusCode: 403 });
+      }
 
-    await prisma.auditLog.create({
-      data: {
-        userId: request.user.id,
-        action: 'DELETE',
-        entityType: 'ProjectMaterial',
-        entityId: material.id,
-        oldValue: JSON.stringify({
-          projectId: id,
-          articleName: material.articleName,
-          quantity: material.quantity,
-          unit: material.unit,
-        }),
-      },
-    });
+      await tx.projectMaterial.delete({ where: { id: materialId } });
+      await tx.auditLog.create({
+        data: {
+          userId: request.user.id,
+          action: 'DELETE',
+          entityType: 'ProjectMaterial',
+          entityId: current.id,
+          oldValue: JSON.stringify({
+            projectId: id,
+            articleName: current.articleName,
+            quantity: current.quantity,
+            unit: current.unit,
+          }),
+        },
+      });
+      return current;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
     await enqueueMaterialChanged(prisma, {
       companyId: request.user.companyId,
@@ -1406,10 +1488,11 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
 
   // Get project time entries
   fastify.get('/:id/time-entries', {
-    preHandler: [fastify.authenticate],
+    preHandler: [fastify.authenticate, requireProjectAccess],
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const { from, to } = request.query as { from?: string; to?: string };
+    const accountant = request.user.role === 'ACCOUNTANT';
 
     // Verify project belongs to company
     const project = await prisma.project.findUnique({ where: { id } });
@@ -1423,16 +1506,46 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
 
     const dateFilter = parseDateFilter(from, to);
     if (!dateFilter) return reply.status(400).send({ error: 'Ange giltiga datum som YYYY-MM-DD där from inte är efter to' });
-    const where: any = { projectId: id, ...(Object.keys(dateFilter).length ? { date: dateFilter } : {}) };
+    const where: any = {
+      projectId: id,
+      ...(accountant ? { status: 'APPROVED' } : {}),
+      ...(Object.keys(dateFilter).length ? { date: dateFilter } : {}),
+    };
 
     const entries = await prisma.timeEntry.findMany({
       where,
-      include: {
-        user: { select: { id: true, name: true } },
-        activity: { select: { id: true, name: true, code: true } },
-      },
+      ...(accountant
+        ? {
+            select: {
+              id: true,
+              userId: true,
+              projectId: true,
+              activityId: true,
+              date: true,
+              startTime: true,
+              endTime: true,
+              hours: true,
+              billable: true,
+              note: true,
+              status: true,
+              submittedAt: true,
+              approvedAt: true,
+              approverId: true,
+              rejectNote: true,
+              createdAt: true,
+              updatedAt: true,
+              user: { select: { id: true, name: true } },
+              activity: { select: { id: true, name: true, code: true } },
+            },
+          }
+        : {
+            include: {
+              user: { select: { id: true, name: true } },
+              activity: { select: { id: true, name: true, code: true } },
+            },
+          }),
       orderBy: { date: 'desc' },
-    });
+    } as any);
 
     return entries;
   });
@@ -1471,6 +1584,8 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
         date: true,
         hours: true,
         billable: true,
+        approvedBillingRateSnapshot: true,
+        financialSnapshotCapturedAt: true,
         project: { select: { defaultRate: true, customer: { select: { defaultRate: true } } } },
         activity: { select: { rateOverride: true } },
         user: { select: { id: true, name: true, email: true } },
@@ -1528,8 +1643,7 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
 
       if (entry.billable) {
         byEmployeeWeek[key].billableHours += entry.hours;
-        const rate = entry.activity.rateOverride ?? entry.project?.defaultRate ?? entry.project?.customer?.defaultRate ?? 0;
-        byEmployeeWeek[key].amount += entry.hours * rate;
+        byEmployeeWeek[key].amount += entry.hours * getRate(entry);
       } else {
         byEmployeeWeek[key].nonBillableHours += entry.hours;
       }
@@ -1786,51 +1900,8 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
   // Delete project permanently (hard delete)
   fastify.delete('/:id/permanent', {
     preHandler: [requireAdminOrSupervisor],
-  }, async (request, reply) => {
-    const { id } = request.params as { id: string };
-
-    const project = await prisma.project.findUnique({ where: { id } });
-    if (!project || project.companyId !== request.user.companyId) {
-      return reply.status(404).send({ error: 'Projekt hittades inte' });
-    }
-
-    const timeEntryCount = await prisma.timeEntry.count({ where: { projectId: id } });
-    if (timeEntryCount > 0) {
-      return reply.status(409).send({
-        error: 'Projekt med rapporterad tid kan inte raderas permanent. Arkivera projektet i stället.',
-      });
-    }
-
-    const projectUpdateCount = await prisma.projectUpdate.count({ where: { projectId: id } });
-    if (projectUpdateCount > 0) {
-      return reply.status(409).send({
-        error: 'Projekt med projektdagbok kan inte raderas permanent. Arkivera projektet i stället.',
-      });
-    }
-
-    const attachments = await prisma.attachment.findMany({
-      where: { timeEntry: { projectId: id } },
-      select: { path: true },
-    });
-
-    await prisma.$transaction([
-      prisma.attachment.deleteMany({ where: { timeEntry: { projectId: id } } }),
-      prisma.timeEntry.deleteMany({ where: { projectId: id } }),
-      prisma.project.delete({ where: { id } }),
-    ]);
-    deleteAttachmentFiles(attachments, fastify.log);
-
-    await prisma.auditLog.create({
-      data: {
-        userId: request.user.id,
-        action: 'DELETE',
-        entityType: 'Project',
-        entityId: id,
-        oldValue: JSON.stringify({ name: project.name, code: project.code, permanent: true }),
-      },
-    });
-
-    return { message: 'Projekt raderat permanent' };
+  }, async (_request, reply) => {
+    return reply.status(409).send({ error: permanentDeletionDisabledMessage });
   });
 };
 

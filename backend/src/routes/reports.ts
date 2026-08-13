@@ -3,9 +3,37 @@ import ExcelJS from 'exceljs';
 import { prisma } from '../index.js';
 import { requireRoles } from '../lib/authorization.js';
 import { createCsvRow } from '../lib/csv.js';
-import { endOfUtcDay, getWeekStartUtc, parseDateOnly } from '../lib/dateOnly.js';
+import { endOfUtcDay, getIsoWeekInfo, getWeekStartUtc, parseDateOnly } from '../lib/dateOnly.js';
 
 const requireReportViewer = requireRoles(['ADMIN', 'SUPERVISOR', 'ACCOUNTANT']);
+
+// Report JSON is an explicit contract. Never return a raw TimeEntry here:
+// GPS, offline idempotency data and financial snapshots are not payroll data.
+const reportTimeEntrySelect = {
+  id: true,
+  userId: true,
+  projectId: true,
+  activityId: true,
+  date: true,
+  startTime: true,
+  endTime: true,
+  hours: true,
+  billable: true,
+  note: true,
+  status: true,
+  submittedAt: true,
+  approvedAt: true,
+  user: { select: { id: true, name: true, email: true } },
+  project: {
+    select: {
+      id: true,
+      name: true,
+      code: true,
+      customer: { select: { id: true, name: true } },
+    },
+  },
+  activity: { select: { id: true, name: true, code: true, category: true } },
+} as const;
 
 const reportRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get('/time-backup.xlsx', {
@@ -50,7 +78,8 @@ const reportRoutes: FastifyPluginAsync = async (fastify) => {
     } else {
       for (const [weekKey, weekEntries] of Array.from(entriesByWeek.entries()).sort(([a], [b]) => a.localeCompare(b))) {
         const weekStart = new Date(weekKey);
-        addBackupWorksheet(workbook, `v${getISOWeek(weekStart)} ${weekStart.getUTCFullYear()}`, weekEntries);
+        const isoWeek = getIsoWeekInfo(weekStart);
+        addBackupWorksheet(workbook, `v${isoWeek.week} ${isoWeek.year}`, weekEntries);
       }
     }
 
@@ -92,18 +121,7 @@ const reportRoutes: FastifyPluginAsync = async (fastify) => {
         ...(userId ? { userId } : {}),
         user: { companyId: request.user.companyId },
       },
-      include: {
-        user: { select: { id: true, name: true, email: true } },
-        project: {
-          select: {
-            id: true,
-            name: true,
-            code: true,
-            customer: { select: { id: true, name: true } },
-          },
-        },
-        activity: { select: { id: true, name: true, code: true, category: true } },
-      },
+      select: reportTimeEntrySelect,
       orderBy: [{ user: { name: 'asc' } }, { date: 'asc' }, { createdAt: 'asc' }],
     });
 
@@ -261,11 +279,7 @@ const reportRoutes: FastifyPluginAsync = async (fastify) => {
 
     const entries = await prisma.timeEntry.findMany({
       where,
-      include: {
-        user: { select: { id: true, name: true, email: true } },
-        project: { select: { id: true, name: true, code: true } },
-        activity: { select: { id: true, name: true, code: true, category: true } },
-      },
+      select: reportTimeEntrySelect,
       orderBy: [{ user: { name: 'asc' } }, { date: 'asc' }],
     });
 
@@ -395,7 +409,7 @@ const reportRoutes: FastifyPluginAsync = async (fastify) => {
 
   // Projektrapport
   fastify.get('/project/:id', {
-    preHandler: [fastify.authenticate],
+    preHandler: [requireReportViewer],
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const { from, to } = request.query as { from?: string; to?: string };
@@ -409,11 +423,7 @@ const reportRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(404).send({ error: 'Projekt hittades inte' });
     }
 
-    if (request.user.role === 'EMPLOYEE' && !project.employeeCanSeeResults) {
-      return reply.status(403).send({ error: 'Projektresultat är inte synliga för anställda i detta projekt' });
-    }
-
-    const where: any = { projectId: id };
+    const where: any = { projectId: id, status: 'APPROVED' };
     const parsedFrom = from ? parseDateOnly(from) : null;
     const parsedTo = to ? parseDateOnly(to) : null;
     if ((from && !parsedFrom) || (to && !parsedTo) || (parsedFrom && parsedTo && parsedFrom > parsedTo)) {
@@ -424,10 +434,7 @@ const reportRoutes: FastifyPluginAsync = async (fastify) => {
 
     const entries = await prisma.timeEntry.findMany({
       where,
-      include: {
-        user: { select: { id: true, name: true } },
-        activity: { select: { id: true, name: true, code: true } },
-      },
+      select: reportTimeEntrySelect,
       orderBy: { date: 'desc' },
     });
 
@@ -447,16 +454,28 @@ const reportRoutes: FastifyPluginAsync = async (fastify) => {
       byActivity[e.activity.name] = (byActivity[e.activity.name] || 0) + e.hours;
     });
 
+    const publicProject = {
+      id: project.id,
+      name: project.name,
+      code: project.code,
+      site: project.site,
+      status: project.status,
+      active: project.active,
+      customer: project.customer ? { id: project.customer.id, name: project.customer.name } : null,
+    };
+
     return {
-      project: request.user.role === 'EMPLOYEE'
-        ? { ...project, customer: project.customer ? { id: project.customer.id, name: project.customer.name } : null }
-        : project,
+      project: publicProject,
       entries,
       summary: {
         totalHours,
         billableHours,
-        budgetHours: project.budgetHours,
-        budgetRemaining: project.budgetHours ? project.budgetHours - totalHours : null,
+        ...(request.user.role === 'ACCOUNTANT'
+          ? {}
+          : {
+              budgetHours: project.budgetHours,
+              budgetRemaining: project.budgetHours ? project.budgetHours - totalHours : null,
+            }),
         byUser,
         byActivity,
       },
@@ -470,14 +489,6 @@ function parseReportRange(from?: string, to?: string) {
   const parsedTo = parseDateOnly(to);
   if (!parsedFrom || !parsedTo || parsedFrom > parsedTo) return null;
   return { from: parsedFrom, to: endOfUtcDay(parsedTo) };
-}
-
-function getISOWeek(date: Date): number {
-  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
-  const dayNumber = d.getUTCDay() || 7;
-  d.setUTCDate(d.getUTCDate() + 4 - dayNumber);
-  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
 }
 
 function addBackupWorksheet(workbook: ExcelJS.Workbook, name: string, entries: any[]) {

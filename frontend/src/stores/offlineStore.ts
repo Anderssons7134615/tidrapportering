@@ -1,20 +1,10 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import type { OfflineSyncEntry } from '../types';
 
-export interface PendingEntry {
-  localId: string;
-  ownerUserId: string;
-  userId?: string;
-  projectId?: string | null;
-  activityId: string;
-  date: string;
-  startTime?: string;
-  endTime?: string;
-  hours: number;
-  billable: boolean;
-  note?: string;
-  gpsLat?: number;
-  gpsLng?: number;
+export interface PendingEntry extends OfflineSyncEntry {
+  syncError?: string;
+  syncErrorCode?: string;
   createdAt: string;
 }
 
@@ -23,7 +13,8 @@ interface OfflineState {
   isOnline: boolean;
   addPendingEntry: (entry: Omit<PendingEntry, 'localId' | 'createdAt'>) => void;
   removePendingEntries: (localIds: string[]) => void;
-  clearPendingEntries: () => void;
+  markPendingEntriesFailed: (failures: Array<{ localId: string; error: string; code?: string }>) => void;
+  retryPendingEntries: (localIds?: string[]) => void;
   setOnline: (online: boolean) => void;
 }
 
@@ -47,16 +38,40 @@ export const useOfflineStore = create<OfflineState>()(
         set((state) => ({
           pendingEntries: state.pendingEntries.filter((entry) => !localIds.includes(entry.localId)),
         })),
-      clearPendingEntries: () => set({ pendingEntries: [] }),
+      markPendingEntriesFailed: (failures) => {
+        const failureById = new Map(failures.map((failure) => [failure.localId, failure]));
+        set((state) => ({
+          pendingEntries: state.pendingEntries.map((entry) => {
+            const failure = failureById.get(entry.localId);
+            return failure
+              ? { ...entry, syncError: failure.error, syncErrorCode: failure.code }
+              : entry;
+          }),
+        }));
+      },
+      retryPendingEntries: (localIds) =>
+        set((state) => ({
+          pendingEntries: state.pendingEntries.map((entry) => (
+            (!localIds || localIds.includes(entry.localId)) && entry.syncErrorCode !== 'LEGACY_SYNC_REQUIRES_REVIEW'
+              ? { ...entry, syncError: undefined, syncErrorCode: undefined }
+              : entry
+          )),
+        })),
       setOnline: (online) => set({ isOnline: online }),
     }),
     {
       name: 'tidapp-offline',
-      version: 1,
+      version: 2,
       migrate: (persistedState: any, version) => {
-        if (version < 1 && Array.isArray(persistedState?.pendingEntries) && persistedState.pendingEntries.length > 0) {
-          localStorage.setItem('tidapp-offline-legacy-backup', JSON.stringify(persistedState.pendingEntries));
-          return { ...persistedState, pendingEntries: [] };
+        if (version < 2 && Array.isArray(persistedState?.pendingEntries) && persistedState.pendingEntries.length > 0) {
+          return {
+            ...persistedState,
+            pendingEntries: persistedState.pendingEntries.map((entry: PendingEntry) => ({
+              ...entry,
+              syncError: 'Den här offline-raden skapades före den säkra synkningen. Den sparas här men måste kontrolleras manuellt för att undvika dubbletter.',
+              syncErrorCode: 'LEGACY_SYNC_REQUIRES_REVIEW',
+            })),
+          };
         }
         return persistedState;
       },

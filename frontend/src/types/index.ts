@@ -137,6 +137,9 @@ export interface ProjectMaterial {
   quantity: number;
   date: string;
   note?: string | null;
+  invoiceStatus?: 'UNINVOICED' | 'INVOICED';
+  invoicedAt?: string | null;
+  invoiceReference?: string | null;
   createdAt: string;
   updatedAt: string;
   lineTotal?: number | null;
@@ -265,6 +268,33 @@ export interface TimeEntry {
   gpsLat?: number;
   gpsLng?: number;
   attachments?: Attachment[];
+}
+
+export interface OfflineSyncEntry {
+  localId: string;
+  ownerUserId: string;
+  userId?: string;
+  projectId?: string | null;
+  activityId: string;
+  date: string;
+  startTime?: string;
+  endTime?: string;
+  hours: number;
+  billable: boolean;
+  note?: string;
+  gpsLat?: number;
+  gpsLng?: number;
+}
+
+export type OfflineSyncOutcome = 'CREATED' | 'REPLAYED' | 'UPDATED' | 'REJECTED';
+
+export interface OfflineSyncResult {
+  localId?: string;
+  id?: string;
+  outcome: OfflineSyncOutcome;
+  replayed?: boolean;
+  code?: string;
+  error?: string;
 }
 
 export interface Attachment {
