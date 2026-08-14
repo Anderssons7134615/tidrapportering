@@ -1,6 +1,6 @@
 import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
-import { prisma } from '../index.js';
+import { prisma } from '../lib/prisma.js';
 import { requireRoles } from '../lib/authorization.js';
 
 const customerSchema = z.object({
@@ -14,19 +14,19 @@ const customerSchema = z.object({
 });
 
 const requireAdminOrSupervisor = requireRoles(['ADMIN', 'SUPERVISOR']);
-const requireCustomerViewer = requireRoles(['ADMIN', 'SUPERVISOR', 'ACCOUNTANT']);
 
-const customerRoutes: FastifyPluginAsync = async (fastify) => {
+export function createCustomerRoutes(db: typeof prisma = prisma): FastifyPluginAsync {
+  return async (fastify) => {
   // List customers (same company)
   fastify.get('/', {
-    preHandler: [requireCustomerViewer],
+    preHandler: [requireAdminOrSupervisor],
   }, async (request) => {
     const { active } = request.query as { active?: string };
 
     const where: any = { companyId: request.user.companyId };
     if (active !== undefined) where.active = active === 'true';
 
-    const customers = await prisma.customer.findMany({
+    const customers = await db.customer.findMany({
       where,
       include: {
         _count: {
@@ -41,11 +41,11 @@ const customerRoutes: FastifyPluginAsync = async (fastify) => {
 
   // Get customer by ID
   fastify.get('/:id', {
-    preHandler: [requireCustomerViewer],
+    preHandler: [requireAdminOrSupervisor],
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
 
-    const customer = await prisma.customer.findUnique({
+    const customer = await db.customer.findUnique({
       where: { id },
       include: {
         projects: {
@@ -68,12 +68,12 @@ const customerRoutes: FastifyPluginAsync = async (fastify) => {
     try {
       const body = customerSchema.parse(request.body);
 
-      const customer = await prisma.customer.create({
+      const customer = await db.customer.create({
         data: { ...body, companyId: request.user.companyId },
       });
 
       // Audit log
-      await prisma.auditLog.create({
+      await db.auditLog.create({
         data: {
           userId: request.user.id,
           action: 'CREATE',
@@ -100,18 +100,18 @@ const customerRoutes: FastifyPluginAsync = async (fastify) => {
       const { id } = request.params as { id: string };
       const body = customerSchema.partial().parse(request.body);
 
-      const customer = await prisma.customer.findUnique({ where: { id } });
+      const customer = await db.customer.findUnique({ where: { id } });
       if (!customer || customer.companyId !== request.user.companyId) {
         return reply.status(404).send({ error: 'Kund hittades inte' });
       }
 
-      const updatedCustomer = await prisma.customer.update({
+      const updatedCustomer = await db.customer.update({
         where: { id },
         data: body,
       });
 
       // Audit log
-      await prisma.auditLog.create({
+      await db.auditLog.create({
         data: {
           userId: request.user.id,
           action: 'UPDATE',
@@ -137,13 +137,13 @@ const customerRoutes: FastifyPluginAsync = async (fastify) => {
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
 
-    const customer = await prisma.customer.findUnique({ where: { id } });
+    const customer = await db.customer.findUnique({ where: { id } });
     if (!customer || customer.companyId !== request.user.companyId) {
       return reply.status(404).send({ error: 'Kund hittades inte' });
     }
 
     // Kontrollera att inga aktiva projekt finns
-    const activeProjects = await prisma.project.count({
+    const activeProjects = await db.project.count({
       where: { customerId: id, status: { in: ['PLANNED', 'ONGOING'] } },
     });
 
@@ -153,13 +153,13 @@ const customerRoutes: FastifyPluginAsync = async (fastify) => {
       });
     }
 
-    await prisma.customer.update({
+    await db.customer.update({
       where: { id },
       data: { active: false },
     });
 
     // Audit log
-    await prisma.auditLog.create({
+    await db.auditLog.create({
       data: {
         userId: request.user.id,
         action: 'DELETE',
@@ -171,6 +171,7 @@ const customerRoutes: FastifyPluginAsync = async (fastify) => {
 
     return { message: 'Kund inaktiverad' };
   });
-};
+  };
+}
 
-export default customerRoutes;
+export default createCustomerRoutes();

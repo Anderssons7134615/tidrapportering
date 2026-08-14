@@ -1,7 +1,7 @@
 import { FastifyPluginAsync } from 'fastify';
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
-import { prisma } from '../index.js';
+import { prisma } from '../lib/prisma.js';
 import fs from 'fs';
 import path from 'path';
 import { randomUUID } from 'crypto';
@@ -12,6 +12,7 @@ import { ensureUploadDir } from '../lib/uploads.js';
 import { deleteAttachmentFiles } from '../lib/attachments.js';
 import { requireRoles } from '../lib/authorization.js';
 import { isAccountant } from '../lib/safety.js';
+import { getTimeEntryDeletionError, toEmployeeTimeEntry } from '../lib/timeEntrySafety.js';
 import { createOfflineTimeEntryPayloadHash } from '../lib/offlineSync.js';
 import { buildWeekVacationRows } from '../lib/weekVacation.js';
 import {
@@ -156,7 +157,7 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
       orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
     } as any);
 
-    return entries;
+    return request.user.role === 'EMPLOYEE' ? entries.map(toEmployeeTimeEntry) : entries;
   });
 
   // Get team week summary (admin/supervisor)
@@ -480,7 +481,7 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     return {
-      entries,
+      entries: request.user.role === 'EMPLOYEE' ? entries.map(toEmployeeTimeEntry) : entries,
       weekLock,
       summary: {
         totalHours,
@@ -657,7 +658,7 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(403).send({ error: 'Åtkomst nekad' });
     }
 
-    return entry;
+    return request.user.role === 'EMPLOYEE' ? toEmployeeTimeEntry(entry) : entry;
   });
 
   // Create time entry
@@ -1106,54 +1107,49 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
 
-    const entry = await prisma.timeEntry.findFirst({
-      where: { id, user: { companyId: request.user.companyId } },
-      include: { attachments: { select: { path: true } } },
-    });
-    if (!entry) {
-      return reply.status(404).send({ error: 'Tidrad hittades inte' });
-    }
+    try {
+      const entry = await prisma.$transaction(async (tx) => {
+        const current = await tx.timeEntry.findFirst({
+          where: { id, user: { companyId: request.user.companyId } },
+          include: { attachments: { select: { path: true } } },
+        });
+        if (!current) throw Object.assign(new Error('Tidrad hittades inte'), { statusCode: 404 });
+        if (request.user.role === 'EMPLOYEE' && current.userId !== request.user.id) {
+          throw Object.assign(new Error('Åtkomst nekad'), { statusCode: 403 });
+        }
+        const deletionError = getTimeEntryDeletionError(current.status);
+        if (deletionError) throw Object.assign(new Error(deletionError), { statusCode: 409 });
 
-    // Kontrollera behörighet
-    if (request.user.role === 'EMPLOYEE' && entry.userId !== request.user.id) {
-      return reply.status(403).send({ error: 'Åtkomst nekad' });
-    }
-
-    // Kontrollera status
-    if (entry.status === 'APPROVED') {
-      return reply.status(409).send({ error: 'Veckan måste låsas upp innan raden tas bort' });
-    }
-
-    const weekStart = getWeekStart(entry.date);
-    await prisma.$transaction(async (tx) => {
-      await tx.timeEntry.delete({ where: { id } });
-      await reconcileWeekLock(tx, entry.userId, weekStart);
-
-      await tx.auditLog.create({
-        data: {
-          userId: request.user.id,
-          action: 'DELETE',
-          entityType: 'TimeEntry',
-          entityId: id,
-          oldValue: JSON.stringify({ date: entry.date, hours: entry.hours }),
-        },
-      });
-
-      if (entry.projectId) {
-        await enqueueTimeEntryChanged(tx, {
-          companyId: request.user.companyId,
-          projectId: entry.projectId,
-          entityId: id,
-          action: 'DELETE',
-          payload: {
-            date: entry.date.toISOString(),
-            hours: entry.hours,
-            userId: entry.userId,
+        await tx.timeEntry.delete({ where: { id } });
+        await reconcileWeekLock(tx, current.userId, getWeekStart(current.date));
+        await tx.auditLog.create({
+          data: {
+            userId: request.user.id,
+            action: 'DELETE',
+            entityType: 'TimeEntry',
+            entityId: id,
+            oldValue: JSON.stringify({ date: current.date, hours: current.hours }),
           },
         });
+        if (current.projectId) {
+          await enqueueTimeEntryChanged(tx, {
+            companyId: request.user.companyId,
+            projectId: current.projectId,
+            entityId: id,
+            action: 'DELETE',
+            payload: { date: current.date.toISOString(), hours: current.hours, userId: current.userId },
+          });
+        }
+        return current;
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+      deleteAttachmentFiles(entry.attachments, fastify.log);
+    } catch (error: any) {
+      if (error?.code === 'P2034') {
+        return reply.status(409).send({ error: 'Tidraden ändrades samtidigt. Kontrollera veckan och försök igen.' });
       }
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
-    deleteAttachmentFiles(entry.attachments, fastify.log);
+      if (error?.statusCode) return reply.status(error.statusCode).send({ error: error.message });
+      throw error;
+    }
 
     return { message: 'Tidrad borttagen' };
   });

@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import { assertDestructiveSeedAllowed } from '../src/lib/seedSafety.js';
 
 const prisma = new PrismaClient();
 
@@ -24,9 +25,7 @@ const DEFAULT_ACTIVITIES = [
 ];
 
 async function main() {
-  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_PRODUCTION_SEED !== 'true') {
-    throw new Error('Seed är blockerat i produktion. Sätt ALLOW_PRODUCTION_SEED=true om detta är avsiktligt.');
-  }
+  assertDestructiveSeedAllowed(process.env);
 
   console.log('🌱 Seedar databas...');
 

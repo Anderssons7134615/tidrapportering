@@ -1,8 +1,9 @@
 import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
-import { prisma } from '../index.js';
+import { prisma } from '../lib/prisma.js';
 import { getCompanyProjectMetrics, getRate } from '../lib/projectMetrics.js';
 import { addUtcDays, dateOnlySchema, endOfUtcDay, getDateOnlyInTimeZone, getWeekEndUtc, getWeekStartUtc, startOfUtcDay, toDateKey } from '../lib/dateOnly.js';
+import { toEmployeeTimeEntry } from '../lib/timeEntrySafety.js';
 
 const drilldownQuerySchema = z.object({
   metric: z.enum(['weekly-hours', 'monthly-hours', 'pending-approval']),
@@ -67,9 +68,9 @@ const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
           prisma.timeEntry.findMany({
             where: userFilter,
             include: {
-              project: { select: { name: true, code: true } },
-              activity: { select: { name: true } },
-              user: { select: { name: true } },
+              project: { select: { id: true, name: true, code: true } },
+              activity: { select: { id: true, name: true, code: true } },
+              user: { select: { id: true, name: true } },
             },
             orderBy: { createdAt: 'desc' },
             take: 5,
@@ -115,7 +116,7 @@ const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
           monthlyBillableHours: billableMonthStats._sum.hours || 0,
           weeklyHours: weekStats._sum.hours || 0,
           weeklyBillableHours: billableWeekEntries.reduce((sum, entry) => sum + entry.hours, 0),
-          weeklyBillableValue: billableWeekValue,
+          ...(isAdminOrSupervisor ? { weeklyBillableValue: billableWeekValue } : {}),
           pendingApprovalCount: pendingApprovals.length,
           riskProjectCount: riskProjects.length,
           projectsWithoutBudgetCount: runningProjects.length,
@@ -125,7 +126,7 @@ const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
         riskProjects: riskProjects.slice(0, 6),
         projectsWithoutBudget: runningProjects.slice(0, 6),
         myPendingWeeks,
-        recentEntries,
+        recentEntries: request.user.role === 'EMPLOYEE' ? recentEntries.map(toEmployeeTimeEntry) : recentEntries,
         dailyHours,
         period: {
           monthStart: period.monthStart,
@@ -246,7 +247,7 @@ const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
           start: metric === 'weekly-hours' ? period.weekStart : period.monthStart,
           end: metric === 'weekly-hours' ? period.weekEnd : period.monthEnd,
         },
-        entries,
+        entries: request.user.role === 'EMPLOYEE' ? entries.map(toEmployeeTimeEntry) : entries,
       };
     }
   );

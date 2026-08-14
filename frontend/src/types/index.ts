@@ -368,7 +368,7 @@ export interface Attachment {
   originalName: string;
   mimeType: string;
   size: number;
-  path: string;
+  path?: string;
   createdAt: string;
 }
 
@@ -416,7 +416,7 @@ export interface DashboardData {
     monthlyBillableHours: number;
     weeklyHours: number;
     weeklyBillableHours: number;
-    weeklyBillableValue: number;
+    weeklyBillableValue?: number;
     pendingApprovalCount: number;
     riskProjectCount: number;
     projectsWithoutBudgetCount: number;
