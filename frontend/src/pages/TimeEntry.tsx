@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { format } from 'date-fns';
 import { sv } from 'date-fns/locale';
-import { Check, ChevronDown, Clock, Copy, Loader2, PencilLine, Save } from 'lucide-react';
+import { Check, ChevronDown, Clock, Copy, Loader2, PencilLine, RefreshCw, Save } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { activitiesApi, projectsApi, timeEntriesApi, usersApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
@@ -12,6 +12,7 @@ import { useHaptic } from '../hooks/useHaptic';
 import { AppShell, Button, DataList, DataRow, FormField, PageHeader, ReviewSummary, TaskSection } from '../components/ui/design';
 import { QueryError } from '../components/ui/QueryError';
 import { getDisabledReason, parseDateOnlyLocal, parseSwedishNumber, toDateInputValue } from '../utils/format';
+import { referenceQueryCache } from '../utils/referenceQuery';
 import type { Activity, Project, User } from '../types';
 
 function readReferenceCache<T>(key: string): T | undefined {
@@ -73,21 +74,26 @@ export default function TimeEntry() {
   const activitiesCacheKey = user?.id ? `tidapp-reference-activities:${user.id}` : '';
   const usersCacheKey = user?.id ? `tidapp-reference-users:${user.id}` : '';
 
-  const { data: projects } = useQuery<Project[]>({
+  const {
+    data: projects,
+    isError: projectsFailed,
+    isFetching: projectsFetching,
+    refetch: refetchProjects,
+  } = useQuery<Project[]>({
     queryKey: ['projects', 'active', user?.id],
     queryFn: () => projectsApi.list({ active: true }),
-    initialData: () => readReferenceCache<Project[]>(projectsCacheKey),
+    ...referenceQueryCache(() => readReferenceCache<Project[]>(projectsCacheKey)),
   });
   const { data: activities } = useQuery<Activity[]>({
     queryKey: ['activities', 'active', user?.id],
     queryFn: () => activitiesApi.list(true),
-    initialData: () => readReferenceCache<Activity[]>(activitiesCacheKey),
+    ...referenceQueryCache(() => readReferenceCache<Activity[]>(activitiesCacheKey)),
   });
   const { data: users } = useQuery<User[]>({
     queryKey: ['users', user?.id],
     queryFn: usersApi.list,
     enabled: canReportForOthers,
-    initialData: () => readReferenceCache<User[]>(usersCacheKey),
+    ...referenceQueryCache(() => readReferenceCache<User[]>(usersCacheKey)),
   });
   const yesterdayDate = date ? parseDateOnlyLocal(date) : new Date();
   yesterdayDate.setDate(yesterdayDate.getDate() - 1);
@@ -426,13 +432,32 @@ export default function TimeEntry() {
                 <input type="date" value={date} onChange={(event) => setDate(event.target.value)} className="input" required />
                 <p className="mt-1 text-xs font-medium text-graphite-500">{selectedDateLabel}</p>
               </FormField>
-              <FormField label="Projekt">
-                <select value={projectId} onChange={(event) => setProjectId(event.target.value)} className="input">
-                  <option value="">{projectRequired ? 'Välj projekt...' : 'Inget projekt (intern/frånvaro)'}</option>
-                  {projects?.map((project) => <option key={project.id} value={project.id}>{project.code} - {project.name}{project.customer ? ` (${project.customer.name})` : ''}</option>)}
-                </select>
-                {!projectRequired && <p className="mt-1 text-xs font-medium text-graphite-500">Projekt är valfritt för intern tid och frånvaro.</p>}
-              </FormField>
+              <div>
+                <FormField label="Projekt">
+                  <select value={projectId} onChange={(event) => setProjectId(event.target.value)} className="input">
+                    <option value="">{projectRequired ? 'Välj projekt...' : 'Inget projekt (intern/frånvaro)'}</option>
+                    {projects?.map((project) => <option key={project.id} value={project.id}>{project.code} - {project.name}{project.customer ? ` (${project.customer.name})` : ''}</option>)}
+                  </select>
+                </FormField>
+                <div className="mt-2 flex min-h-11 flex-wrap items-center justify-between gap-2" aria-live="polite">
+                  <div className="min-w-0 text-xs font-medium">
+                    {!isOnline && Boolean(projects?.length) && <p className="text-amber-800">Offline – visar senast sparade projekt.</p>}
+                    {!isOnline && !projects?.length && <p className="text-amber-800">Offline – inga sparade projekt finns på enheten.</p>}
+                    {isOnline && projectsFailed && <p role="alert" className="text-rose-700">Projektlistan kunde inte uppdateras. Den sparade listan kan vara gammal.</p>}
+                    {isOnline && !projectsFailed && !projectsFetching && projects?.length === 0 && <p className="text-amber-800">Inga aktiva projekt hittades.</p>}
+                    {!projectRequired && <p className="text-graphite-500">Projekt är valfritt för intern tid och frånvaro.</p>}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void refetchProjects()}
+                    disabled={!isOnline || projectsFetching}
+                    className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-md px-3 text-sm font-semibold text-primary-800 transition hover:bg-primary-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 disabled:cursor-not-allowed disabled:text-graphite-400"
+                  >
+                    <RefreshCw className={`h-4 w-4 ${projectsFetching ? 'animate-spin motion-reduce:animate-none' : ''}`} aria-hidden="true" />
+                    {projectsFetching ? 'Uppdaterar projekt' : 'Uppdatera projekt'}
+                  </button>
+                </div>
+              </div>
               <FormField label="Aktivitet">
                 {!!commonActivities.length && (
                   <div className="mb-2 grid grid-cols-2 gap-2">
