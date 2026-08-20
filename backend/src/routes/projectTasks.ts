@@ -6,6 +6,7 @@ import { dateOnlySchema, toDateKey } from '../lib/dateOnly.js';
 import {
   classifyProjectTaskDeadline,
   compareProjectControlRows,
+  escapePrismaLikePattern,
   getProjectTaskCapabilities,
   getProjectTaskCompletion,
   getProjectTaskScope,
@@ -100,17 +101,18 @@ export function createProjectTaskRoutes(db: typeof prisma = prisma): FastifyPlug
     const query = controlQuerySchema.parse(request.query);
     const companyId = request.user.companyId;
     const taskScope = getProjectTaskScope(request.user);
+    const searchQuery = query.q ? escapePrismaLikePattern(query.q) : undefined;
     const projects = await db.project.findMany({
       where: {
         companyId,
         active: true,
         ...(query.projectStatus ? { status: query.projectStatus } : {}),
-        ...(query.q ? {
+        ...(searchQuery ? {
           OR: [
-            { code: { contains: query.q, mode: 'insensitive' } },
-            { name: { contains: query.q, mode: 'insensitive' } },
-            { site: { contains: query.q, mode: 'insensitive' } },
-            { customer: { name: { contains: query.q, mode: 'insensitive' } } },
+            { code: { contains: searchQuery, mode: 'insensitive' } },
+            { name: { contains: searchQuery, mode: 'insensitive' } },
+            { site: { contains: searchQuery, mode: 'insensitive' } },
+            { customer: { name: { contains: searchQuery, mode: 'insensitive' } } },
           ],
         } : {}),
       },
@@ -142,7 +144,6 @@ export function createProjectTaskRoutes(db: typeof prisma = prisma): FastifyPlug
     const now = new Date();
     const tasksByProject = new Map<string, typeof tasks>();
     for (const task of tasks) {
-      if (query.deadline && (task.status === 'DONE' || classifyProjectTaskDeadline(task.dueDate, now) !== query.deadline)) continue;
       const bucket = tasksByProject.get(task.projectId) ?? [];
       bucket.push(task);
       tasksByProject.set(task.projectId, bucket);
@@ -150,7 +151,7 @@ export function createProjectTaskRoutes(db: typeof prisma = prisma): FastifyPlug
     const timeMap = new Map(timeActivity.map((item) => [item.projectId, item._max.updatedAt]));
     const materialMap = new Map(materialActivity.map((item) => [item.projectId, item._max.updatedAt]));
     const updateMap = new Map(updateActivity.map((item) => [item.projectId, item._max.occurredAt]));
-    const rows = projects.map((project) => {
+    const baseRows = projects.map((project) => {
       const projectTasks = tasksByProject.get(project.id) ?? [];
       const openTasks = projectTasks.filter((task) => task.status !== 'DONE');
       const buckets = openTasks.map((task) => classifyProjectTaskDeadline(task.dueDate, now));
@@ -167,20 +168,39 @@ export function createProjectTaskRoutes(db: typeof prisma = prisma): FastifyPlug
         dueTodayCount: buckets.filter((bucket) => bucket === 'TODAY').length,
         upcomingCount: buckets.filter((bucket) => bucket === 'UPCOMING').length,
         waitingCount: openTasks.filter((task) => task.status === 'WAITING').length,
+        openTaskCount: openTasks.length,
         highestPriority,
         earliestDueDate: openTasks[0]?.dueDate ?? null,
         lastActivityAt,
       };
-    }).filter((row) => !(query.deadline || query.assigneeId || query.taskStatus) || row.tasks.length > 0).sort(compareProjectControlRows);
+    }).filter((row) => {
+      if ((query.assigneeId || query.taskStatus) && row.tasks.length === 0) return false;
+      if (request.user.role === 'EMPLOYEE' && !query.q && !query.taskStatus && row.openTaskCount === 0) return false;
+      return true;
+    }).sort(compareProjectControlRows);
+    const rows = query.deadline ? baseRows.flatMap((row) => {
+      const matchingTasks = row.tasks.filter((task) => task.status !== 'DONE' && task.deadlineBucket === query.deadline);
+      if (!matchingTasks.length) return [];
+      return [{
+        ...row,
+        nextTask: matchingTasks[0],
+        tasks: matchingTasks,
+        overdueCount: matchingTasks.filter((task) => task.deadlineBucket === 'OVERDUE').length,
+        dueTodayCount: matchingTasks.filter((task) => task.deadlineBucket === 'TODAY').length,
+        upcomingCount: matchingTasks.filter((task) => task.deadlineBucket === 'UPCOMING').length,
+        waitingCount: matchingTasks.filter((task) => task.status === 'WAITING').length,
+        openTaskCount: matchingTasks.length,
+      }];
+    }) : baseRows;
 
     return {
       summary: {
-        active: rows.length,
-        overdue: rows.reduce((sum, row) => sum + row.overdueCount, 0),
-        dueToday: rows.reduce((sum, row) => sum + row.dueTodayCount, 0),
-        upcoming: rows.reduce((sum, row) => sum + row.upcomingCount, 0),
+        active: baseRows.length,
+        overdue: baseRows.reduce((sum, row) => sum + row.overdueCount, 0),
+        dueToday: baseRows.reduce((sum, row) => sum + row.dueTodayCount, 0),
+        upcoming: baseRows.reduce((sum, row) => sum + row.upcomingCount, 0),
       },
-      items: rows.map(({ earliestDueDate: _earliestDueDate, highestPriority: _highestPriority, ...row }) => row),
+      items: rows.map(({ earliestDueDate: _earliestDueDate, highestPriority: _highestPriority, openTaskCount: _openTaskCount, ...row }) => row),
     };
   });
 

@@ -1,13 +1,13 @@
 import { useState, type FormEvent, type InputHTMLAttributes } from 'react';
 import { Link } from 'react-router-dom';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronDown, ChevronRight, Plus, Search } from 'lucide-react';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { ChevronDown, ChevronRight, Plus, Search, SlidersHorizontal } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { customersApi, projectTasksApi, projectsApi, usersApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
 import type { Project, ProjectControlItem, ProjectTask, ProjectTaskPriority, ProjectTaskStatus, User } from '../types';
 import { AppShell, ConfirmDialog, Dialog, EmptyState, PageHeader } from '../components/ui/design';
-import { ListSkeleton } from '../components/ui/Skeleton';
+import { ListSkeleton, Skeleton } from '../components/ui/Skeleton';
 import { QueryError } from '../components/ui/QueryError';
 import { parseSwedishNumber } from '../utils/format';
 import { toDateInputValue } from '../utils/format';
@@ -20,6 +20,8 @@ const taskStatusLabels: Record<ProjectTaskStatus, string> = {
 };
 
 const priorityLabels: Record<ProjectTaskPriority, string> = { LOW: 'Låg', NORMAL: 'Normal', HIGH: 'Hög' };
+const projectStatusLabels: Record<string, string> = { PLANNED: 'Planerade', ONGOING: 'Pågående', COMPLETED: 'Avslutade' };
+const deadlineLabels: Record<string, string> = { OVERDUE: 'Försenade', TODAY: 'Idag', UPCOMING: 'Kommande sju dagar' };
 
 function formatTaskDate(date: string) {
   return new Intl.DateTimeFormat('sv-SE', { day: 'numeric', month: 'short' }).format(new Date(`${date}T12:00:00`));
@@ -33,18 +35,35 @@ export default function Projects() {
   const [projectStatus, setProjectStatus] = useState('');
   const [assigneeId, setAssigneeId] = useState('');
   const [taskStatus, setTaskStatus] = useState('');
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [taskDialog, setTaskDialog] = useState<{ project?: ProjectControlItem; task?: ProjectTask } | null>(null);
   const [projectDialog, setProjectDialog] = useState<{ project?: Project } | null>(null);
   const [projectToInactivate, setProjectToInactivate] = useState<ProjectControlItem | null>(null);
 
-  const { data, isLoading, isError, refetch } = useQuery({
+  const { data, isLoading, isFetching, isError, refetch } = useQuery({
     queryKey: ['project-control', search, projectStatus, deadline, assigneeId, taskStatus],
     queryFn: () => projectTasksApi.control({ q: search || undefined, projectStatus: projectStatus || undefined, deadline: deadline || undefined, assigneeId: assigneeId || undefined, taskStatus: taskStatus || undefined }),
+    placeholderData: keepPreviousData,
   });
   const { data: users } = useQuery({ queryKey: ['users', 'project-tasks'], queryFn: usersApi.list, enabled: isManager });
   const loadProjectMutation = useMutation({ mutationFn: projectsApi.get, onSuccess: (project) => setProjectDialog({ project }), onError: (error: Error) => toast.error(error.message) });
   const inactivateProjectMutation = useMutation({ mutationFn: projectsApi.delete, onSuccess: () => { toast.success('Projektet inaktiverades'); setProjectToInactivate(null); refetch(); }, onError: (error: Error) => toast.error(error.message) });
+  const activeFilterCount = [projectStatus, deadline, taskStatus, assigneeId].filter(Boolean).length;
+  const hasFilters = activeFilterCount > 0;
+  const activeFilterLabels = [
+    projectStatus ? projectStatusLabels[projectStatus] : null,
+    deadline ? deadlineLabels[deadline] : null,
+    taskStatus ? taskStatusLabels[taskStatus as ProjectTaskStatus] : null,
+    assigneeId ? users?.find((item) => item.id === assigneeId)?.name : null,
+  ].filter(Boolean);
+
+  const clearFilters = () => {
+    setProjectStatus('');
+    setDeadline('');
+    setTaskStatus('');
+    setAssigneeId('');
+  };
 
   const toggleExpanded = (id: string) => {
     setExpanded((current) => {
@@ -60,7 +79,7 @@ export default function Projects() {
     <AppShell>
       <PageHeader
         title="Projekt"
-        description="Se vad som kräver åtgärd och följ nästa steg i alla aktiva projekt."
+        description={isManager ? 'Sök projekt och följ det som kräver åtgärd.' : 'Dina öppna uppgifter visas först. Sök för att öppna ett annat projekt.'}
         action={isManager ? (
           <div className="flex flex-wrap gap-2">
             <button type="button" className="btn-secondary" onClick={() => setProjectDialog({})}>Nytt projekt</button>
@@ -75,37 +94,71 @@ export default function Projects() {
         <QueryError title="Projektkontrollen kunde inte hämtas" description="Kontrollera anslutningen och försök igen." onRetry={() => void refetch()} />
       ) : (
         <>
-          <div className="mb-4 flex flex-wrap gap-x-5 gap-y-2 border-y border-graphite-200 py-3 text-sm text-graphite-600" aria-label="Projektstatus">
-            <span><strong className="text-graphite-950">{data?.summary.active ?? 0}</strong> aktiva</span>
-            <span><strong className="text-rose-700">{data?.summary.overdue ?? 0}</strong> försenade</span>
-            <span><strong className="text-amber-800">{data?.summary.dueToday ?? 0}</strong> idag</span>
-            <span><strong className="text-graphite-950">{data?.summary.upcoming ?? 0}</strong> kommande sju dagar</span>
+          <div className="mb-3 grid grid-cols-4 items-stretch gap-x-2 border-y border-graphite-200 text-xs text-graphite-600 sm:text-sm" aria-label="Projektstatus">
+            <button type="button" className={`min-h-11 min-w-0 border-b-2 px-0.5 font-semibold ${!deadline ? 'border-primary-600 text-graphite-950' : 'border-transparent hover:text-graphite-950'}`} aria-pressed={!deadline} onClick={() => setDeadline('')}>
+              {data?.summary.active ?? 0} projekt
+            </button>
+            <button type="button" className={`min-h-11 min-w-0 border-b-2 px-0.5 font-semibold ${deadline === 'OVERDUE' ? 'border-rose-600 text-rose-700' : 'border-transparent text-rose-700 hover:border-rose-200'}`} aria-pressed={deadline === 'OVERDUE'} onClick={() => setDeadline(deadline === 'OVERDUE' ? '' : 'OVERDUE')}>
+              {data?.summary.overdue === 1 ? '1 försenad' : `${data?.summary.overdue ?? 0} försenade`}
+            </button>
+            <button type="button" className={`min-h-11 min-w-0 border-b-2 px-0.5 font-semibold ${deadline === 'TODAY' ? 'border-amber-700 text-amber-800' : 'border-transparent text-amber-800 hover:border-amber-200'}`} aria-pressed={deadline === 'TODAY'} onClick={() => setDeadline(deadline === 'TODAY' ? '' : 'TODAY')}>
+              {data?.summary.dueToday ?? 0} idag
+            </button>
+            <button type="button" className={`min-h-11 min-w-0 border-b-2 px-0.5 font-semibold ${deadline === 'UPCOMING' ? 'border-primary-600 text-graphite-950' : 'border-transparent hover:text-graphite-950'}`} aria-pressed={deadline === 'UPCOMING'} onClick={() => setDeadline(deadline === 'UPCOMING' ? '' : 'UPCOMING')}>
+              {data?.summary.upcoming ?? 0} / 7 dagar
+            </button>
           </div>
 
-          <div className="mb-4 grid grid-cols-1 gap-3 border-b border-graphite-200 pb-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-[minmax(240px,1fr)_170px_170px_170px_170px]">
-            <label className="relative">
+          <div className="mb-3 flex gap-2 border-b border-graphite-200 pb-3">
+            <label className="relative min-w-0 flex-1">
               <span className="sr-only">Sök projekt</span>
               <Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-graphite-400" aria-hidden="true" />
               <input className="input pl-9" type="search" placeholder="Sök projekt, kund eller plats" value={search} onChange={(event) => setSearch(event.target.value)} />
             </label>
-            <select className="input" aria-label="Filtrera på projektstatus" value={projectStatus} onChange={(event) => setProjectStatus(event.target.value)}>
-              <option value="">Alla projektstatusar</option><option value="PLANNED">Planerade</option><option value="ONGOING">Pågående</option><option value="COMPLETED">Avslutade</option>
-            </select>
-            <select className="input" aria-label="Filtrera på deadline" value={deadline} onChange={(event) => setDeadline(event.target.value)}>
-              <option value="">Alla deadlines</option><option value="OVERDUE">Försenade</option><option value="TODAY">Idag</option><option value="UPCOMING">Kommande sju dagar</option>
-            </select>
-            <select className="input" aria-label="Filtrera på uppgiftsstatus" value={taskStatus} onChange={(event) => setTaskStatus(event.target.value)}>
-              <option value="">Alla statusar</option>{Object.entries(taskStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </select>
-            {isManager ? (
-              <select className="input" aria-label="Filtrera på ansvarig" value={assigneeId} onChange={(event) => setAssigneeId(event.target.value)}>
-                <option value="">Alla ansvariga</option>{users?.filter((item) => item.active && item.role !== 'ACCOUNTANT').map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-              </select>
-            ) : <div className="flex min-h-11 items-center text-sm text-graphite-600">Visar dina uppgifter</div>}
+            <button type="button" className="btn-secondary min-w-11 shrink-0 px-3" onClick={() => setFiltersOpen((current) => !current)} aria-expanded={filtersOpen} aria-controls="project-filters" aria-label={activeFilterCount > 0 ? `Filter, ${activeFilterCount} aktiva` : 'Filter'}>
+              <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
+              <span className="hidden sm:inline">Filter</span>{activeFilterCount > 0 && <span aria-label={`${activeFilterCount} aktiva filter`}>({activeFilterCount})</span>}
+            </button>
           </div>
 
-          {!data?.items.length ? (
-            <EmptyState title="Inga projekt matchar filtret" description="Justera sökningen eller filtren." />
+          {filtersOpen && (
+            <div id="project-filters" className="mb-3 grid grid-cols-1 gap-3 border-b border-graphite-200 pb-4 sm:grid-cols-2 xl:grid-cols-4">
+              <select className="input" aria-label="Filtrera på projektstatus" value={projectStatus} onChange={(event) => setProjectStatus(event.target.value)}>
+                <option value="">Alla projektstatusar</option><option value="PLANNED">Planerade</option><option value="ONGOING">Pågående</option><option value="COMPLETED">Avslutade</option>
+              </select>
+              <select className="input" aria-label="Filtrera på uppgiftsstatus" value={taskStatus} onChange={(event) => setTaskStatus(event.target.value)}>
+                <option value="">Alla uppgiftsstatusar</option>{Object.entries(taskStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select>
+              {isManager ? (
+                <select className="input" aria-label="Filtrera på ansvarig" value={assigneeId} onChange={(event) => setAssigneeId(event.target.value)}>
+                  <option value="">Alla ansvariga</option>{users?.filter((item) => item.active && item.role !== 'ACCOUNTANT').map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                </select>
+              ) : <div className="flex min-h-11 items-center text-sm text-graphite-600">Visar bara dina uppgifter</div>}
+              <button type="button" className="min-h-11 justify-self-start px-1 text-sm font-semibold text-primary-700 disabled:text-graphite-400" onClick={clearFilters} disabled={!hasFilters}>Rensa filter</button>
+            </div>
+          )}
+
+          {hasFilters && (
+            <div className="mb-3 flex min-h-11 flex-wrap items-center justify-between gap-2 border-b border-graphite-200 pb-2 text-sm text-graphite-600">
+              <span>Visar: <strong className="font-semibold text-graphite-950">{activeFilterLabels.join(' · ')}</strong></span>
+              <button type="button" className="min-h-11 px-2 font-semibold text-primary-700" onClick={clearFilters}>Rensa</button>
+            </div>
+          )}
+
+          {isFetching ? (
+            <div className="border-t border-graphite-200 bg-white" role="status" aria-live="polite" aria-label="Uppdaterar projektlistan">
+              {[0, 1, 2, 3].map((row) => (
+                <div key={row} className="flex min-h-[52px] items-center justify-between gap-3 border-b border-graphite-200 px-3 py-1">
+                  <Skeleton width={row === 2 ? '72%' : '58%'} height={16} />
+                  <Skeleton width={44} height={20} />
+                </div>
+              ))}
+            </div>
+          ) : !data?.items.length ? (
+            <EmptyState
+              title={!isManager && !search && !hasFilters ? 'Inga öppna uppgifter' : 'Inga projekt matchar'}
+              description={!isManager && !search && !hasFilters ? 'Sök efter ett projekt om du vill öppna projektinformationen.' : 'Justera sökningen eller filtren.'}
+            />
           ) : (
             <div className="border-t border-graphite-200 bg-white">
               {data.items.map((project) => (
@@ -141,6 +194,9 @@ function ProjectControlRow({ project, open, isManager, showDone, onToggle, onAdd
     onSuccess: () => { toast.success('Uppgiften uppdaterades'); queryClient.invalidateQueries({ queryKey: ['project-control'] }); },
     onError: (error: Error) => toast.error(error.message),
   });
+  const openTaskCount = project.tasks.filter((task) => task.status !== 'DONE').length;
+  const visibleTasks = project.tasks.filter((task) => showDone ? task.status === 'DONE' : task.status !== 'DONE');
+  const canExpand = isManager || visibleTasks.length > 0;
   const rowTone = project.overdueCount > 0 ? 'bg-rose-50/70' : project.dueTodayCount > 0 ? 'bg-orange-50/70' : project.upcomingCount > 0 ? 'bg-amber-50/60' : '';
   const attentionLabel = project.overdueCount > 0
     ? (project.overdueCount === 1 ? '1 försenad' : `${project.overdueCount} försenade`)
@@ -148,8 +204,18 @@ function ProjectControlRow({ project, open, isManager, showDone, onToggle, onAdd
       ? (project.dueTodayCount === 1 ? '1 idag' : `${project.dueTodayCount} idag`)
       : project.upcomingCount > 0
         ? `${project.upcomingCount} kommande`
-        : null;
-  const visibleTasks = project.tasks.filter((task) => showDone ? task.status === 'DONE' : task.status !== 'DONE');
+        : project.waitingCount > 0
+          ? `${project.waitingCount} väntar`
+          : showDone && visibleTasks.length > 0
+            ? `${visibleTasks.length} klara`
+            : openTaskCount > 0
+              ? (openTaskCount === 1 ? '1 uppgift' : `${openTaskCount} uppgifter`)
+              : null;
+  const attentionTone = project.overdueCount > 0
+    ? 'text-rose-700'
+    : project.dueTodayCount > 0 || project.upcomingCount > 0 || project.waitingCount > 0
+      ? 'text-amber-800'
+      : 'text-graphite-600';
 
   const changeStatus = (task: ProjectTask, status: ProjectTaskStatus) => {
     if (status === 'WAITING') onEditTask({ ...task, status });
@@ -158,18 +224,20 @@ function ProjectControlRow({ project, open, isManager, showDone, onToggle, onAdd
 
   return (
     <article className={`border-b border-graphite-200 ${rowTone}`}>
-      <div className="grid min-h-[52px] grid-cols-[minmax(0,1fr)_auto_44px] items-center gap-2 px-3 py-1">
+      <div className={`grid min-h-[52px] items-center gap-2 px-3 py-1 ${canExpand ? 'grid-cols-[minmax(0,1fr)_auto_44px]' : 'grid-cols-[minmax(0,1fr)_auto]'}`}>
         <div className="min-w-0">
           <Link to={`/projects/${project.id}`} className="flex min-h-11 min-w-0 items-center font-semibold text-graphite-950 hover:text-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400">
             <span className="truncate">{project.code} · {project.name}</span>
           </Link>
         </div>
-        {attentionLabel && <span className={`whitespace-nowrap text-xs font-semibold ${project.overdueCount > 0 ? 'text-rose-700' : 'text-amber-800'}`}>{attentionLabel}</span>}
-        <button type="button" className="icon-button col-start-3 border-0" onClick={onToggle} aria-expanded={open} aria-controls={`project-tasks-${project.id}`} aria-label={`${open ? 'Dölj' : 'Visa'} uppgifter för ${project.name}`}>
-          <ChevronDown aria-hidden="true" className={`h-5 w-5 transition ${open ? 'rotate-180' : ''}`} />
-        </button>
+        {attentionLabel && <span className={`whitespace-nowrap text-xs font-semibold ${attentionTone}`}>{attentionLabel}</span>}
+        {canExpand && (
+          <button type="button" className="icon-button col-start-3 border-0" onClick={onToggle} aria-expanded={open} aria-controls={`project-tasks-${project.id}`} aria-label={`${open ? 'Dölj' : 'Visa'} ${isManager ? 'uppgifter och projektåtgärder' : 'uppgifter'} för ${project.name}`}>
+            <ChevronDown aria-hidden="true" className={`h-5 w-5 transition ${open ? 'rotate-180' : ''}`} />
+          </button>
+        )}
       </div>
-      {open && (
+      {open && canExpand && (
         <div id={`project-tasks-${project.id}`} className="mx-3 mb-3 rounded-lg border border-graphite-200 bg-white px-3">
           <div className="flex min-h-12 flex-wrap items-center justify-between gap-2">
             <h2 className="text-sm font-semibold text-graphite-950">{showDone ? 'Klara uppgifter' : 'Öppna uppgifter'}</h2>

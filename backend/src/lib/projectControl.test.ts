@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { classifyProjectTaskDeadline, compareProjectControlRows, getProjectTaskCapabilities, getProjectTaskCompletion, getProjectTaskScope } from './projectControl.js';
+import { classifyProjectTaskDeadline, compareProjectControlRows, escapePrismaLikePattern, getProjectTaskCapabilities, getProjectTaskCompletion, getProjectTaskScope } from './projectControl.js';
 
 test('keeps task access inside the company and separates work from economy roles', () => {
   assert.deepEqual(getProjectTaskScope({ id: 'employee-1', companyId: 'company-a', role: 'EMPLOYEE' }), { companyId: 'company-a', assigneeId: 'employee-1' });
@@ -8,6 +8,10 @@ test('keeps task access inside the company and separates work from economy roles
   assert.equal(getProjectTaskScope({ id: 'accountant-1', companyId: 'company-a', role: 'ACCOUNTANT' }), null);
   assert.deepEqual(getProjectTaskCapabilities('ACCOUNTANT'), { workQueue: false, manage: false, portfolio: true });
   assert.deepEqual(getProjectTaskCapabilities('ADMIN'), { workQueue: true, manage: true, portfolio: true });
+});
+
+test('escapes Prisma LIKE wildcards in literal project searches', () => {
+  assert.equal(escapePrismaLikePattern('100%_\\'), '100\\%\\_\\\\');
 });
 
 test('classifies project task deadlines from the Swedish calendar day', () => {

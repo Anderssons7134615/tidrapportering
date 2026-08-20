@@ -59,6 +59,50 @@ test('employee status mutation is scoped to both company and own assignment', as
   await app.close();
 });
 
+test('employee queue defaults to projects with own open tasks but search can find another project', async () => {
+  const projects = [
+    { id: 'project-1', code: '1001', name: 'Eget arbete', site: null, status: 'ONGOING', active: true, updatedAt: new Date(), customer: null },
+    { id: 'project-2', code: '1002', name: 'Sökbart projekt', site: null, status: 'ONGOING', active: true, updatedAt: new Date(), customer: null },
+  ];
+  const db = {
+    project: { findMany: async () => projects },
+    projectTask: { findMany: async () => [task()] },
+    timeEntry: { groupBy: async () => [] },
+    projectMaterial: { groupBy: async () => [] },
+    projectUpdate: { groupBy: async () => [] },
+  };
+  const app = await appWith(db);
+
+  const queue = await app.inject({ method: 'GET', url: '/api/project-control/projects', headers: { 'x-test-role': 'EMPLOYEE' } });
+  assert.equal(queue.statusCode, 200);
+  assert.deepEqual(queue.json().items.map((item: any) => item.id), ['project-1']);
+  assert.equal(queue.json().summary.active, 1);
+
+  const search = await app.inject({ method: 'GET', url: '/api/project-control/projects?q=projekt', headers: { 'x-test-role': 'EMPLOYEE' } });
+  assert.equal(search.statusCode, 200);
+  assert.deepEqual(search.json().items.map((item: any) => item.id), ['project-1', 'project-2']);
+  assert.equal(search.json().summary.active, 2);
+
+  await app.close();
+});
+
+test('project search treats Prisma LIKE wildcard characters as literal text', async () => {
+  let projectWhere: any;
+  const db = {
+    project: { findMany: async (args: any) => { projectWhere = args.where; return []; } },
+  };
+  const app = await appWith(db);
+
+  const response = await app.inject({ method: 'GET', url: '/api/project-control/projects?q=%25_%5C', headers: { 'x-test-role': 'ADMIN' } });
+  assert.equal(response.statusCode, 200);
+  assert.equal(projectWhere.OR[0].code.contains, '\\%\\_\\\\');
+  assert.equal(projectWhere.OR[1].name.contains, '\\%\\_\\\\');
+  assert.equal(projectWhere.OR[2].site.contains, '\\%\\_\\\\');
+  assert.equal(projectWhere.OR[3].customer.name.contains, '\\%\\_\\\\');
+
+  await app.close();
+});
+
 test('employee can change own status but only send a follow-up date for waiting', async () => {
   const current = task();
   let updateData: any;
@@ -92,6 +136,26 @@ test('deadline filter excludes completed tasks and projects without matching ope
   const response = await app.inject({ method: 'GET', url: '/api/project-control/projects?deadline=TODAY', headers: { 'x-test-role': 'ADMIN' } });
   assert.equal(response.statusCode, 200);
   assert.deepEqual(response.json().items, []);
+  await app.close();
+});
+
+test('deadline filter keeps overview counts stable and returns only matching tasks', async () => {
+  const db = {
+    project: { findMany: async () => [
+      { id: 'project-1', code: '1001', name: 'Projekt ett', site: null, status: 'ONGOING', active: true, updatedAt: new Date(), customer: null },
+      { id: 'project-2', code: '1002', name: 'Projekt två', site: null, status: 'ONGOING', active: true, updatedAt: new Date(), customer: null },
+    ] },
+    projectTask: { findMany: async () => [
+      task({ id: 'overdue', dueDate: new Date('2020-01-01T00:00:00.000Z') }),
+      task({ id: 'later', dueDate: new Date('2099-01-01T00:00:00.000Z') }),
+    ] },
+    timeEntry: { groupBy: async () => [] }, projectMaterial: { groupBy: async () => [] }, projectUpdate: { groupBy: async () => [] },
+  };
+  const app = await appWith(db);
+  const response = await app.inject({ method: 'GET', url: '/api/project-control/projects?deadline=OVERDUE', headers: { 'x-test-role': 'ADMIN' } });
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(response.json().summary, { active: 2, overdue: 1, dueToday: 0, upcoming: 0 });
+  assert.deepEqual(response.json().items.map((item: any) => ({ id: item.id, tasks: item.tasks.map((itemTask: any) => itemTask.id) })), [{ id: 'project-1', tasks: ['overdue'] }]);
   await app.close();
 });
 

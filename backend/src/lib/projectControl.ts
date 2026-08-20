@@ -21,6 +21,10 @@ export function getProjectTaskScope(actor: { id: string; companyId: string; role
   };
 }
 
+export function escapePrismaLikePattern(value: string) {
+  return value.replace(/[\\%_]/g, '\\$&');
+}
+
 export type ProjectControlSortableRow = {
   code: string;
   overdueCount: number;
