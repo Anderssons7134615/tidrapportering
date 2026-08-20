@@ -25,29 +25,6 @@ function formatTaskDate(date: string) {
   return new Intl.DateTimeFormat('sv-SE', { day: 'numeric', month: 'short' }).format(new Date(`${date}T12:00:00`));
 }
 
-function formatActivity(date: string | null) {
-  if (!date) return 'Ingen aktivitet registrerad';
-  const stockholmDay = (value: Date) => {
-    const parts = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Stockholm', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(value);
-    const part = (type: Intl.DateTimeFormatPartTypes) => Number(parts.find((item) => item.type === type)?.value);
-    return Date.UTC(part('year'), part('month') - 1, part('day'));
-  };
-  const days = Math.max(0, Math.round((stockholmDay(new Date()) - stockholmDay(new Date(date))) / 86_400_000));
-  if (days === 0) return 'Aktivitet idag';
-  if (days === 1) return 'Aktivitet igår';
-  return `Aktivitet för ${days} dagar sedan`;
-}
-
-function formatTaskSummary(project: ProjectControlItem) {
-  const parts = [
-    project.overdueCount ? (project.overdueCount === 1 ? '1 försenad' : `${project.overdueCount} försenade`) : null,
-    project.dueTodayCount ? (project.dueTodayCount === 1 ? '1 förfaller idag' : `${project.dueTodayCount} förfaller idag`) : null,
-    project.waitingCount ? `${project.waitingCount} väntar` : null,
-    project.upcomingCount ? `${project.upcomingCount} kommande` : null,
-  ].filter(Boolean);
-  return parts.length ? parts.join(' · ') : 'Inget brådskande';
-}
-
 export default function Projects() {
   const { user } = useAuthStore();
   const isManager = user?.role === 'ADMIN' || user?.role === 'SUPERVISOR';
@@ -131,9 +108,6 @@ export default function Projects() {
             <EmptyState title="Inga projekt matchar filtret" description="Justera sökningen eller filtren." />
           ) : (
             <div className="border-t border-graphite-200 bg-white">
-              <div className="hidden grid-cols-[minmax(180px,1.2fr)_minmax(220px,1.5fr)_140px_120px_44px] gap-4 px-3 py-2 text-xs font-semibold text-graphite-500 md:grid">
-                <span>Projekt</span><span>Nästa uppgift</span><span>Ansvarig</span><span>Deadline</span><span className="sr-only">Visa</span>
-              </div>
               {data.items.map((project) => (
                 <ProjectControlRow
                   key={project.id}
@@ -168,6 +142,13 @@ function ProjectControlRow({ project, open, isManager, showDone, onToggle, onAdd
     onError: (error: Error) => toast.error(error.message),
   });
   const rowTone = project.overdueCount > 0 ? 'bg-rose-50/70' : project.dueTodayCount > 0 ? 'bg-orange-50/70' : project.upcomingCount > 0 ? 'bg-amber-50/60' : '';
+  const attentionLabel = project.overdueCount > 0
+    ? (project.overdueCount === 1 ? '1 försenad' : `${project.overdueCount} försenade`)
+    : project.dueTodayCount > 0
+      ? (project.dueTodayCount === 1 ? '1 idag' : `${project.dueTodayCount} idag`)
+      : project.upcomingCount > 0
+        ? `${project.upcomingCount} kommande`
+        : null;
   const visibleTasks = project.tasks.filter((task) => showDone ? task.status === 'DONE' : task.status !== 'DONE');
 
   const changeStatus = (task: ProjectTask, status: ProjectTaskStatus) => {
@@ -177,21 +158,14 @@ function ProjectControlRow({ project, open, isManager, showDone, onToggle, onAdd
 
   return (
     <article className={`border-b border-graphite-200 ${rowTone}`}>
-      <div className="grid min-h-[76px] grid-cols-[minmax(0,1fr)_44px] gap-2 px-3 py-3 md:grid-cols-[minmax(180px,1.2fr)_minmax(220px,1.5fr)_140px_120px_44px] md:gap-4 md:items-center">
-        <div className="col-start-1 row-start-1 min-w-0">
-          <Link to={`/projects/${project.id}`} className="font-semibold text-graphite-950 hover:text-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400">{project.code} · {project.name}</Link>
-          <p className="mt-1 text-xs text-graphite-600">{project.status === 'PLANNED' ? 'Planerad' : project.status === 'COMPLETED' ? 'Avslutad' : 'Pågående'} · {project.customer?.name || 'Intern'}{project.site ? ` · ${project.site}` : ''}</p>
-          <p className="mt-1 text-xs text-graphite-500">{formatActivity(project.lastActivityAt)}</p>
+      <div className="grid min-h-[52px] grid-cols-[minmax(0,1fr)_auto_44px] items-center gap-2 px-3 py-1">
+        <div className="min-w-0">
+          <Link to={`/projects/${project.id}`} className="flex min-h-11 min-w-0 items-center font-semibold text-graphite-950 hover:text-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400">
+            <span className="truncate">{project.code} · {project.name}</span>
+          </Link>
         </div>
-        <div className="col-span-2 col-start-1 row-start-2 min-w-0 md:col-span-1 md:col-start-2 md:row-start-1">
-          <p className="font-semibold text-graphite-900">{project.nextTask?.title || 'Ingen öppen uppgift'}</p>
-          <p className="mt-1 text-xs text-graphite-600">{formatTaskSummary(project)}</p>
-        </div>
-        <div className="col-span-2 col-start-1 row-start-3 text-sm text-graphite-700 md:col-span-1 md:col-start-3 md:row-start-1">{project.nextTask?.assignee.name || '—'}</div>
-        <div className={`col-span-2 col-start-1 row-start-4 text-sm font-semibold md:col-span-1 md:col-start-4 md:row-start-1 ${project.nextTask?.deadlineBucket === 'OVERDUE' ? 'text-rose-700' : project.nextTask?.deadlineBucket === 'TODAY' ? 'text-amber-800' : 'text-graphite-700'}`}>
-          {project.nextTask ? (project.nextTask.deadlineBucket === 'OVERDUE' ? `Försenad · ${formatTaskDate(project.nextTask.dueDate)}` : project.nextTask.deadlineBucket === 'TODAY' ? 'Idag' : formatTaskDate(project.nextTask.dueDate)) : '—'}
-        </div>
-        <button type="button" className="icon-button col-start-2 row-start-1 self-start border-0 md:col-start-5 md:row-start-1 md:self-center" onClick={onToggle} aria-expanded={open} aria-controls={`project-tasks-${project.id}`} aria-label={`${open ? 'Dölj' : 'Visa'} uppgifter för ${project.name}`}>
+        {attentionLabel && <span className={`whitespace-nowrap text-xs font-semibold ${project.overdueCount > 0 ? 'text-rose-700' : 'text-amber-800'}`}>{attentionLabel}</span>}
+        <button type="button" className="icon-button col-start-3 border-0" onClick={onToggle} aria-expanded={open} aria-controls={`project-tasks-${project.id}`} aria-label={`${open ? 'Dölj' : 'Visa'} uppgifter för ${project.name}`}>
           <ChevronDown aria-hidden="true" className={`h-5 w-5 transition ${open ? 'rotate-180' : ''}`} />
         </button>
       </div>
