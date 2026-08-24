@@ -1,7 +1,7 @@
 import { FastifyPluginAsync } from 'fastify';
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
-import { prisma } from '../index.js';
+import { prisma } from '../lib/prisma.js';
 import { requireRoles } from '../lib/authorization.js';
 import { addUtcDays, dateOnlySchema, getWeekEndUtc, getWeekStartUtc, toDateKey } from '../lib/dateOnly.js';
 import { canApproveWeek } from '../lib/safety.js';
@@ -247,8 +247,8 @@ const weekLockRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(404).send({ error: 'Veckolås hittades inte' });
     }
 
-    if (!canApproveWeek(request.user.id, weekLock.userId)) {
-      return reply.status(403).send({ error: 'Du kan inte godkänna din egen vecka. En annan arbetsledare eller admin måste attestera den.' });
+    if (!canApproveWeek(request.user.role, request.user.id, weekLock.userId)) {
+      return reply.status(403).send({ error: 'Endast admin kan godkänna sin egen vecka. Arbetsledare behöver en annan attestant.' });
     }
 
     if (weekLock.status !== 'SUBMITTED') {
@@ -310,7 +310,10 @@ const weekLockRoutes: FastifyPluginAsync = async (fastify) => {
             action: 'APPROVE',
             entityType: 'WeekLock',
             entityId: id,
-            newValue: JSON.stringify({ status: 'APPROVED' }),
+            newValue: JSON.stringify({
+              status: 'APPROVED',
+              selfApproval: request.user.id === weekLock.userId,
+            }),
           },
         });
 

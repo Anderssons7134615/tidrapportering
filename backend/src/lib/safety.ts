@@ -63,8 +63,8 @@ export const materialMutationErrors = {
   },
 } as const;
 
-export function canApproveWeek(reviewerId: string, weekOwnerId: string) {
-  return reviewerId !== weekOwnerId;
+export function canApproveWeek(reviewerRole: string, reviewerId: string, weekOwnerId: string) {
+  return reviewerId !== weekOwnerId || reviewerRole === 'ADMIN';
 }
 
 export function canViewProjectHours(role: string, employeeCanSeeResults: boolean) {

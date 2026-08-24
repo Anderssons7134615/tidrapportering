@@ -13,9 +13,12 @@ import {
   withoutHourlyCost,
 } from './safety.js';
 
-test('blocks self approval but permits another reviewer', () => {
-  assert.equal(canApproveWeek('reviewer-1', 'reviewer-1'), false);
-  assert.equal(canApproveWeek('reviewer-2', 'reviewer-1'), true);
+test('only admins can approve their own week', () => {
+  assert.equal(canApproveWeek('ADMIN', 'reviewer-1', 'reviewer-1'), true);
+  assert.equal(canApproveWeek('SUPERVISOR', 'reviewer-1', 'reviewer-1'), false);
+  assert.equal(canApproveWeek('EMPLOYEE', 'reviewer-1', 'reviewer-1'), false);
+  assert.equal(canApproveWeek('ACCOUNTANT', 'reviewer-1', 'reviewer-1'), false);
+  assert.equal(canApproveWeek('SUPERVISOR', 'reviewer-2', 'reviewer-1'), true);
 });
 
 test('employee project visibility means approved project hours, never financials', () => {

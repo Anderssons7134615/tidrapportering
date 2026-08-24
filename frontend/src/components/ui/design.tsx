@@ -303,6 +303,7 @@ export function ConfirmDialog({
   description,
   confirmLabel = 'Bekräfta',
   confirmVariant = 'danger',
+  consequence = 'Den här åtgärden går inte att ångra.',
   isLoading,
 }: {
   open: boolean;
@@ -312,6 +313,7 @@ export function ConfirmDialog({
   description?: string;
   confirmLabel?: string;
   confirmVariant?: 'danger' | 'success' | 'primary';
+  consequence?: string;
   isLoading?: boolean;
 }) {
   return (
@@ -330,7 +332,7 @@ export function ConfirmDialog({
         </div>
       }
     >
-      <p className="text-sm leading-6 text-graphite-700">Den här åtgärden går inte att ångra.</p>
+      <p className="text-sm leading-6 text-graphite-700">{consequence}</p>
     </Dialog>
   );
 }

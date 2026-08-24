@@ -97,6 +97,8 @@ export default function Approval() {
   const pendingLocks = weekLocks?.filter((lock) => lock.status === 'SUBMITTED') || [];
   const processedLocks = weekLocks?.filter((lock) => lock.status !== 'SUBMITTED') || [];
   const pendingHours = pendingLocks.reduce((sum, lock) => sum + (lock.totalHours || 0), 0);
+  const canApproveLock = (lock: WeekLock) => lock.userId !== user?.id || user?.role === 'ADMIN';
+  const approvalIsOwnWeek = approvalCandidate?.userId === user?.id;
 
   const rows = useMemo(() => {
     return pendingLocks.map((lock) => {
@@ -195,7 +197,8 @@ export default function Approval() {
                         setRejectingId,
                         rejectMutation,
                         deleteEntryMutation,
-                        canApprove: lock.userId !== user?.id,
+                        canApprove: canApproveLock(lock),
+                        selfApproval: lock.userId === user?.id && user?.role === 'ADMIN',
                         onApprove: () => setApprovalCandidate(lock),
                       })}
                     </div>
@@ -254,15 +257,18 @@ export default function Approval() {
                         )}
                       </td>
                       <td className="px-3 py-3 text-right">
-                        <button
-                          onClick={() => setApprovalCandidate(lock)}
-                          disabled={approveMutation.isPending || !detailsLoaded || isLoadingDetails || isWeekDetailsError || lock.isCompleteForApproval === false || lock.userId === user?.id}
-                          className="btn-success disabled:cursor-not-allowed disabled:opacity-50"
-                          title={!detailsLoaded ? 'Öppna veckan och granska tidraderna innan du godkänner' : lock.userId === user?.id ? 'En annan arbetsledare eller admin måste godkänna din egen vecka' : lock.isCompleteForApproval === false ? 'Kan inte godkänna: veckan saknar tid måndag-fredag' : 'Godkänn vecka'}
-                        >
-                          <CheckCircle className="h-4 w-4" />
-                          {!detailsLoaded ? 'Granska först' : lock.userId === user?.id ? 'Egen vecka' : lock.isCompleteForApproval === false ? 'Ej komplett' : 'Godkänn'}
-                        </button>
+                        <div className="flex flex-col items-end gap-1">
+                          <button
+                            onClick={() => setApprovalCandidate(lock)}
+                            disabled={approveMutation.isPending || !detailsLoaded || isLoadingDetails || isWeekDetailsError || lock.isCompleteForApproval === false || !canApproveLock(lock)}
+                            className="btn-success disabled:cursor-not-allowed disabled:opacity-50"
+                            title={!detailsLoaded ? 'Öppna veckan och granska tidraderna innan du godkänner' : !canApproveLock(lock) ? 'Endast admin kan godkänna sin egen vecka' : lock.isCompleteForApproval === false ? 'Kan inte godkänna: veckan saknar tid måndag-fredag' : lock.userId === user?.id ? 'Godkänn din egen vecka. Självattesten loggas.' : 'Godkänn vecka'}
+                          >
+                            <CheckCircle className="h-4 w-4" />
+                            {!detailsLoaded ? 'Granska först' : !canApproveLock(lock) ? 'Egen vecka' : lock.isCompleteForApproval === false ? 'Ej komplett' : lock.userId === user?.id ? 'Godkänn egen' : 'Godkänn'}
+                          </button>
+                          {detailsLoaded && !canApproveLock(lock) && <span className="max-w-40 text-xs leading-4 text-graphite-600">Endast admin kan attestera egen vecka.</span>}
+                        </div>
                       </td>
                     </tr>
                     {expandedId === lock.id && (
@@ -281,7 +287,8 @@ export default function Approval() {
                             setRejectingId,
                             rejectMutation,
                             deleteEntryMutation,
-                            canApprove: lock.userId !== user?.id,
+                            canApprove: canApproveLock(lock),
+                            selfApproval: lock.userId === user?.id && user?.role === 'ADMIN',
                             onApprove: () => setApprovalCandidate(lock),
                           })}
                         </td>
@@ -323,10 +330,14 @@ export default function Approval() {
         open={Boolean(approvalCandidate)}
         onClose={() => setApprovalCandidate(null)}
         onConfirm={() => approvalCandidate && approveMutation.mutate(approvalCandidate.id)}
-        title="Godkänn vecka"
-        description={approvalCandidate ? `Godkänn ${approvalCandidate.user?.name || 'den här personen'}s vecka med ${formatHours(approvalCandidate.totalHours)} rapporterad tid?` : undefined}
-        confirmLabel="Godkänn vecka"
+        title={approvalIsOwnWeek ? 'Attestera din egen vecka' : 'Godkänn vecka'}
+        description={approvalCandidate ? approvalIsOwnWeek
+          ? `Du attesterar din egen vecka med ${formatHours(approvalCandidate.totalHours)} rapporterad tid. Självattesten sparas i auditloggen.`
+          : `Godkänn ${approvalCandidate.user?.name || 'den här personen'}s vecka med ${formatHours(approvalCandidate.totalHours)} rapporterad tid?`
+          : undefined}
+        confirmLabel={approvalIsOwnWeek ? 'Attestera egen vecka' : 'Godkänn vecka'}
         confirmVariant="success"
+        consequence="Godkännandet loggas. Veckan kan öppnas igen om tiden behöver rättas."
         isLoading={approveMutation.isPending}
       />
       <ConfirmDialog
@@ -357,6 +368,7 @@ function renderWeekDetails({
   rejectMutation,
   deleteEntryMutation,
   canApprove,
+  selfApproval,
   onApprove,
 }: {
   lock: WeekLock;
@@ -372,6 +384,7 @@ function renderWeekDetails({
   rejectMutation: any;
   deleteEntryMutation: any;
   canApprove: boolean;
+  selfApproval: boolean;
   onApprove: () => void;
 }) {
   if (isLoading) return <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-graphite-500" /></div>;
@@ -442,9 +455,9 @@ function renderWeekDetails({
         </div>
       ) : (
         <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={onApprove} disabled={lock.isCompleteForApproval === false || !canApprove} className="btn-success" title={!canApprove ? 'En annan arbetsledare eller admin måste godkänna din egen vecka' : lock.isCompleteForApproval === false ? 'Veckan saknar tid måndag-fredag' : 'Godkänn vecka'}>
+          <button type="button" onClick={onApprove} disabled={lock.isCompleteForApproval === false || !canApprove} className="btn-success" title={!canApprove ? 'Endast admin kan godkänna sin egen vecka' : lock.isCompleteForApproval === false ? 'Veckan saknar tid måndag-fredag' : selfApproval ? 'Godkänn din egen vecka. Självattesten loggas.' : 'Godkänn vecka'}>
             <CheckCircle className="h-4 w-4" />
-            {canApprove ? 'Godkänn vecka' : 'Egen vecka'}
+            {!canApprove ? 'Egen vecka' : selfApproval ? 'Godkänn egen vecka' : 'Godkänn vecka'}
           </button>
           <button type="button" onClick={() => setRejectingId(lock.id)} className="btn-secondary">
             <XCircle className="h-4 w-4" />
@@ -452,6 +465,7 @@ function renderWeekDetails({
           </button>
         </div>
       )}
+      {!canApprove && <p className="mt-2 text-sm leading-5 text-graphite-600">Endast admin kan attestera sin egen vecka.</p>}
     </div>
   );
 }
