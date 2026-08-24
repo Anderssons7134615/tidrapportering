@@ -79,7 +79,7 @@ export default function Projects() {
     <AppShell>
       <PageHeader
         title="Projekt"
-        description={isManager ? 'Sök projekt och följ det som kräver åtgärd.' : 'Dina öppna uppgifter visas först. Sök för att öppna ett annat projekt.'}
+        description={isManager ? 'Sök projekt och följ det som kräver åtgärd.' : 'Alla aktiva projekt visas. Dina öppna uppgifter visas först.'}
         action={isManager ? (
           <div className="flex flex-wrap gap-2">
             <button type="button" className="btn-secondary" onClick={() => setProjectDialog({})}>Nytt projekt</button>
@@ -133,7 +133,7 @@ export default function Projects() {
                 <select className="input" aria-label="Filtrera på ansvarig" value={assigneeId} onChange={(event) => setAssigneeId(event.target.value)}>
                   <option value="">Alla ansvariga</option>{users?.filter((item) => item.active && item.role !== 'ACCOUNTANT').map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
                 </select>
-              ) : <div className="flex min-h-11 items-center text-sm text-graphite-600">Visar bara dina uppgifter</div>}
+              ) : <div className="flex min-h-11 items-center text-sm text-graphite-600">Dina öppna uppgifter visas först</div>}
               <button type="button" className="min-h-11 justify-self-start px-1 text-sm font-semibold text-primary-700 disabled:text-graphite-400" onClick={clearFilters} disabled={!hasFilters}>Rensa filter</button>
             </div>
           )}
@@ -156,8 +156,8 @@ export default function Projects() {
             </div>
           ) : !data?.items.length ? (
             <EmptyState
-              title={!isManager && !search && !hasFilters ? 'Inga öppna uppgifter' : 'Inga projekt matchar'}
-              description={!isManager && !search && !hasFilters ? 'Sök efter ett projekt om du vill öppna projektinformationen.' : 'Justera sökningen eller filtren.'}
+              title={!search && !hasFilters ? 'Inga aktiva projekt' : 'Inga projekt matchar'}
+              description={!search && !hasFilters ? 'Det finns inga aktiva projekt att visa.' : 'Justera sökningen eller filtren.'}
             />
           ) : (
             <div className="border-t border-graphite-200 bg-white">

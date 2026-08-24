@@ -175,9 +175,14 @@ export function createProjectTaskRoutes(db: typeof prisma = prisma): FastifyPlug
       };
     }).filter((row) => {
       if ((query.assigneeId || query.taskStatus) && row.tasks.length === 0) return false;
-      if (request.user.role === 'EMPLOYEE' && !query.q && !query.taskStatus && row.openTaskCount === 0) return false;
       return true;
-    }).sort(compareProjectControlRows);
+    }).sort((a, b) => {
+      if (request.user.role === 'EMPLOYEE') {
+        const ownOpenTaskDifference = Number(b.openTaskCount > 0) - Number(a.openTaskCount > 0);
+        if (ownOpenTaskDifference !== 0) return ownOpenTaskDifference;
+      }
+      return compareProjectControlRows(a, b);
+    });
     const rows = query.deadline ? baseRows.flatMap((row) => {
       const matchingTasks = row.tasks.filter((task) => task.status !== 'DONE' && task.deadlineBucket === query.deadline);
       if (!matchingTasks.length) return [];

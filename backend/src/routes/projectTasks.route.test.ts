@@ -59,14 +59,24 @@ test('employee status mutation is scoped to both company and own assignment', as
   await app.close();
 });
 
-test('employee queue defaults to projects with own open tasks but search can find another project', async () => {
+test('employee queue shows all active projects with own open tasks first', async () => {
+  let projectWhere: any;
+  let taskWhere: any;
   const projects = [
-    { id: 'project-1', code: '1001', name: 'Eget arbete', site: null, status: 'ONGOING', active: true, updatedAt: new Date(), customer: null },
-    { id: 'project-2', code: '1002', name: 'Sökbart projekt', site: null, status: 'ONGOING', active: true, updatedAt: new Date(), customer: null },
+    { id: 'project-1', code: '1001', name: 'Eget arbete', site: null, status: 'ONGOING', active: true, updatedAt: new Date('2026-08-01T08:00:00.000Z'), customer: null },
+    { id: 'project-2', code: '1002', name: 'Projekt utan egen uppgift', site: null, status: 'ONGOING', active: true, updatedAt: new Date('2026-08-20T08:00:00.000Z'), customer: null },
   ];
+  const ownTask = task({ priority: 'LOW', dueDate: new Date('2099-08-13T00:00:00.000Z') });
+  const colleagueTask = task({
+    id: 'task-2', projectId: 'project-2', assigneeId: 'employee-2',
+    assignee: { id: 'employee-2', name: 'Kollega' },
+  });
   const db = {
-    project: { findMany: async () => projects },
-    projectTask: { findMany: async () => [task()] },
+    project: { findMany: async (args: any) => { projectWhere = args.where; return projects; } },
+    projectTask: { findMany: async (args: any) => {
+      taskWhere = args.where;
+      return [ownTask, colleagueTask].filter((item) => !args.where.assigneeId || item.assigneeId === args.where.assigneeId);
+    } },
     timeEntry: { groupBy: async () => [] },
     projectMaterial: { groupBy: async () => [] },
     projectUpdate: { groupBy: async () => [] },
@@ -75,8 +85,14 @@ test('employee queue defaults to projects with own open tasks but search can fin
 
   const queue = await app.inject({ method: 'GET', url: '/api/project-control/projects', headers: { 'x-test-role': 'EMPLOYEE' } });
   assert.equal(queue.statusCode, 200);
-  assert.deepEqual(queue.json().items.map((item: any) => item.id), ['project-1']);
-  assert.equal(queue.json().summary.active, 1);
+  assert.deepEqual(queue.json().items.map((item: any) => item.id), ['project-1', 'project-2']);
+  assert.equal(queue.json().summary.active, 2);
+  assert.deepEqual(projectWhere, { companyId: 'company-a', active: true });
+  assert.deepEqual(taskWhere, {
+    companyId: 'company-a', assigneeId: 'employee-1',
+    projectId: { in: ['project-1', 'project-2'] }, archivedAt: null,
+  });
+  assert.deepEqual(queue.json().items.find((item: any) => item.id === 'project-2').tasks, []);
 
   const search = await app.inject({ method: 'GET', url: '/api/project-control/projects?q=projekt', headers: { 'x-test-role': 'EMPLOYEE' } });
   assert.equal(search.statusCode, 200);
