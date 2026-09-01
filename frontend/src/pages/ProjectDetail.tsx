@@ -323,7 +323,7 @@ export default function ProjectDetail() {
         </>}
       </div>
 
-      <Tabs tabs={visibleTabs} active={activeTab} onChange={setActiveTab} />
+      <Tabs tabs={visibleTabs} active={activeTab} onChange={setActiveTab} label="Projektinnehåll">
 
       {activeTab === 'overview' && (
         <div className={`grid grid-cols-1 gap-5 ${canSeeMoney ? 'xl:grid-cols-[1.1fr_0.9fr]' : ''}`}>
@@ -635,6 +635,7 @@ export default function ProjectDetail() {
           />
         </TaskSection>
       )}
+      </Tabs>
     </AppShell>
   );
 }

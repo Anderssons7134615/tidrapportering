@@ -1,4 +1,4 @@
-import { useId, useLayoutEffect, useRef, type HTMLAttributes, type ReactNode } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, type HTMLAttributes, type KeyboardEvent, type ReactNode } from 'react';
 import { AlertCircle, Loader2, X } from 'lucide-react';
 
 type Tone = 'blue' | 'green' | 'yellow' | 'red' | 'gray' | 'slate' | 'orange' | 'dark';
@@ -208,28 +208,91 @@ export function Tabs({
   tabs,
   active,
   onChange,
+  label,
+  children,
 }: {
   tabs: Array<{ id: string; label: string }>;
   active: string;
   onChange: (id: string) => void;
+  label: string;
+  children: ReactNode;
 }) {
+  const tabsId = useId();
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const tabId = (id: string) => `${tabsId}-tab-${id}`;
+  const panelId = (id: string) => `${tabsId}-panel-${id}`;
+  const selectedId = tabs.some((tab) => tab.id === active) ? active : tabs[0]?.id;
+
+  useEffect(() => {
+    if (selectedId && selectedId !== active) onChange(selectedId);
+  }, [active, onChange, selectedId]);
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>, currentIndex: number) => {
+    let nextIndex: number;
+
+    switch (event.key) {
+      case 'ArrowRight':
+        nextIndex = (currentIndex + 1) % tabs.length;
+        break;
+      case 'ArrowLeft':
+        nextIndex = (currentIndex - 1 + tabs.length) % tabs.length;
+        break;
+      case 'Home':
+        nextIndex = 0;
+        break;
+      case 'End':
+        nextIndex = tabs.length - 1;
+        break;
+      default:
+        return;
+    }
+
+    event.preventDefault();
+    onChange(tabs[nextIndex].id);
+    tabRefs.current[nextIndex]?.focus();
+  };
+
   return (
-    <div role="tablist" className="flex gap-3 overflow-x-auto border-b border-graphite-200 bg-transparent sm:gap-5">
-      {tabs.map((tab) => (
-        <button
-          key={tab.id}
-          type="button"
-          role="tab"
-          aria-selected={active === tab.id}
-          onClick={() => onChange(tab.id)}
-          className={`min-h-11 whitespace-nowrap border-b-2 px-1 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2 ${
-            active === tab.id ? 'border-primary-600 text-primary-800' : 'border-transparent text-graphite-600 hover:border-graphite-300 hover:text-graphite-950'
-          }`}
-        >
-          {tab.label}
-        </button>
-      ))}
-    </div>
+    <>
+      <div role="tablist" aria-label={label} className="flex gap-3 overflow-x-auto border-b border-graphite-200 bg-transparent sm:gap-5">
+        {tabs.map((tab, index) => (
+          <button
+            ref={(element) => { tabRefs.current[index] = element; }}
+            key={tab.id}
+            id={tabId(tab.id)}
+            type="button"
+            role="tab"
+            aria-controls={panelId(tab.id)}
+            aria-selected={selectedId === tab.id}
+            tabIndex={selectedId === tab.id ? 0 : -1}
+            onClick={() => onChange(tab.id)}
+            onKeyDown={(event) => handleKeyDown(event, index)}
+            className={`min-h-11 min-w-11 whitespace-nowrap border-b-2 px-1 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2 ${
+              selectedId === tab.id ? 'border-primary-600 text-primary-800' : 'border-transparent text-graphite-600 hover:border-graphite-300 hover:text-graphite-950'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+      {tabs.map((tab) => {
+        const isActive = selectedId === tab.id;
+
+        return (
+          <div
+            key={tab.id}
+            id={panelId(tab.id)}
+            role="tabpanel"
+            aria-labelledby={tabId(tab.id)}
+            tabIndex={isActive ? 0 : undefined}
+            hidden={!isActive}
+            className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2"
+          >
+            {isActive ? children : null}
+          </div>
+        );
+      })}
+    </>
   );
 }
 
