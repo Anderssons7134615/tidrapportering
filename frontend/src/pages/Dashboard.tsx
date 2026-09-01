@@ -1,26 +1,25 @@
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { motion, useReducedMotion } from 'framer-motion';
-import {
-  AlertTriangle,
-  ArrowRight,
-  CalendarDays,
-  Clock,
-  FileText,
-  ListChecks,
-  Users,
-} from 'lucide-react';
+import { AlertTriangle, ArrowRight, CalendarDays, CheckCircle2, FileText, ListChecks } from 'lucide-react';
 import { dashboardApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
 import { DashboardSkeleton } from '../components/ui/Skeleton';
 import { QueryError } from '../components/ui/QueryError';
 import { StatusBadge } from '../components/ui/design';
-import type { DashboardActionItem, ProjectListItem, TimeEntry, WeekLock } from '../types';
-import { formatDate, formatHours, formatPercent, parseDateOnlyLocal, toDateInputValue } from '../utils/format';
+import type { DashboardActionItem, ProjectListItem } from '../types';
+import { formatHours, formatPercent, parseDateOnlyLocal, toDateInputValue } from '../utils/format';
+import { buildDashboardActionRows, getDashboardPrimaryAction } from '../utils/dashboardPresentation';
 
 export default function Dashboard() {
   const { user } = useAuthStore();
   const isManager = user?.role === 'ADMIN' || user?.role === 'SUPERVISOR';
+  const [dashboardNow, setDashboardNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setDashboardNow(new Date()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['dashboard'],
@@ -39,456 +38,281 @@ export default function Dashboard() {
   const pendingCount = data?.summary.pendingApprovalCount || 0;
   const riskCount = data?.summary.riskProjectCount || 0;
   const runningCount = data?.summary.projectsWithoutBudgetCount || 0;
+  const primaryAction = getDashboardPrimaryAction({ isManager, pendingCount, riskCount, runningCount, now: dashboardNow });
+  const approvalReminderCount = primaryAction.approvalReminderCount;
   const weekRows = buildWeekRows(data?.dailyHours, data?.period?.weekStart);
   const weekMaxHours = Math.max(8, ...weekRows.map((row) => row.hours));
   const missingWeekdays = getMissingReportedWeekdays(data?.dailyHours, data?.period?.weekStart);
-  const hasMissingWeekdays = missingWeekdays.length > 0;
   const firstName = user?.name?.split(' ')[0];
-  const primaryTarget = pendingCount ? '/approval' : riskCount || runningCount ? '/projects' : isManager ? '/team-week' : '/time-entry';
-  const primaryLabel = pendingCount ? 'Öppna attest' : riskCount || runningCount ? 'Granska projekt' : isManager ? 'Öppna teamvecka' : 'Rapportera tid';
-  const actionRows = buildActionRows({
+  const actionRows = buildDashboardActionRows({
     isManager,
-    actionItems: data?.actionItems || [],
-    hasMissingWeekdays,
     missingWeekdays,
-    pendingCount,
+    pendingWeeks: data?.myPendingWeeks || [],
+    approvalReminderCount,
     riskCount,
     runningCount,
   });
 
   return (
-    <div className="app-workspace">
-      <header className="app-header">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-          <div className="min-w-0">
-            <h1 className="page-title">
-              {isManager ? 'Dagens kontroll' : `God arbetsdag${firstName ? `, ${firstName}` : ''}`}
-            </h1>
-            <p className="app-description">
-              {headlineText({ isManager, pendingCount, riskCount, runningCount, hasMissingWeekdays })}{' '}
-              Period: {formatPeriod(data?.period?.weekStart, data?.period?.weekEnd)}.
-            </p>
-          </div>
+    <div className="space-y-4 lg:space-y-5">
+      <header className="flex flex-col gap-4 border-b border-graphite-200 pb-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="min-w-0">
+          <h1 className="page-title">{isManager ? 'Dagens läge' : `God arbetsdag${firstName ? `, ${firstName}` : ''}`}</h1>
+          <p className="mt-1 max-w-3xl text-sm leading-6 text-graphite-600">
+            {headlineText({ isManager, approvalReminderCount, riskCount, runningCount, hasMissingWeekdays: missingWeekdays.length > 0 })}{' '}
+            {formatPeriod(data?.period?.weekStart, data?.period?.weekEnd)}.
+          </p>
+        </div>
 
-          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-            <Link to={primaryTarget} className="btn-primary justify-center">
-              {primaryLabel}
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-            <Link to="/time-entry" className="btn-secondary justify-center">
-              <Clock className="h-4 w-4" />
-              Rapportera
-            </Link>
-            {isManager && (
-              <Link to="/reports" className="btn-secondary justify-center">
-                <FileText className="h-4 w-4" />
-                Rapporter
-              </Link>
-            )}
-          </div>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Link to={primaryAction.to} className="btn-primary justify-center">
+            {primaryAction.label}
+            <ArrowRight className="h-4 w-4" aria-hidden="true" />
+          </Link>
+          <Link to={isManager ? '/reports' : '/week'} className="btn-secondary justify-center">
+            {isManager ? <FileText className="h-4 w-4" aria-hidden="true" /> : <CalendarDays className="h-4 w-4" aria-hidden="true" />}
+            {isManager ? 'Rapporter' : 'Visa veckan'}
+          </Link>
         </div>
       </header>
 
-      <div className="space-y-5">
-        <WorkQueue actionRows={actionRows} pendingApprovals={data?.pendingApprovals || []} isManager={isManager} />
-        <WeekPulse rows={weekRows} maxHours={weekMaxHours} weeklyHours={data?.summary.weeklyHours || 0} monthlyHours={data?.summary.monthlyHours || 0} />
+      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(20rem,0.8fr)]">
+        <WeekOverview
+          rows={weekRows}
+          maxHours={weekMaxHours}
+          weeklyHours={data?.summary.weeklyHours || 0}
+          monthlyHours={data?.summary.monthlyHours || 0}
+          isManager={isManager}
+        />
+        <PriorityList rows={actionRows} isManager={isManager} />
       </div>
 
-      {isManager ? (
-        <ProjectWatchSection riskProjects={data?.riskProjects || []} runningProjects={data?.projectsWithoutBudget || []} />
-      ) : (
-        <EmployeeWeekSection hasMissingWeekdays={hasMissingWeekdays} missingWeekdays={missingWeekdays} pendingWeeks={data?.myPendingWeeks || []} />
+      {isManager && (riskCount > 0 || runningCount > 0) && (
+        <ProjectFocus riskProjects={data?.riskProjects || []} runningProjects={data?.projectsWithoutBudget || []} />
       )}
-
-      <RecentEntriesSection entries={data?.recentEntries || []} isManager={isManager} />
     </div>
   );
 }
 
-function WorkQueue({
-  actionRows,
-  pendingApprovals,
-  isManager,
-}: {
-  actionRows: DashboardActionItem[];
-  pendingApprovals: WeekLock[];
-  isManager: boolean;
-}) {
-  return (
-    <section className="work-panel overflow-hidden">
-      <div className="work-panel-header">
-        <div className="flex items-center gap-2">
-          <ListChecks className="h-5 w-5 text-primary-700" />
-          <h2 className="text-lg font-semibold text-graphite-950">Prioriterat nu</h2>
-        </div>
-        <Link to={isManager ? '/approval' : '/week'} className="text-link">
-          {isManager ? 'Visa attest' : 'Min vecka'}
-        </Link>
-      </div>
-
-      <div className="divide-y divide-graphite-200">
-        {actionRows.map((item, index) => (
-          <Link
-            key={item.id}
-            to={item.to}
-            className="grid gap-3 px-4 py-4 transition hover:bg-primary-50/60 sm:grid-cols-[1.75rem_1fr_auto] sm:items-start"
-          >
-            <span className="hidden pt-0.5 text-sm font-semibold text-graphite-400 sm:block">
-              {index + 1}
-            </span>
-            <span className="min-w-0">
-              <span className="block font-semibold text-graphite-950">{item.title}</span>
-              <span className="mt-1 block text-sm leading-5 text-graphite-600">{item.description}</span>
-            </span>
-            <span className="flex items-center gap-2 sm:justify-end">
-              <StatusBadge label={statusLabel(item.tone)} tone={item.tone} />
-              <ArrowRight className="h-4 w-4 text-graphite-400" />
-            </span>
-          </Link>
-        ))}
-
-        {isManager && pendingApprovals.slice(0, 3).map((lock) => (
-          <Link key={lock.id} to="/approval" className="grid gap-3 px-4 py-4 transition hover:bg-primary-50/60 sm:grid-cols-[1.75rem_1fr_auto] sm:items-start">
-            <span className="hidden pt-0.5 text-amber-700 sm:block">
-              <Users className="h-4 w-4" />
-            </span>
-            <span>
-              <span className="block font-semibold text-graphite-950">{lock.user?.name || 'Anställd'}</span>
-              <span className="mt-1 block text-sm text-graphite-600">
-                Vecka från {formatDate(lock.weekStartDate)}
-                {lock.totalHours != null ? ` · ${formatHours(lock.totalHours)}` : ''}
-              </span>
-            </span>
-            <StatusBadge label="Väntar" tone="yellow" />
-          </Link>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function WeekPulse({
+function WeekOverview({
   rows,
   maxHours,
   weeklyHours,
   monthlyHours,
+  isManager,
 }: {
   rows: Array<{ label: string; date: string; hours: number }>;
   maxHours: number;
   weeklyHours: number;
   monthlyHours: number;
+  isManager: boolean;
 }) {
-  const reduceMotion = useReducedMotion();
-
   return (
-    <section className="work-panel overflow-hidden">
-      <div className="work-panel-header">
+    <section className="overflow-hidden rounded-lg border border-graphite-200 bg-white" aria-labelledby="dashboard-week-title">
+      <div className="flex min-h-14 flex-wrap items-center justify-between gap-3 border-b border-graphite-200 bg-graphite-50/75 px-4 py-2">
         <div className="flex items-center gap-2">
-          <CalendarDays className="h-5 w-5 text-primary-700" />
-          <h2 className="text-lg font-semibold text-graphite-950">Veckans tid</h2>
-        </div>
-        <p className="text-sm font-semibold text-graphite-700">{formatHours(weeklyHours)}</p>
-      </div>
-
-      <p className="border-b border-graphite-200 px-4 py-3 text-sm text-graphite-700">
-        Denna vecka <strong className="tabular-nums text-graphite-950">{formatHours(weeklyHours)}</strong>
-        <span className="px-2 text-graphite-400">·</span>
-        Denna månad <strong className="tabular-nums text-graphite-950">{formatHours(monthlyHours)}</strong>
-      </p>
-
-      <div className="divide-y divide-graphite-100">
-        {rows.length ? rows.map((day, index) => (
-          <div key={day.date} className="grid grid-cols-[4.5rem_1fr_4rem] items-center gap-3 px-4 py-3 text-sm">
-            <div>
-              <p className="font-semibold text-graphite-950">{day.label}</p>
-              <p className="text-xs text-graphite-500">{formatShortDate(day.date)}</p>
-            </div>
-            <div className="h-2 overflow-hidden rounded-full bg-graphite-100/80">
-              <motion.div
-                className={day.hours > 0 ? 'h-full rounded-full bg-primary-600' : 'h-full rounded-full bg-graphite-200'}
-                initial={reduceMotion ? false : { scaleX: 0 }}
-                animate={{ scaleX: 1 }}
-                transition={{ duration: 0.7, delay: index * 0.055, ease: [0.16, 1, 0.3, 1] }}
-                style={{
-                  width: `${Math.max(day.hours > 0 ? 6 : 0, Math.min(100, Math.round((day.hours / maxHours) * 100)))}%`,
-                  transformOrigin: 'left center',
-                }}
-              />
-            </div>
-            <p className="text-right font-semibold text-graphite-950">{formatHours(day.hours)}</p>
+          <CalendarDays className="h-5 w-5 text-primary-700" aria-hidden="true" />
+          <div>
+            <h2 id="dashboard-week-title" className="font-semibold text-graphite-950">Denna vecka</h2>
+            <p className="text-xs text-graphite-600">{isManager ? 'Rapporterat av teamet' : 'Din rapporterade tid'}</p>
           </div>
-        )) : (
-          <PlainEmpty title="Ingen veckodata än" description="När tid rapporteras visas veckans fördelning här." />
-        )}
-      </div>
-    </section>
-  );
-}
-
-function ProjectWatchSection({
-  riskProjects,
-  runningProjects,
-}: {
-  riskProjects: ProjectListItem[];
-  runningProjects: ProjectListItem[];
-}) {
-  const rows = [
-    ...riskProjects.map((project) => ({ project, tone: 'red' as const, reason: 'Budgetrisk' })),
-    ...runningProjects.map((project) => ({ project, tone: 'yellow' as const, reason: 'Löpande utan budget' })),
-  ].slice(0, 10);
-
-  return (
-    <section className="work-panel overflow-hidden">
-      <div className="work-panel-header">
-        <div className="flex items-center gap-2">
-          <AlertTriangle className="h-5 w-5 text-primary-700" />
-          <h2 className="text-lg font-semibold text-graphite-950">Projekt att följa</h2>
         </div>
-        <Link to="/projects" className="text-link">Alla projekt</Link>
+        <div className="flex items-baseline gap-4 text-sm">
+          <p><strong className="tabular-nums text-graphite-950">{formatHours(weeklyHours)}</strong> vecka</p>
+          <p className="hidden text-graphite-600 sm:block"><strong className="tabular-nums text-graphite-950">{formatHours(monthlyHours)}</strong> månad</p>
+        </div>
       </div>
 
       {rows.length ? (
-        <div className="overflow-x-auto">
-          <table className="min-w-[780px] w-full text-left text-sm">
-            <thead className="table-head">
-              <tr>
-                <th className="px-4 py-3">Projekt</th>
-                <th className="px-4 py-3">Kund</th>
-                <th className="px-4 py-3 text-right">Vecka</th>
-                <th className="px-4 py-3 text-right">Budget</th>
-                <th className="px-4 py-3">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-graphite-100">
-              {rows.map(({ project, tone, reason }) => (
-                <tr key={`${reason}-${project.id}`} className="hover:bg-primary-50/60">
-                  <td className="px-4 py-3">
-                    <Link to={`/projects/${project.id}`} className="font-semibold text-graphite-950 hover:text-primary-700">
-                      {project.code} · {project.name}
-                    </Link>
-                  </td>
-                  <td className="px-4 py-3 text-graphite-600">{project.customer?.name || 'Intern'}</td>
-                  <td className="px-4 py-3 text-right font-semibold text-graphite-950">{formatHours(project.metrics?.weekHours)}</td>
-                  <td className="px-4 py-3 text-right font-semibold text-graphite-950">
-                    {project.metrics?.budgetUsagePercent == null ? '-' : formatPercent(project.metrics.budgetUsagePercent)}
-                  </td>
-                  <td className="px-4 py-3">
-                    <StatusBadge label={reason} tone={tone} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="grid grid-cols-5 divide-x divide-graphite-200">
+          {rows.map((day) => {
+            const width = Math.max(day.hours > 0 ? 8 : 0, Math.min(100, Math.round((day.hours / maxHours) * 100)));
+            return (
+              <div key={day.date} className="min-w-0 px-2 py-3 text-center sm:px-3">
+                <p className="text-xs font-semibold text-graphite-600">{day.label}</p>
+                <p className="mt-1 truncate text-xs text-graphite-500">{formatShortDate(day.date)}</p>
+                <p className="mt-2 whitespace-nowrap text-sm font-semibold tabular-nums text-graphite-950">{formatHours(day.hours)}</p>
+                <div className="mx-auto mt-2 h-1.5 w-full max-w-16 overflow-hidden rounded-full bg-graphite-100" aria-hidden="true">
+                  <div className="h-full rounded-full bg-primary-600" style={{ width: `${width}%` }} />
+                </div>
+              </div>
+            );
+          })}
         </div>
       ) : (
-        <PlainEmpty title="Inga projekt kräver extra koll" description="Budgetrisker och löpande projekt ser lugna ut just nu." />
+        <CompactEmpty title="Ingen veckodata ännu" description="Timmarna visas här när de rapporteras." />
       )}
-    </section>
-  );
-}
 
-function EmployeeWeekSection({
-  hasMissingWeekdays,
-  missingWeekdays,
-  pendingWeeks,
-}: {
-  hasMissingWeekdays: boolean;
-  missingWeekdays: string[];
-  pendingWeeks: string[];
-}) {
-  return (
-    <section className="work-panel overflow-hidden">
-      <div className="work-panel-header">
-        <div className="flex items-center gap-2">
-          <CalendarDays className="h-5 w-5 text-primary-700" />
-          <h2 className="text-lg font-semibold text-graphite-950">Min vecka</h2>
-        </div>
-        <Link to="/week" className="text-link">Öppna veckan</Link>
-      </div>
-      <div className="grid gap-3 px-4 py-4 sm:grid-cols-[1fr_auto] sm:items-center">
-        <div>
-          <p className="font-semibold text-graphite-950">
-            {hasMissingWeekdays ? 'Dagar behöver kompletteras' : 'Rapporteringen är i fas'}
-          </p>
-          <p className="mt-1 text-sm text-graphite-600">
-            {hasMissingWeekdays ? `Saknas: ${missingWeekdays.join(', ')}` : 'Alla vardagar hittills har rapporterad tid.'}
-            {pendingWeeks.length > 0 ? ` ${pendingWeeks.length} vecka väntar på attest.` : ''}
-          </p>
-        </div>
-        <Link to={hasMissingWeekdays ? '/time-entry' : '/week'} className="btn-secondary justify-center">
-          {hasMissingWeekdays ? 'Rapportera nu' : 'Visa veckan'}
+      <div className="flex justify-end border-t border-graphite-200 px-3">
+        <Link
+          to={isManager ? '/team-week' : '/time-entry'}
+          className="inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-primary-700 hover:text-primary-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
+        >
+          {isManager ? 'Öppna teamveckan' : 'Rapportera tid'}
+          <ArrowRight className="h-4 w-4" aria-hidden="true" />
         </Link>
       </div>
     </section>
   );
 }
 
-function RecentEntriesSection({ entries, isManager }: { entries: TimeEntry[]; isManager: boolean }) {
+function PriorityList({ rows, isManager }: { rows: DashboardActionItem[]; isManager: boolean }) {
   return (
-    <section className="work-panel overflow-hidden">
-      <div className="work-panel-header">
+    <section className="overflow-hidden rounded-lg border border-graphite-200 bg-white" aria-labelledby="dashboard-priority-title">
+      <div className="flex min-h-14 items-center justify-between gap-3 border-b border-graphite-200 bg-graphite-50/75 px-4 py-2">
         <div className="flex items-center gap-2">
-          <FileText className="h-5 w-5 text-primary-700" />
-          <h2 className="text-lg font-semibold text-graphite-950">Senaste tidrader</h2>
+          <ListChecks className="h-5 w-5 text-primary-700" aria-hidden="true" />
+          <h2 id="dashboard-priority-title" className="font-semibold text-graphite-950">Att göra nu</h2>
         </div>
-        <Link to={isManager ? '/team-week' : '/week'} className="text-link">Visa mer</Link>
+        <Link
+          to={isManager ? '/team-week' : '/week'}
+          className="inline-flex min-h-11 items-center text-sm font-semibold text-primary-700 hover:text-primary-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
+        >
+          {isManager ? 'Teamvecka' : 'Min vecka'}
+        </Link>
       </div>
 
-      {entries.length ? (
-        <div className="overflow-x-auto">
-          <table className="min-w-[720px] w-full text-left text-sm">
-            <thead className="table-head">
-              <tr>
-                <th className="px-4 py-3">Datum</th>
-                <th className="px-4 py-3">Person</th>
-                <th className="px-4 py-3">Projekt</th>
-                <th className="px-4 py-3">Aktivitet</th>
-                <th className="px-4 py-3 text-right">Tid</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-graphite-100">
-              {entries.map((entry) => (
-                <tr key={entry.id} className="hover:bg-primary-50/60">
-                  <td className="whitespace-nowrap px-4 py-3 font-semibold text-graphite-950">{formatDate(entry.date)}</td>
-                  <td className="whitespace-nowrap px-4 py-3 text-graphite-700">{entry.user?.name || '-'}</td>
-                  <td className="px-4 py-3">
-                    <Link to={`/time-entry?id=${entry.id}&return=/`} className="font-semibold text-graphite-950 hover:text-primary-700">
-                      {entry.project?.code || 'Intern'} · {entry.project?.name || 'Intern tid'}
-                    </Link>
-                  </td>
-                  <td className="px-4 py-3 text-graphite-600">{entry.activity?.name || '-'}</td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-graphite-950">{formatHours(entry.hours)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <div className="divide-y divide-graphite-200">
+        {rows.slice(0, 3).map((item) => (
+          <Link
+            key={item.id}
+            to={item.to}
+            className="grid min-h-16 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-2.5 transition hover:bg-primary-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-400"
+          >
+            <span className="min-w-0">
+              <span className="block text-sm font-semibold leading-5 text-graphite-950">{item.title}</span>
+              <span className="mt-0.5 block text-xs leading-5 text-graphite-600">{item.description}</span>
+            </span>
+            <span className="flex items-center gap-2">
+              <StatusBadge label={statusLabel(item.tone)} tone={item.tone} />
+              <ArrowRight className="h-4 w-4 text-graphite-400" aria-hidden="true" />
+            </span>
+          </Link>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ProjectFocus({ riskProjects, runningProjects }: { riskProjects: ProjectListItem[]; runningProjects: ProjectListItem[] }) {
+  const rows = buildProjectRows(riskProjects, runningProjects);
+
+  return (
+    <section className="overflow-hidden rounded-lg border border-graphite-200 bg-white" aria-labelledby="dashboard-project-title">
+      <div className="flex min-h-14 items-center justify-between gap-3 border-b border-graphite-200 bg-graphite-50/75 px-4 py-2">
+        <div className="flex items-center gap-2">
+          <AlertTriangle className="h-5 w-5 text-primary-700" aria-hidden="true" />
+          <h2 id="dashboard-project-title" className="font-semibold text-graphite-950">Projekt som kräver kontroll</h2>
+        </div>
+        <Link
+          to="/projects"
+          className="inline-flex min-h-11 items-center text-sm font-semibold text-primary-700 hover:text-primary-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
+        >
+          Alla projekt
+        </Link>
+      </div>
+
+      {rows.length ? (
+        <div className="grid sm:grid-cols-2">
+          {rows.map(({ project, reason, tone }, index) => (
+            <Link
+              key={project.id}
+              to={`/projects/${project.id}`}
+              className={`flex min-h-16 min-w-0 items-center justify-between gap-3 px-4 py-2.5 transition hover:bg-primary-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-400 ${
+                index > 0 ? 'border-t border-graphite-200' : ''
+              } ${index % 2 === 1 ? 'sm:border-l sm:border-t-0' : ''} ${index > 1 ? 'sm:border-t' : ''}`}
+            >
+              <span className="min-w-0">
+                <span className="block text-sm font-semibold leading-5 text-graphite-950 [overflow-wrap:anywhere]">{project.code} · {project.name}</span>
+                <span className="mt-0.5 block text-xs text-graphite-600 [overflow-wrap:anywhere]">
+                  {project.customer?.name || 'Intern'} · {formatHours(project.metrics?.weekHours)} denna vecka
+                </span>
+              </span>
+              <span className="shrink-0 text-right">
+                <StatusBadge label={reason} tone={tone} />
+                {project.metrics?.budgetUsagePercent != null && (
+                  <span className="mt-1 block text-xs font-semibold tabular-nums text-graphite-600">{formatPercent(project.metrics.budgetUsagePercent)}</span>
+                )}
+              </span>
+            </Link>
+          ))}
         </div>
       ) : (
-        <PlainEmpty title="Ingen tid rapporterad" description="När tid sparas visas de senaste raderna här." />
+        <CompactEmpty title="Inga projekt kräver extra koll" description="Budget och aktiva projekt ser stabila ut." />
       )}
     </section>
   );
 }
 
-function PlainEmpty({ title, description }: { title: string; description?: string }) {
+function CompactEmpty({ title, description }: { title: string; description: string }) {
   return (
-    <div className="px-4 py-8 text-sm">
-      <p className="font-semibold text-graphite-950">{title}</p>
-      {description && <p className="mt-1 text-graphite-600">{description}</p>}
+    <div className="flex min-h-16 items-center gap-3 px-4 py-3 text-sm">
+      <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-700" aria-hidden="true" />
+      <div>
+        <p className="font-semibold text-graphite-950">{title}</p>
+        <p className="text-xs text-graphite-600">{description}</p>
+      </div>
     </div>
   );
 }
 
-function buildActionRows({
-  isManager,
-  actionItems,
-  hasMissingWeekdays,
-  missingWeekdays,
-  pendingCount,
-  riskCount,
-  runningCount,
-}: {
-  isManager: boolean;
-  actionItems: DashboardActionItem[];
-  hasMissingWeekdays: boolean;
-  missingWeekdays: string[];
-  pendingCount: number;
-  riskCount: number;
-  runningCount: number;
-}): DashboardActionItem[] {
-  if (isManager) {
-    const preferred = actionItems.filter((item) => ['pending-approvals', 'risk-projects', 'projects-missing-budget'].includes(item.id));
-    if (preferred.length) return preferred;
-
-    return [
-      {
-        id: 'manager-status',
-        title: pendingCount || riskCount || runningCount ? 'Följ upp öppna punkter' : 'Inget akut just nu',
-        description: pendingCount || riskCount || runningCount
-          ? `${pendingCount} attest, ${riskCount} riskprojekt och ${runningCount} löpande projekt.`
-          : 'Attest, riskprojekt och löpande projekt ser stabila ut.',
-        tone: pendingCount || riskCount ? 'yellow' : 'green',
-        to: pendingCount ? '/approval' : riskCount || runningCount ? '/projects' : '/team-week',
-      },
-    ];
-  }
-
-  return [
-    {
-      id: hasMissingWeekdays ? 'employee-missing-time' : 'employee-week-ok',
-      title: hasMissingWeekdays ? 'Komplettera veckan' : 'Veckan är under kontroll',
-      description: hasMissingWeekdays
-        ? `Saknas: ${missingWeekdays.join(', ')}. Lägg in tiden innan veckan skickas in.`
-        : 'Alla vardagar hittills har rapporterad tid.',
-      tone: hasMissingWeekdays ? 'yellow' : 'green',
-      to: hasMissingWeekdays ? '/time-entry' : '/week',
-    },
-  ];
+function buildProjectRows(riskProjects: ProjectListItem[], runningProjects: ProjectListItem[]) {
+  const rows = new Map<string, { project: ProjectListItem; reason: string; tone: 'red' | 'yellow' }>();
+  riskProjects.forEach((project) => rows.set(project.id, { project, reason: 'Budgetrisk', tone: 'red' }));
+  runningProjects.forEach((project) => {
+    if (!rows.has(project.id)) rows.set(project.id, { project, reason: 'Saknar budget', tone: 'yellow' });
+  });
+  return Array.from(rows.values()).slice(0, 4);
 }
 
 function buildWeekRows(dailyHours?: Record<string, number>, weekStart?: string) {
   if (!weekStart) return [];
-
   const labels = ['Mån', 'Tis', 'Ons', 'Tor', 'Fre'];
   return labels.map((label, index) => {
     const date = parseDateOnlyLocal(weekStart);
     date.setDate(date.getDate() + index);
     const key = toDateInputValue(date);
-
-    return {
-      label,
-      date: key,
-      hours: dailyHours?.[key] || 0,
-    };
+    return { label, date: key, hours: dailyHours?.[key] || 0 };
   });
 }
 
-function getMissingReportedWeekdays(
-  dailyHours?: Record<string, number>,
-  weekStart?: string
-): string[] {
+function getMissingReportedWeekdays(dailyHours?: Record<string, number>, weekStart?: string): string[] {
   if (!dailyHours || !weekStart) return [];
-
   const labels = ['Mån', 'Tis', 'Ons', 'Tor', 'Fre'];
   const missing: string[] = [];
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  for (let i = 0; i < 5; i += 1) {
+  for (let index = 0; index < 5; index += 1) {
     const date = parseDateOnlyLocal(weekStart);
-    date.setDate(date.getDate() + i);
+    date.setDate(date.getDate() + index);
     date.setHours(0, 0, 0, 0);
-
     if (date > today) continue;
-
     const key = toDateInputValue(date);
-    const hours = dailyHours[key] || 0;
-    if (hours <= 0) missing.push(labels[i]);
+    if ((dailyHours[key] || 0) <= 0) missing.push(labels[index]);
   }
-
   return missing;
 }
 
 function headlineText({
   isManager,
-  pendingCount,
+  approvalReminderCount,
   riskCount,
   runningCount,
   hasMissingWeekdays,
 }: {
   isManager: boolean;
-  pendingCount: number;
+  approvalReminderCount: number;
   riskCount: number;
   runningCount: number;
   hasMissingWeekdays: boolean;
 }) {
   if (isManager) {
-    if (pendingCount) return `${pendingCount} ${pendingCount === 1 ? 'vecka väntar' : 'veckor väntar'} på attest.`;
+    if (approvalReminderCount) return 'Fredagens attestkontroll är redo.';
     if (riskCount) return `${riskCount} projekt behöver följas upp.`;
-    if (runningCount) return `${runningCount} löpande projekt är aktiva utan budget.`;
-    return 'Attest, timmar och projekt ser stabila ut.';
+    if (runningCount) return `${runningCount} löpande projekt saknar budget.`;
+    return 'Teamets tid och projekt ser stabila ut.';
   }
-
   return hasMissingWeekdays ? 'Veckan behöver kompletteras.' : 'Veckan är i fas.';
 }
 
@@ -496,13 +320,13 @@ function statusLabel(tone: DashboardActionItem['tone']) {
   if (tone === 'red') return 'Risk';
   if (tone === 'yellow') return 'Åtgärd';
   if (tone === 'blue') return 'Info';
-  if (tone === 'green') return 'OK';
+  if (tone === 'green') return 'Klart';
   return 'Status';
 }
 
 function formatPeriod(start?: string, end?: string) {
-  if (!start || !end) return 'aktuell vecka';
-  return `${formatShortDate(start)} - ${formatShortDate(end)}`;
+  if (!start || !end) return 'Aktuell vecka';
+  return `${formatShortDate(start)}–${formatShortDate(end)}`;
 }
 
 function formatShortDate(value?: string) {

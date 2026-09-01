@@ -27,41 +27,64 @@ export function Skeleton({ className = '', variant = 'text', width, height }: Sk
 
 export function DashboardSkeleton() {
   return (
-    <div className="space-y-6">
-      <div>
-        <Skeleton width={200} height={28} className="mb-2" />
-        <Skeleton width={180} height={16} />
+    <div className="space-y-4 lg:space-y-5" aria-label="Laddar översikten">
+      <div className="flex flex-col gap-4 border-b border-graphite-200 pb-4 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <Skeleton width={180} height={28} className="mb-2" />
+          <Skeleton width={280} height={16} />
+        </div>
+        <div className="flex gap-2">
+          <Skeleton variant="rectangular" width={140} height={44} />
+          <Skeleton variant="rectangular" width={110} height={44} />
+        </div>
       </div>
 
-      {/* Stats grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {[1, 2, 3, 4].map((i) => (
-          <div key={i} className="kpi-summary">
-            <div className="flex items-center gap-3">
-              <Skeleton variant="rectangular" width={40} height={40} />
-              <div className="space-y-2">
-                <Skeleton width={60} height={24} />
-                <Skeleton width={80} height={12} />
-              </div>
-            </div>
+      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(20rem,0.8fr)]">
+        <div className="overflow-hidden rounded-lg border border-graphite-200 bg-white">
+          <div className="flex min-h-14 items-center justify-between border-b border-graphite-200 px-4">
+            <Skeleton width={130} height={18} />
+            <Skeleton width={120} height={16} />
           </div>
-        ))}
-      </div>
+          <div className="grid grid-cols-5 divide-x divide-graphite-200">
+            {[1, 2, 3, 4, 5].map((item) => (
+              <div key={item} className="space-y-2 px-2 py-3">
+                <Skeleton width="60%" height={12} className="mx-auto" />
+                <Skeleton width="80%" height={18} className="mx-auto" />
+                <Skeleton variant="rectangular" height={6} />
+              </div>
+            ))}
+          </div>
+          <div className="flex min-h-11 justify-end border-t border-graphite-200 px-3">
+            <Skeleton width={120} height={14} className="my-auto" />
+          </div>
+        </div>
 
-      {/* Week overview */}
-      <div className="task-section">
-        <Skeleton width={140} height={20} className="mb-4" />
-        <div className="grid grid-cols-7 gap-2">
-          {[1, 2, 3, 4, 5, 6, 7].map((i) => (
-            <Skeleton key={i} variant="rectangular" height={60} />
+        <div className="overflow-hidden rounded-lg border border-graphite-200 bg-white">
+          <div className="flex min-h-14 items-center justify-between border-b border-graphite-200 px-4">
+            <Skeleton width={110} height={18} />
+            <Skeleton width={80} height={14} />
+          </div>
+          {[1, 2, 3].map((item) => (
+            <div key={item} className="flex min-h-16 items-center justify-between border-b border-graphite-200 px-4 last:border-0">
+              <div className="space-y-2">
+                <Skeleton width={170} height={14} />
+                <Skeleton width={130} height={11} />
+              </div>
+              <Skeleton width={54} height={24} />
+            </div>
           ))}
         </div>
       </div>
 
-      {/* Quick actions */}
-      <div className="grid grid-cols-2 gap-4">
-        <Skeleton variant="rectangular" height={72} />
-        <Skeleton variant="rectangular" height={72} />
+      <div className="overflow-hidden rounded-lg border border-graphite-200 bg-white">
+        <div className="flex min-h-14 items-center justify-between border-b border-graphite-200 px-4">
+          <Skeleton width={190} height={18} />
+          <Skeleton width={80} height={14} />
+        </div>
+        <div className="grid sm:grid-cols-2">
+          <Skeleton variant="rectangular" height={64} className="rounded-none" />
+          <Skeleton variant="rectangular" height={64} className="rounded-none" />
+        </div>
       </div>
     </div>
   );
