@@ -208,7 +208,7 @@ export default function Approval() {
             </DataList>
           </div>
           <div className="hidden md:block">
-          <DataTable>
+          <DataTable label="Veckor att attestera">
             <table className="min-w-[960px] w-full text-sm">
               <thead className="table-head">
                 <tr>

@@ -109,7 +109,7 @@ export default function Activities() {
         }
       />
 
-      <DataTable>
+      <DataTable label="Aktiviteter">
         <table className="min-w-[720px] w-full text-left text-sm">
           <thead className="table-head">
             <tr>

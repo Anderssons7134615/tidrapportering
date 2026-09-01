@@ -328,45 +328,18 @@ export default function TimeEntry() {
         />
 
         {!isEditMode && (
-            <ReviewSummary>
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <ReviewSummary>
+            <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-xs font-bold text-primary-700">Vald dag</p>
-                <h2 className="mt-1 text-lg font-black text-graphite-950">
-                  {selectedDateLabel}
-                </h2>
-                <p className="text-sm font-semibold text-graphite-600">
+                <p className="text-sm font-semibold text-graphite-950">{selectedDateLabel}</p>
+                <p className="mt-0.5 text-sm text-graphite-600">
                   {dailyEntries?.length ? `${dailyTotal.toFixed(1)} h rapporterat på dagen` : 'Ingen tid rapporterad på dagen ännu'}
                 </p>
               </div>
-              <Link to={defaultReturnUrl} className="btn-secondary shrink-0">
+              <Link to={defaultReturnUrl} className="text-link inline-flex min-h-11 items-center">
                 Tillbaka till veckan
               </Link>
             </div>
-
-            {!!dailyEntries?.length && (
-              <DataList className="mt-4">
-                {dailyEntries.map((entry) => (
-                  <Link
-                    key={entry.id}
-                    to={`/time-entry?id=${entry.id}&return=${encodeURIComponent(defaultReturnUrl)}`}
-                    className="block"
-                  >
-                    <DataRow>
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-bold text-graphite-950">
-                          {entry.project?.code ? `${entry.project.code} · ${entry.project.name}` : 'Intern tid'}
-                        </p>
-                        <p className="text-xs font-medium text-graphite-500">
-                          {entry.activity?.name}{entry.note ? ` · ${entry.note}` : ''}
-                        </p>
-                      </div>
-                      <span className="shrink-0 text-sm font-black text-primary-800">{entry.hours} h</span>
-                    </DataRow>
-                  </Link>
-                ))}
-              </DataList>
-            )}
           </ReviewSummary>
         )}
 
@@ -390,11 +363,6 @@ export default function TimeEntry() {
                       <Copy className="mx-auto mb-1 h-4 w-4" />
                       Kopiera
                     </button>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                    {[7.5, 8, 4, 2].map((preset) => (
-                      <button key={preset} type="button" onClick={() => setHours(String(preset).replace('.', ','))} className="choice-tile text-base">{String(preset).replace('.', ',')} h</button>
-                    ))}
                   </div>
                   {!!recentProjects?.length && (
                     <div className="grid gap-2 sm:grid-cols-2">
@@ -495,8 +463,8 @@ export default function TimeEntry() {
                 <button type="button" className="btn-secondary shrink-0 px-3" onClick={() => adjustHours(0.5)}>+0,5</button>
               </div>
               <div className="mt-3 grid grid-cols-4 gap-2">
-                {[2, 4, 6, 8].map((preset) => (
-                  <button key={preset} type="button" onClick={() => setHours(String(preset))} className="choice-tile py-2 text-sm">{preset} h</button>
+                {[2, 4, 7.5, 8].map((preset) => (
+                  <button key={preset} type="button" onClick={() => setHours(String(preset).replace('.', ','))} className="choice-tile py-2 text-sm">{String(preset).replace('.', ',')} h</button>
                 ))}
               </div>
             </FormField>
@@ -526,6 +494,32 @@ export default function TimeEntry() {
             </Button>
           </TaskSection>
         </form>
+
+        {!isEditMode && !!dailyEntries?.length && (
+          <TaskSection title="Redan rapporterat den här dagen">
+            <DataList>
+              {dailyEntries.map((entry) => (
+                <Link
+                  key={entry.id}
+                  to={`/time-entry?id=${entry.id}&return=${encodeURIComponent(defaultReturnUrl)}`}
+                  className="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-400"
+                >
+                  <DataRow>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-bold text-graphite-950">
+                        {entry.project?.code ? `${entry.project.code} · ${entry.project.name}` : 'Intern tid'}
+                      </p>
+                      <p className="text-xs font-medium text-graphite-500">
+                        {entry.activity?.name}{entry.note ? ` · ${entry.note}` : ''}
+                      </p>
+                    </div>
+                    <span className="shrink-0 text-sm font-black text-primary-800">{entry.hours} h</span>
+                  </DataRow>
+                </Link>
+              ))}
+            </DataList>
+          </TaskSection>
+        )}
       </div>
     </AppShell>
   );

@@ -67,6 +67,7 @@ export default function Layout() {
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   const mobileMenuRef = useRef<HTMLElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
   const { data: currentUser } = useQuery({
     queryKey: ['auth', 'me'],
     queryFn: authApi.me,
@@ -111,8 +112,40 @@ export default function Layout() {
   useEffect(() => {
     const menu = mobileMenuRef.current;
     if (!menu) return;
-    if (menuOpen) menu.removeAttribute('inert');
-    else menu.setAttribute('inert', '');
+    if (!menuOpen) {
+      menu.setAttribute('inert', '');
+      return;
+    }
+
+    menu.removeAttribute('inert');
+    const focusableSelector = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+    const focusable = Array.from(menu.querySelectorAll<HTMLElement>(focusableSelector));
+    focusable[0]?.focus();
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setMenuOpen(false);
+        menuButtonRef.current?.focus();
+        return;
+      }
+      if (event.key !== 'Tab' || focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      menuButtonRef.current?.focus();
+    };
   }, [menuOpen]);
 
   return (
@@ -120,7 +153,7 @@ export default function Layout() {
       <header className="mobile-header safe-top sticky top-0 z-50 border-b border-graphite-200/80 lg:hidden">
         <div className="mx-auto flex h-16 max-w-[96rem] items-center justify-between px-4">
           <div className="flex min-w-0 items-center gap-3">
-            <button onClick={() => setMenuOpen(!menuOpen)} className="icon-button" aria-label="Meny" aria-expanded={menuOpen}>
+            <button ref={menuButtonRef} onClick={() => setMenuOpen(!menuOpen)} className="icon-button" aria-label="Meny" aria-expanded={menuOpen} aria-controls="mobile-navigation">
               {menuOpen ? <X size={20} /> : <Menu size={20} />}
             </button>
             <BrandMark compact />
@@ -168,6 +201,7 @@ export default function Layout() {
         {menuOpen && <div className="fixed inset-0 z-40 bg-graphite-950/35 lg:hidden" onClick={() => setMenuOpen(false)} />}
 
         <aside
+          id="mobile-navigation"
           ref={mobileMenuRef}
           aria-hidden={!menuOpen}
           className={`app-sidebar fixed left-0 top-0 z-50 flex h-full w-72 flex-col border-r border-white/10 text-white shadow-md transition-transform duration-200 lg:hidden ${menuOpen ? 'translate-x-0' : '-translate-x-full'}`}

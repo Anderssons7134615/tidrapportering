@@ -1,13 +1,14 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { addMonths, format } from 'date-fns';
+import { format } from 'date-fns';
 import { CalendarDays, Download, FileSpreadsheet, Search, Umbrella, Users } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { reportsApi, usersApi } from '../services/api';
 import { ReportsSkeleton } from '../components/ui/Skeleton';
 import { QueryError } from '../components/ui/QueryError';
 import { AppShell, Button, EmptyState, PageHeader, ReviewSummary, StatusBadge, Toolbar } from '../components/ui/design';
-import { formatDate, formatHours, parseDateOnlyLocal } from '../utils/format';
+import { formatDate, formatHours } from '../utils/format';
+import { currentPayrollPeriod, latestClosedPayrollPeriod, previousClosedPayrollPeriod } from '../utils/payrollPeriod';
 
 type TimeKind = 'regular' | 'overtime' | 'vacation' | 'absence';
 
@@ -44,36 +45,6 @@ type EmployeePayrollRow = {
   activities: PayrollActivity[];
   absenceEntries: PayrollEntry[];
 };
-
-function toDateInput(date: Date) {
-  return format(date, 'yyyy-MM-dd');
-}
-
-function latestClosedPayrollPeriod(referenceDate = new Date()) {
-  const year = referenceDate.getFullYear();
-  const month = referenceDate.getMonth();
-  const currentCutoff = new Date(year, month, 20);
-  const end = referenceDate > currentCutoff ? currentCutoff : new Date(year, month - 1, 20);
-  const start = new Date(end.getFullYear(), end.getMonth() - 1, 21);
-  return { from: toDateInput(start), to: toDateInput(end) };
-}
-
-function currentPayrollPeriod(referenceDate = new Date()) {
-  const year = referenceDate.getFullYear();
-  const month = referenceDate.getMonth();
-  const currentCutoff = new Date(year, month, 20);
-  const start = referenceDate > currentCutoff ? new Date(year, month, 21) : new Date(year, month - 1, 21);
-  const nextMonth = addMonths(start, 1);
-  const end = new Date(nextMonth.getFullYear(), nextMonth.getMonth(), 20);
-  return { from: toDateInput(start), to: toDateInput(end) };
-}
-
-function previousPayrollPeriod(fromDate: string) {
-  const currentStart = parseDateOnlyLocal(fromDate);
-  const end = new Date(currentStart.getFullYear(), currentStart.getMonth(), 20);
-  const start = new Date(end.getFullYear(), end.getMonth() - 1, 21);
-  return { from: toDateInput(start), to: toDateInput(end) };
-}
 
 function normalize(value?: string | null) {
   return (value || '').toLowerCase();
@@ -243,7 +214,7 @@ export default function Reports() {
         ? latestClosedPayrollPeriod()
         : period === 'currentPayroll'
           ? currentPayrollPeriod()
-          : previousPayrollPeriod(fromDate);
+          : previousClosedPayrollPeriod();
     setFromDate(range.from);
     setToDate(range.to);
   };
@@ -253,7 +224,7 @@ export default function Reports() {
       ? latestClosedPayrollPeriod()
       : period === 'currentPayroll'
         ? currentPayrollPeriod()
-        : previousPayrollPeriod(fromDate);
+        : previousClosedPayrollPeriod();
     return fromDate === range.from && toDate === range.to;
   };
 
@@ -349,13 +320,13 @@ export default function Reports() {
             <CalendarDays className="h-4 w-4 text-primary-600" />
             Brytdag 20:e
           </span>
-          <button type="button" aria-pressed={isQuickPeriodSelected('closedPayroll')} onClick={() => setQuickPeriod('closedPayroll')} className="border-b border-transparent pb-1 font-semibold text-primary-800 hover:border-primary-500">
+          <button type="button" aria-pressed={isQuickPeriodSelected('closedPayroll')} onClick={() => setQuickPeriod('closedPayroll')} className={`min-h-11 rounded-md px-3 py-2 font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 ${isQuickPeriodSelected('closedPayroll') ? 'bg-primary-100 text-primary-900' : 'text-primary-800 hover:bg-primary-50'}`}>
             Senaste löneperiod
           </button>
-          <button type="button" aria-pressed={isQuickPeriodSelected('currentPayroll')} onClick={() => setQuickPeriod('currentPayroll')} className="border-b border-transparent pb-1 font-semibold text-primary-800 hover:border-primary-500">
+          <button type="button" aria-pressed={isQuickPeriodSelected('currentPayroll')} onClick={() => setQuickPeriod('currentPayroll')} className={`min-h-11 rounded-md px-3 py-2 font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 ${isQuickPeriodSelected('currentPayroll') ? 'bg-primary-100 text-primary-900' : 'text-primary-800 hover:bg-primary-50'}`}>
             Pågående löneperiod
           </button>
-          <button type="button" aria-pressed={isQuickPeriodSelected('previousPayroll')} onClick={() => setQuickPeriod('previousPayroll')} className="border-b border-transparent pb-1 font-semibold text-primary-800 hover:border-primary-500">
+          <button type="button" aria-pressed={isQuickPeriodSelected('previousPayroll')} onClick={() => setQuickPeriod('previousPayroll')} className={`min-h-11 rounded-md px-3 py-2 font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 ${isQuickPeriodSelected('previousPayroll') ? 'bg-primary-100 text-primary-900' : 'text-primary-800 hover:bg-primary-50'}`}>
             Föregående
           </button>
         </div>

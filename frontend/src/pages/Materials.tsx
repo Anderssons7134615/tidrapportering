@@ -438,7 +438,7 @@ export default function Materials() {
               </div>
             ) : (
               <>
-                <DataTable>
+                <DataTable label="Materialartiklar">
                   <table className="min-w-full text-sm">
                     <thead className="table-head">
                       <tr>

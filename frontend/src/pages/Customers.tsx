@@ -149,7 +149,7 @@ export default function Customers() {
       {!filteredCustomers.length ? (
         <EmptyState title="Inga kunder matchar filtret" description="Testa att ändra sökning eller visa alla kunder." />
       ) : (
-        <DataTable>
+        <DataTable label="Kunder">
           <table className="min-w-[920px] w-full text-left text-sm">
             <thead className="table-head">
               <tr>

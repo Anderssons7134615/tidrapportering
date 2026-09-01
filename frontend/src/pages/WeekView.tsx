@@ -100,8 +100,9 @@ function SwipeableEntry({
                   onClick={(event) => event.stopPropagation()}
                   className="icon-button min-h-11 min-w-11 border-0 p-1 text-graphite-600 hover:bg-primary-50 hover:text-primary-700"
                   title="Redigera"
+                  aria-label="Redigera tidrad"
                 >
-                  <PencilLine className="h-4 w-4" />
+                  <PencilLine aria-hidden="true" className="h-4 w-4" />
                 </Link>
                 <button
                   type="button"
@@ -118,8 +119,18 @@ function SwipeableEntry({
                 </button>
               </>
             )}
-            {entry.status === 'APPROVED' && <CheckCircle className="h-4 w-4 text-green-500" />}
-            {entry.status === 'REJECTED' && <XCircle className="h-4 w-4 text-red-500" />}
+            {entry.status === 'APPROVED' && (
+              <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700">
+                <CheckCircle aria-hidden="true" className="h-4 w-4" />
+                Godkänd
+              </span>
+            )}
+            {entry.status === 'REJECTED' && (
+              <span className="inline-flex items-center gap-1 text-xs font-semibold text-rose-700">
+                <XCircle aria-hidden="true" className="h-4 w-4" />
+                Nekad
+              </span>
+            )}
           </div>
         </div>
       </motion.div>

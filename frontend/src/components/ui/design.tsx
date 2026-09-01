@@ -163,8 +163,17 @@ export function StatusBadge({ label, tone = 'gray' }: { label: string; tone?: To
   return <span className={`inline-flex items-center rounded-md border px-2.5 py-1 text-xs font-bold ${toneClasses[tone]}`}>{label}</span>;
 }
 
-export function DataTable({ children }: { children: ReactNode }) {
-  return <div className="table-wrap overflow-x-auto">{children}</div>;
+export function DataTable({ children, label = 'Datatabell' }: { children: ReactNode; label?: string }) {
+  return (
+    <div
+      className="table-wrap overflow-x-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2"
+      role="region"
+      aria-label={label}
+      tabIndex={0}
+    >
+      {children}
+    </div>
+  );
 }
 
 export function EmptyState({ title, description }: { title: string; description?: string }) {
@@ -213,7 +222,7 @@ export function Tabs({
           role="tab"
           aria-selected={active === tab.id}
           onClick={() => onChange(tab.id)}
-          className={`whitespace-nowrap border-b-2 px-0 py-2 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2 sm:text-sm ${
+          className={`min-h-11 whitespace-nowrap border-b-2 px-1 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2 ${
             active === tab.id ? 'border-primary-600 text-primary-800' : 'border-transparent text-graphite-600 hover:border-graphite-300 hover:text-graphite-950'
           }`}
         >

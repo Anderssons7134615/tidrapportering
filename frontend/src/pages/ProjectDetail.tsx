@@ -529,7 +529,7 @@ export default function ProjectDetail() {
 
       {activeTab === 'hours' && (
         <TaskSection title={hoursOnly ? 'Attesterade projekttimmar' : 'Tid'}>
-          <DataTable>
+          <DataTable label="Projektets tidrader">
             <table className="min-w-full text-sm">
               <thead className="table-head">
                 <tr><th className="px-3 py-2">Datum</th><th className="px-3 py-2">Anställd</th><th className="px-3 py-2">Arbetsmoment</th><th className="px-3 py-2">Timmar</th>{!hoursOnly && <><th className="px-3 py-2">Status</th><th className="px-3 py-2">Kommentar</th></>}</tr>
@@ -1014,7 +1014,7 @@ function MaterialsTable({
 }) {
   if (!materials.length) return <EmptyState title="Inget material" description="Registrera material manuellt eller importera en Excel-lista." />;
   return (
-    <DataTable>
+    <DataTable label="Projektets materialrader">
       <table className="min-w-full text-sm">
         <thead className="table-head">
           <tr>

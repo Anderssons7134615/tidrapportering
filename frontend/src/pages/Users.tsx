@@ -111,7 +111,7 @@ export default function UsersPage() {
         }
       />
 
-      <DataTable>
+      <DataTable label="Användare">
         <table className="min-w-[860px] w-full text-left text-sm">
           <thead className="table-head">
             <tr>
