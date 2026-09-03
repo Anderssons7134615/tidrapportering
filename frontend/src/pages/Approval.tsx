@@ -23,6 +23,7 @@ export default function Approval() {
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [approvalCandidate, setApprovalCandidate] = useState<WeekLock | null>(null);
   const [unlockCandidate, setUnlockCandidate] = useState<WeekLock | null>(null);
+  const [deleteCandidate, setDeleteCandidate] = useState<TimeEntry | null>(null);
 
   const { data: weekLocks, isLoading, isError: isWeekLocksError, error: weekLocksError, refetch: refetchWeekLocks } = useQuery({
     queryKey: ['weekLocks'],
@@ -89,6 +90,7 @@ export default function Approval() {
     mutationFn: (id: string) => timeEntriesApi.delete(id),
     onSuccess: () => {
       toast.success('Tidrad borttagen');
+      setDeleteCandidate(null);
       invalidateApprovalData();
     },
     onError: (error: Error) => toast.error(error.message),
@@ -165,7 +167,7 @@ export default function Approval() {
           <div className="md:hidden">
             <DataList>
               {rows.map(({ lock, weekStart, detailsLoaded, deviations }) => (
-                <DataRow key={lock.id} className="items-start">
+                <DataRow key={lock.id} className="flex-wrap items-start">
                   <div className="min-w-0">
                     <p className="font-semibold text-graphite-950">{lock.user?.name}</p>
                     <p className="mt-1 text-sm text-graphite-600">Vecka {format(weekStart, 'w', { locale: sv })} · {format(weekStart, 'd/M')} - {format(addDays(weekStart, 6), 'd/M')} · <strong>{formatHours(lock.totalHours)}</strong></p>
@@ -197,6 +199,7 @@ export default function Approval() {
                         setRejectingId,
                         rejectMutation,
                         deleteEntryMutation,
+                        onDeleteEntry: setDeleteCandidate,
                         canApprove: canApproveLock(lock),
                         selfApproval: lock.userId === user?.id && user?.role === 'ADMIN',
                         onApprove: () => setApprovalCandidate(lock),
@@ -208,7 +211,7 @@ export default function Approval() {
             </DataList>
           </div>
           <div className="hidden md:block">
-          <DataTable label="Veckor att attestera">
+          <DataTable label="Veckor som väntar på attest">
             <table className="min-w-[960px] w-full text-sm">
               <thead className="table-head">
                 <tr>
@@ -287,6 +290,7 @@ export default function Approval() {
                             setRejectingId,
                             rejectMutation,
                             deleteEntryMutation,
+                            onDeleteEntry: setDeleteCandidate,
                             canApprove: canApproveLock(lock),
                             selfApproval: lock.userId === user?.id && user?.role === 'ADMIN',
                             onApprove: () => setApprovalCandidate(lock),
@@ -350,6 +354,16 @@ export default function Approval() {
         confirmVariant="primary"
         isLoading={unlockMutation.isPending}
       />
+      <ConfirmDialog
+        open={Boolean(deleteCandidate)}
+        onClose={() => setDeleteCandidate(null)}
+        onConfirm={() => deleteCandidate && deleteEntryMutation.mutate(deleteCandidate.id)}
+        title="Ta bort tidraden?"
+        description={deleteCandidate ? `${format(parseDateOnlyLocal(deleteCandidate.date), 'd MMMM', { locale: sv })} · ${deleteCandidate.project?.name || 'Intern tid'} · ${formatHours(deleteCandidate.hours)}` : undefined}
+        confirmLabel="Ta bort tidrad"
+        consequence="Tidraden tas bort ur den inskickade veckan. Kontrollera därefter att veckans summa fortfarande är korrekt."
+        isLoading={deleteEntryMutation.isPending}
+      />
     </AppShell>
   );
 }
@@ -367,6 +381,7 @@ function renderWeekDetails({
   setRejectingId,
   rejectMutation,
   deleteEntryMutation,
+  onDeleteEntry,
   canApprove,
   selfApproval,
   onApprove,
@@ -383,6 +398,7 @@ function renderWeekDetails({
   setRejectingId: (value: string | null) => void;
   rejectMutation: any;
   deleteEntryMutation: any;
+  onDeleteEntry: (entry: TimeEntry) => void;
   canApprove: boolean;
   selfApproval: boolean;
   onApprove: () => void;
@@ -432,7 +448,7 @@ function renderWeekDetails({
                   <PencilLine className="h-4 w-4" />
                   Ändra
                 </Link>
-                <button type="button" onClick={() => window.confirm('Ta bort tidraden?') && deleteEntryMutation.mutate(entry.id)} disabled={deleteEntryMutation.isPending} className="btn-danger inline-flex">
+                <button type="button" onClick={() => onDeleteEntry(entry)} disabled={deleteEntryMutation.isPending} className="btn-danger inline-flex">
                   <Trash2 className="h-4 w-4" />
                   Ta bort
                 </button>
@@ -444,7 +460,8 @@ function renderWeekDetails({
 
       {rejectingId === lock.id ? (
         <div className="border-y border-rose-200 bg-rose-50 p-3">
-          <textarea value={rejectComment} onChange={(event) => setRejectComment(event.target.value)} placeholder="Ange anledning till nekande..." className="input" rows={2} />
+          <label htmlFor={`reject-comment-${lock.id}`} className="label">Anledning till nekande</label>
+          <textarea id={`reject-comment-${lock.id}`} value={rejectComment} onChange={(event) => setRejectComment(event.target.value)} placeholder="Beskriv vad som behöver rättas" className="input" rows={2} />
           <div className="mt-3 flex gap-2">
             <button onClick={() => { setRejectingId(null); setRejectComment(''); }} className="btn-secondary flex-1">Avbryt</button>
             <button onClick={() => rejectMutation.mutate({ id: lock.id, comment: rejectComment.trim() })} disabled={!rejectComment.trim() || rejectMutation.isPending} className="btn-danger flex-1">

@@ -79,7 +79,7 @@
   }
 
   .input {
-    @apply min-h-11 w-full rounded-[0.7rem] border border-graphite-200 bg-white px-3.5 py-2.5 text-sm text-graphite-950 placeholder:text-graphite-400 transition duration-200 hover:border-graphite-300 focus:border-primary-500 focus:bg-white focus:ring-4 focus:ring-primary-100;
+    @apply min-h-11 w-full rounded-[0.7rem] border border-graphite-200 bg-white px-3.5 py-2.5 text-sm text-graphite-950 placeholder:text-graphite-500 transition duration-200 hover:border-graphite-300 focus:border-primary-500 focus:bg-white focus:ring-4 focus:ring-primary-100;
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
   }
 
@@ -510,12 +510,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+  .animate-spin {
+    animation: none !important;
   }
 }
 

@@ -84,7 +84,12 @@ export default function TimeEntry() {
     queryFn: () => projectsApi.list({ active: true }),
     ...referenceQueryCache(() => readReferenceCache<Project[]>(projectsCacheKey)),
   });
-  const { data: activities } = useQuery<Activity[]>({
+  const {
+    data: activities,
+    isError: activitiesFailed,
+    isFetching: activitiesFetching,
+    refetch: refetchActivities,
+  } = useQuery<Activity[]>({
     queryKey: ['activities', 'active', user?.id],
     queryFn: () => activitiesApi.list(true),
     ...referenceQueryCache(() => readReferenceCache<Activity[]>(activitiesCacheKey)),
@@ -389,20 +394,20 @@ export default function TimeEntry() {
           <TaskSection className="space-y-5">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               {canReportForOthers && (
-                <FormField label="Anställd">
-                  <select value={selectedUserId} onChange={(event) => setSelectedUserId(event.target.value)} className="input">
+                <FormField label="Anställd" controlId="time-entry-user">
+                  <select id="time-entry-user" value={selectedUserId} onChange={(event) => setSelectedUserId(event.target.value)} className="input">
                     <option value="">Jag själv</option>
                     {users?.filter((entryUser) => entryUser.role !== 'ACCOUNTANT').map((entryUser) => <option key={entryUser.id} value={entryUser.id}>{entryUser.name}</option>)}
                   </select>
                 </FormField>
               )}
-              <FormField label="Datum">
-                <input type="date" value={date} onChange={(event) => setDate(event.target.value)} className="input" required />
+              <FormField label="Datum" controlId="time-entry-date">
+                <input id="time-entry-date" type="date" value={date} onChange={(event) => setDate(event.target.value)} className="input" required />
                 <p className="mt-1 text-xs font-medium text-graphite-500">{selectedDateLabel}</p>
               </FormField>
               <div>
-                <FormField label="Projekt">
-                  <select value={projectId} onChange={(event) => setProjectId(event.target.value)} className="input">
+                <FormField label="Projekt" controlId="time-entry-project">
+                  <select id="time-entry-project" value={projectId} onChange={(event) => setProjectId(event.target.value)} className="input">
                     <option value="">{projectRequired ? 'Välj projekt...' : 'Inget projekt (intern/frånvaro)'}</option>
                     {projects?.map((project) => <option key={project.id} value={project.id}>{project.code} - {project.name}{project.customer ? ` (${project.customer.name})` : ''}</option>)}
                   </select>
@@ -426,7 +431,11 @@ export default function TimeEntry() {
                   </button>
                 </div>
               </div>
-              <FormField label="Aktivitet">
+              <FormField label="Aktivitet" group>
+                {activitiesFailed && !activities?.length ? (
+                  <QueryError title="Aktiviteterna kunde inte hämtas" description="Tid kan inte sparas förrän aktivitetslistan är tillgänglig." onRetry={() => void refetchActivities()} />
+                ) : (
+                  <>
                 {!!commonActivities.length && (
                   <div className="mb-2 grid grid-cols-2 gap-2">
                     {commonActivities.map((activity) => (
@@ -445,7 +454,8 @@ export default function TimeEntry() {
                     ))}
                   </div>
                 )}
-                <select value={activityId} onChange={(event) => setActivityId(event.target.value)} className="input">
+                <label htmlFor="time-entry-activity" className="sr-only">Alla aktiviteter</label>
+                <select id="time-entry-activity" value={activityId} onChange={(event) => setActivityId(event.target.value)} className="input" disabled={activitiesFetching && !activities?.length}>
                   <option value="">Välj aktivitet...</option>
                   {groupedActivities && Object.entries(groupedActivities).map(([category, items]) => (
                     <optgroup key={category} label={categoryLabels[category] || category}>
@@ -453,12 +463,17 @@ export default function TimeEntry() {
                     </optgroup>
                   ))}
                 </select>
+                  </>
+                )}
+                {activitiesFailed && Boolean(activities?.length) && (
+                  <p role="alert" className="mt-2 text-sm text-amber-800">Aktivitetslistan kunde inte uppdateras. Den sparade listan kan vara gammal.</p>
+                )}
               </FormField>
             </div>
 
-            <FormField label="Antal timmar">
+            <FormField label="Antal timmar" group>
               <div className="grid grid-cols-[1fr_auto_auto] gap-2 sm:gap-3">
-                <input className="input min-h-[48px] text-lg font-semibold sm:text-xl" inputMode="decimal" value={hours} onChange={(event) => setHours(event.target.value)} placeholder="7,5" />
+                <input aria-label="Antal timmar" className="input min-h-[48px] text-lg font-semibold sm:text-xl" inputMode="decimal" value={hours} onChange={(event) => setHours(event.target.value)} placeholder="7,5" />
                 <button type="button" className="btn-secondary shrink-0 px-3" onClick={() => adjustHours(-0.5)}>-0,5</button>
                 <button type="button" className="btn-secondary shrink-0 px-3" onClick={() => adjustHours(0.5)}>+0,5</button>
               </div>
@@ -469,8 +484,8 @@ export default function TimeEntry() {
               </div>
             </FormField>
 
-            <FormField label="Kommentar">
-              <textarea value={note} onChange={(event) => setNote(event.target.value)} className="input" rows={3} placeholder="Kort kommentar, valfritt" />
+            <FormField label="Kommentar" controlId="time-entry-note">
+              <textarea id="time-entry-note" value={note} onChange={(event) => setNote(event.target.value)} className="input" rows={3} placeholder="Kort kommentar, valfritt" />
             </FormField>
 
             <details className="rounded-lg border border-graphite-200 bg-graphite-50/80 p-3.5">
@@ -479,8 +494,8 @@ export default function TimeEntry() {
                 <ChevronDown className="h-4 w-4 text-graphite-500" />
               </summary>
               <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
-                <FormField label="Starttid"><input type="time" value={startTime} onChange={(event) => setStartTime(event.target.value)} className="input" /></FormField>
-                <FormField label="Sluttid"><input type="time" value={endTime} onChange={(event) => setEndTime(event.target.value)} className="input" /></FormField>
+                <FormField label="Starttid" controlId="time-entry-start"><input id="time-entry-start" type="time" value={startTime} onChange={(event) => setStartTime(event.target.value)} className="input" /></FormField>
+                <FormField label="Sluttid" controlId="time-entry-end"><input id="time-entry-end" type="time" value={endTime} onChange={(event) => setEndTime(event.target.value)} className="input" /></FormField>
               </div>
             </details>
 

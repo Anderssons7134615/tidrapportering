@@ -5,6 +5,7 @@ import type { Activity } from '../types';
 import { Plus, Edit2, Trash2, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ListSkeleton } from '../components/ui/Skeleton';
+import { QueryError } from '../components/ui/QueryError';
 import { AppShell, ConfirmDialog, DataTable, Dialog, PageHeader, StatusBadge } from '../components/ui/design';
 
 const categoryLabels: Record<string, string> = {
@@ -31,7 +32,7 @@ export default function Activities() {
   const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
   const [deletingActivity, setDeletingActivity] = useState<Activity | null>(null);
 
-  const { data: activities, isLoading } = useQuery({
+  const { data: activities, isLoading, isError, refetch } = useQuery({
     queryKey: ['activities'],
     queryFn: () => activitiesApi.list(),
   });
@@ -95,6 +96,7 @@ export default function Activities() {
   });
 
   if (isLoading) return <ListSkeleton />;
+  if (isError) return <AppShell><QueryError title="Aktivitetsregistret kunde inte hämtas" onRetry={() => void refetch()} /></AppShell>;
 
   return (
     <AppShell>
@@ -109,7 +111,7 @@ export default function Activities() {
         }
       />
 
-      <DataTable label="Aktiviteter">
+      <DataTable label="Aktivitetsregister">
         <table className="min-w-[720px] w-full text-left text-sm">
           <thead className="table-head">
             <tr>
@@ -140,7 +142,7 @@ export default function Activities() {
                         setEditingActivity(activity);
                         setIsModalOpen(true);
                       }}
-                      className="rounded-md p-2 text-graphite-500 hover:bg-primary-50 hover:text-primary-700"
+                      className="icon-button border-0 text-graphite-500 hover:bg-primary-50 hover:text-primary-700"
                       aria-label="Redigera aktivitet"
                     >
                       <Edit2 className="h-4 w-4" />
@@ -149,7 +151,7 @@ export default function Activities() {
                       onClick={() => {
                         setDeletingActivity(activity);
                       }}
-                      className="rounded-md p-2 text-graphite-500 hover:bg-rose-50 hover:text-rose-700"
+                      className="icon-button border-0 text-graphite-500 hover:bg-rose-50 hover:text-rose-700"
                       aria-label="Ta bort aktivitet"
                     >
                       <Trash2 className="h-4 w-4" />

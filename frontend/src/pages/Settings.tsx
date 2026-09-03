@@ -6,6 +6,7 @@ import { authApi, pushSubscriptionsApi, settingsApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
 import { disablePushNotifications, enablePushNotifications, getPushStatus } from '../services/pushNotifications';
 import { SettingsSkeleton } from '../components/ui/Skeleton';
+import { QueryError } from '../components/ui/QueryError';
 import { AppShell, PageHeader } from '../components/ui/design';
 
 export default function Settings() {
@@ -17,9 +18,10 @@ export default function Settings() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
-  const { data: settings, isLoading } = useQuery({
+  const { data: settings, isLoading, isError, refetch } = useQuery({
     queryKey: ['settings'],
     queryFn: settingsApi.get,
+    enabled: isAdmin,
   });
 
   const { data: pushSubscriptions = [], isLoading: isPushSubscriptionsLoading } = useQuery({
@@ -133,8 +135,12 @@ export default function Settings() {
     changePasswordMutation.mutate();
   };
 
-  if (isLoading) {
+  if (isAdmin && isLoading) {
     return <SettingsSkeleton />;
+  }
+
+  if (isAdmin && isError) {
+    return <AppShell><QueryError title="Företagsinställningarna kunde inte hämtas" onRetry={() => void refetch()} /></AppShell>;
   }
 
   return (
@@ -165,17 +171,17 @@ export default function Settings() {
 
             <form onSubmit={handlePasswordSubmit} className="space-y-4">
               <div>
-                <label className="label">Nuvarande lösenord</label>
-                <input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} className="input" required />
+                <label htmlFor="current-password" className="label">Nuvarande lösenord</label>
+                <input id="current-password" type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} className="input" required />
               </div>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
-                  <label className="label">Nytt lösenord</label>
-                  <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="input" required minLength={6} />
+                  <label htmlFor="new-password" className="label">Nytt lösenord</label>
+                  <input id="new-password" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="input" required minLength={6} />
                 </div>
                 <div>
-                  <label className="label">Bekräfta nytt lösenord</label>
-                  <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="input" required />
+                  <label htmlFor="confirm-password" className="label">Bekräfta nytt lösenord</label>
+                  <input id="confirm-password" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="input" required />
                 </div>
               </div>
               <button type="submit" disabled={changePasswordMutation.isPending} className="btn-primary">
@@ -198,18 +204,18 @@ export default function Settings() {
 
               <form onSubmit={handleSettingsSubmit} className="space-y-4">
                 <div>
-                  <label className="label">Företagsnamn</label>
-                  <input name="companyName" defaultValue={settings.companyName} className="input" />
+                  <label htmlFor="company-name" className="label">Företagsnamn</label>
+                  <input id="company-name" name="companyName" defaultValue={settings.companyName} className="input" />
                 </div>
 
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div>
-                    <label className="label">Momssats (%)</label>
-                    <input name="vatRate" type="number" defaultValue={settings.vatRate} className="input" min="0" max="100" />
+                    <label htmlFor="vat-rate" className="label">Momssats (%)</label>
+                    <input id="vat-rate" name="vatRate" type="number" defaultValue={settings.vatRate} className="input" min="0" max="100" />
                   </div>
                   <div>
-                    <label className="label">CSV-separator</label>
-                    <select name="csvDelimiter" defaultValue={settings.csvDelimiter} className="input">
+                    <label htmlFor="csv-delimiter" className="label">CSV-separator</label>
+                    <select id="csv-delimiter" name="csvDelimiter" defaultValue={settings.csvDelimiter} className="input">
                       <option value=";">Semikolon (;)</option>
                       <option value=",">Komma (,)</option>
                       <option value="\t">Tab</option>
@@ -219,8 +225,8 @@ export default function Settings() {
 
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div>
-                    <label className="label">Fredagspåminnelse</label>
-                    <input name="reminderTime" type="time" defaultValue={settings.reminderTime} className="input" />
+                    <label htmlFor="reminder-time" className="label">Fredagspåminnelse</label>
+                    <input id="reminder-time" name="reminderTime" type="time" defaultValue={settings.reminderTime} className="input" />
                   </div>
                   <label className="flex min-h-11 cursor-pointer items-center justify-between gap-4 rounded-md border border-graphite-200 bg-white px-3.5 py-2.5">
                     <span>

@@ -9,6 +9,7 @@ import { useAuthStore } from '../stores/authStore';
 import { useOfflineStore } from '../stores/offlineStore';
 import { useSync } from '../hooks/useSync';
 import { authApi } from '../services/api';
+import { getFocusTrapAction } from '../utils/frontendGuards';
 
 type Role = 'ADMIN' | 'SUPERVISOR' | 'EMPLOYEE' | 'ACCOUNTANT';
 type NavigationGroup = 'time' | 'management' | 'register' | 'system';
@@ -66,8 +67,12 @@ export default function Layout() {
   const navigate = useNavigate();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
-  const mobileMenuRef = useRef<HTMLElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const mobileMenuRef = useRef<HTMLElement>(null);
+  const mobileHeaderRef = useRef<HTMLElement>(null);
+  const syncWarningRef = useRef<HTMLDivElement>(null);
+  const mainContentRef = useRef<HTMLElement>(null);
+  const mobileBottomNavRef = useRef<HTMLElement>(null);
   const { data: currentUser } = useQuery({
     queryKey: ['auth', 'me'],
     queryFn: authApi.me,
@@ -112,45 +117,53 @@ export default function Layout() {
   useEffect(() => {
     const menu = mobileMenuRef.current;
     if (!menu) return;
+    const background = [mobileHeaderRef.current, syncWarningRef.current, mainContentRef.current, mobileBottomNavRef.current].filter(Boolean) as HTMLElement[];
+
     if (!menuOpen) {
       menu.setAttribute('inert', '');
+      background.forEach((element) => element.removeAttribute('inert'));
       return;
     }
 
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : menuButtonRef.current;
     menu.removeAttribute('inert');
+    background.forEach((element) => element.setAttribute('inert', ''));
+
     const focusableSelector = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
-    const focusable = Array.from(menu.querySelectorAll<HTMLElement>(focusableSelector));
-    focusable[0]?.focus();
+    const focusableElements = () => Array.from(menu.querySelectorAll<HTMLElement>(focusableSelector));
+    const focusFrame = window.requestAnimationFrame(() => focusableElements()[0]?.focus());
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
+      const elements = focusableElements();
+      const activeIndex = elements.indexOf(document.activeElement as HTMLElement);
+      const action = getFocusTrapAction(event.key, event.shiftKey, activeIndex, elements.length);
+
+      if (action === 'close') {
         event.preventDefault();
         setMenuOpen(false);
-        menuButtonRef.current?.focus();
         return;
       }
-      if (event.key !== 'Tab' || focusable.length === 0) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
+      if (action === 'focus-last') {
         event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
+        elements[elements.length - 1]?.focus();
+      } else if (action === 'focus-first') {
         event.preventDefault();
-        first.focus();
+        elements[0]?.focus();
       }
     };
 
     document.addEventListener('keydown', handleKeyDown);
     return () => {
+      window.cancelAnimationFrame(focusFrame);
       document.removeEventListener('keydown', handleKeyDown);
-      menuButtonRef.current?.focus();
+      background.forEach((element) => element.removeAttribute('inert'));
+      previousFocus?.focus();
     };
   }, [menuOpen]);
 
   return (
     <div className="min-h-[100dvh] text-graphite-900">
-      <header className="mobile-header safe-top sticky top-0 z-50 border-b border-graphite-200/80 lg:hidden">
+      <header ref={mobileHeaderRef} className="mobile-header safe-top sticky top-0 z-50 border-b border-graphite-200/80 lg:hidden">
         <div className="mx-auto flex h-16 max-w-[96rem] items-center justify-between px-4">
           <div className="flex min-w-0 items-center gap-3">
             <button ref={menuButtonRef} onClick={() => setMenuOpen(!menuOpen)} className="icon-button" aria-label="Meny" aria-expanded={menuOpen} aria-controls="mobile-navigation">
@@ -167,7 +180,7 @@ export default function Layout() {
       </header>
 
       {syncIssues.length > 0 && (
-        <div className="border-b border-amber-200 bg-amber-50 px-4 py-3" role="alert">
+        <div ref={syncWarningRef} className="border-b border-amber-200 bg-amber-50 px-4 py-3" role="alert">
           <div className="mx-auto flex max-w-[96rem] flex-col gap-2 text-sm text-amber-950 sm:flex-row sm:items-center sm:justify-between">
             <p>
               <span className="font-semibold">{syncIssues.length} offline-rad(er) kräver åtgärd.</span>{' '}
@@ -198,11 +211,14 @@ export default function Layout() {
           <SidebarFooter isOnline={isOnline} pendingEntryCount={pendingEntryCount} onLogout={handleLogout} />
         </aside>
 
-        {menuOpen && <div className="fixed inset-0 z-40 bg-graphite-950/35 lg:hidden" onClick={() => setMenuOpen(false)} />}
+        {menuOpen && <div aria-hidden="true" className="fixed inset-0 z-40 bg-graphite-950/35 lg:hidden" onClick={() => setMenuOpen(false)} />}
 
         <aside
-          id="mobile-navigation"
           ref={mobileMenuRef}
+          id="mobile-navigation"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Huvudmeny"
           aria-hidden={!menuOpen}
           className={`app-sidebar fixed left-0 top-0 z-50 flex h-full w-72 flex-col border-r border-white/10 text-white shadow-md transition-transform duration-200 lg:hidden ${menuOpen ? 'translate-x-0' : '-translate-x-full'}`}
         >
@@ -220,7 +236,7 @@ export default function Layout() {
           <SidebarFooter isOnline={isOnline} pendingEntryCount={pendingEntryCount} onLogout={handleLogout} />
         </aside>
 
-        <main className="app-main">
+        <main ref={mainContentRef} className="app-main">
           <div className="route-stage">
             <Outlet />
           </div>
@@ -228,7 +244,7 @@ export default function Layout() {
       </div>
 
       {filteredBottomTabs.length > 0 && (
-        <nav className="mobile-bottom-nav safe-bottom fixed bottom-0 left-0 right-0 z-40 border-t border-graphite-200/80 text-graphite-600 shadow-sm lg:hidden">
+        <nav ref={mobileBottomNavRef} className="mobile-bottom-nav safe-bottom fixed bottom-0 left-0 right-0 z-40 border-t border-graphite-200/80 text-graphite-600 shadow-sm lg:hidden">
           <div className={`mx-auto grid items-center gap-1 px-2 py-2 ${filteredBottomTabs.length <= 2 ? 'max-w-[14rem]' : filteredBottomTabs.length === 3 ? 'max-w-[21rem]' : 'max-w-md'}`} style={{ gridTemplateColumns: `repeat(${filteredBottomTabs.length}, minmax(0, 1fr))` }}>
             {filteredBottomTabs.map((item) => <MobileNavLink key={item.to} item={item} />)}
           </div>
@@ -255,7 +271,7 @@ function SidebarNavigation({ items, onClick }: { items: NavigationItem[]; onClic
       {(Object.keys(groupLabels) as NavigationGroup[]).map((group) => {
         const groupItems = items.filter((item) => item.group === group);
         if (!groupItems.length) return null;
-        return <div key={group} className="mb-5 last:mb-0"><p className="px-3 pb-2 text-xs font-bold text-white/42">{groupLabels[group]}</p><div className="space-y-1">{groupItems.map((item) => <SideNavLink key={item.to} item={item} onClick={onClick} />)}</div></div>;
+        return <div key={group} className="mb-5 last:mb-0"><p className="px-3 pb-2 text-xs font-bold text-white/65">{groupLabels[group]}</p><div className="space-y-1">{groupItems.map((item) => <SideNavLink key={item.to} item={item} onClick={onClick} />)}</div></div>;
       })}
     </nav>
   );

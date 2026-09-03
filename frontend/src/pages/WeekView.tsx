@@ -462,8 +462,10 @@ export default function WeekView() {
           </div>
         }
       >
-        <FormField label="Timmar per arbetsdag" hint="Samma antal timmar registreras måndag till fredag.">
+        <FormField label="Timmar per arbetsdag" hint="Samma antal timmar registreras måndag till fredag." controlId="vacation-hours-per-day">
           <input
+            id="vacation-hours-per-day"
+            aria-describedby="vacation-hours-per-day-hint"
             type="number"
             autoFocus
             min="0.25"

@@ -287,40 +287,40 @@ export default function Materials() {
           )}
         >
           <form onSubmit={save} className="grid grid-cols-1 gap-3 md:grid-cols-4">
-          <FormField label="Artikel">
-            <input className="input" value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} required />
+          <FormField label="Artikel" controlId="material-name">
+            <input id="material-name" className="input" value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} required />
           </FormField>
-          <FormField label="Artikelnummer">
-            <input className="input" value={form.articleNumber} onChange={(event) => setForm((current) => ({ ...current, articleNumber: event.target.value }))} />
+          <FormField label="Artikelnummer" controlId="material-article-number">
+            <input id="material-article-number" className="input" value={form.articleNumber} onChange={(event) => setForm((current) => ({ ...current, articleNumber: event.target.value }))} />
           </FormField>
-          <FormField label="Kategori">
-            <select className="input" value={form.category} onChange={(event) => setForm((current) => ({ ...current, category: event.target.value as MaterialCategory }))}>
+          <FormField label="Kategori" controlId="material-category">
+            <select id="material-category" className="input" value={form.category} onChange={(event) => setForm((current) => ({ ...current, category: event.target.value as MaterialCategory }))}>
               {categories.map((category) => <option key={category} value={category}>{category}</option>)}
             </select>
           </FormField>
-          <FormField label="Enhet">
-            <input className="input" value={form.unit} onChange={(event) => setForm((current) => ({ ...current, unit: event.target.value }))} required />
+          <FormField label="Enhet" controlId="material-unit">
+            <input id="material-unit" className="input" value={form.unit} onChange={(event) => setForm((current) => ({ ...current, unit: event.target.value }))} required />
           </FormField>
-          <FormField label="Leverantör">
-            <input className="input" value={form.supplier} onChange={(event) => setForm((current) => ({ ...current, supplier: event.target.value }))} placeholder="Bevego" />
+          <FormField label="Leverantör" controlId="material-supplier">
+            <input id="material-supplier" className="input" value={form.supplier} onChange={(event) => setForm((current) => ({ ...current, supplier: event.target.value }))} placeholder="Bevego" />
           </FormField>
-          <FormField label="Fabrikat">
-            <input className="input" value={form.manufacturer} onChange={(event) => setForm((current) => ({ ...current, manufacturer: event.target.value }))} placeholder="Armacell" />
+          <FormField label="Fabrikat" controlId="material-manufacturer">
+            <input id="material-manufacturer" className="input" value={form.manufacturer} onChange={(event) => setForm((current) => ({ ...current, manufacturer: event.target.value }))} placeholder="Armacell" />
           </FormField>
-          <FormField label="Bevego listpris">
-            <input className="input" inputMode="decimal" value={form.listPrice} onChange={(event) => setForm((current) => ({ ...current, listPrice: event.target.value }))} />
+          <FormField label="Bevego listpris" controlId="material-list-price">
+            <input id="material-list-price" className="input" inputMode="decimal" value={form.listPrice} onChange={(event) => setForm((current) => ({ ...current, listPrice: event.target.value }))} />
           </FormField>
-          <FormField label="Rabatt %">
-            <input className="input" inputMode="decimal" value={form.discountPercent} onChange={(event) => setForm((current) => ({ ...current, discountPercent: event.target.value }))} />
+          <FormField label="Rabatt %" controlId="material-discount-percent">
+            <input id="material-discount-percent" className="input" inputMode="decimal" value={form.discountPercent} onChange={(event) => setForm((current) => ({ ...current, discountPercent: event.target.value }))} />
           </FormField>
-          <FormField label="Inköpspris">
-            <input className="input" inputMode="decimal" value={form.purchasePrice} onChange={(event) => setForm((current) => ({ ...current, purchasePrice: event.target.value }))} />
+          <FormField label="Inköpspris" controlId="material-purchase-price">
+            <input id="material-purchase-price" className="input" inputMode="decimal" value={form.purchasePrice} onChange={(event) => setForm((current) => ({ ...current, purchasePrice: event.target.value }))} />
           </FormField>
-          <FormField label="Försäljningspris">
-            <input className="input" inputMode="decimal" value={form.defaultUnitPrice} onChange={(event) => setForm((current) => ({ ...current, defaultUnitPrice: event.target.value }))} />
+          <FormField label="Försäljningspris" controlId="material-sales-price">
+            <input id="material-sales-price" className="input" inputMode="decimal" value={form.defaultUnitPrice} onChange={(event) => setForm((current) => ({ ...current, defaultUnitPrice: event.target.value }))} />
           </FormField>
-          <FormField label="Påslag %">
-            <input className="input" inputMode="decimal" value={form.markupPercent} onChange={(event) => setForm((current) => ({ ...current, markupPercent: event.target.value }))} />
+          <FormField label="Påslag %" controlId="material-markup-percent">
+            <input id="material-markup-percent" className="input" inputMode="decimal" value={form.markupPercent} onChange={(event) => setForm((current) => ({ ...current, markupPercent: event.target.value }))} />
           </FormField>
           <label className="flex min-h-11 items-center gap-3 border-y border-graphite-200 px-1 text-sm text-graphite-800">
             <input type="checkbox" checked={form.employeeVisible} onChange={(event) => setForm((current) => ({ ...current, employeeVisible: event.target.checked }))} />
@@ -438,7 +438,7 @@ export default function Materials() {
               </div>
             ) : (
               <>
-                <DataTable label="Materialartiklar">
+                <DataTable label="Materialregister">
                   <table className="min-w-full text-sm">
                     <thead className="table-head">
                       <tr>

@@ -5,6 +5,7 @@ import type { User } from '../types';
 import { Plus, Edit2, Trash2, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ListSkeleton } from '../components/ui/Skeleton';
+import { QueryError } from '../components/ui/QueryError';
 import { AppShell, ConfirmDialog, DataTable, Dialog, PageHeader, StatusBadge } from '../components/ui/design';
 import { formatCurrency, parseSwedishNumber } from '../utils/format';
 
@@ -28,7 +29,7 @@ export default function UsersPage() {
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [deletingUser, setDeletingUser] = useState<User | null>(null);
 
-  const { data: users, isLoading } = useQuery({
+  const { data: users, isLoading, isError, refetch } = useQuery({
     queryKey: ['users'],
     queryFn: usersApi.list,
   });
@@ -97,6 +98,7 @@ export default function UsersPage() {
   };
 
   if (isLoading) return <ListSkeleton />;
+  if (isError) return <AppShell><QueryError title="Användarregistret kunde inte hämtas" onRetry={() => void refetch()} /></AppShell>;
 
   return (
     <AppShell>
@@ -111,7 +113,7 @@ export default function UsersPage() {
         }
       />
 
-      <DataTable label="Användare">
+      <DataTable label="Användarregister">
         <table className="min-w-[860px] w-full text-left text-sm">
           <thead className="table-head">
             <tr>
@@ -155,7 +157,7 @@ export default function UsersPage() {
                         setEditingUser(user);
                         setIsModalOpen(true);
                       }}
-                      className="rounded-md p-2 text-graphite-500 hover:bg-primary-50 hover:text-primary-700"
+                      className="icon-button border-0 text-graphite-500 hover:bg-primary-50 hover:text-primary-700"
                       aria-label="Redigera användare"
                     >
                       <Edit2 className="h-4 w-4" />
@@ -165,7 +167,7 @@ export default function UsersPage() {
                         onClick={() => {
                           setDeletingUser(user);
                         }}
-                        className="rounded-md p-2 text-graphite-500 hover:bg-rose-50 hover:text-rose-700"
+                        className="icon-button border-0 text-graphite-500 hover:bg-rose-50 hover:text-rose-700"
                         aria-label="Inaktivera användare"
                       >
                         <Trash2 className="h-4 w-4" />
@@ -187,22 +189,22 @@ export default function UsersPage() {
       >
             <form id="user-form" onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="label">Namn *</label>
-                <input name="name" defaultValue={editingUser?.name} className="input" required />
+                <label htmlFor="user-name" className="label">Namn *</label>
+                <input id="user-name" name="name" defaultValue={editingUser?.name} className="input" required />
               </div>
               <div>
-                <label className="label">E-post *</label>
-                <input name="email" type="email" defaultValue={editingUser?.email} className="input" required />
+                <label htmlFor="user-email" className="label">E-post *</label>
+                <input id="user-email" name="email" type="email" defaultValue={editingUser?.email} className="input" required />
               </div>
               {!editingUser && (
                 <div>
-                  <label className="label">Lösenord *</label>
-                  <input name="password" type="password" className="input" required minLength={6} placeholder="Minst 6 tecken" />
+                  <label htmlFor="user-password" className="label">Lösenord *</label>
+                  <input id="user-password" name="password" type="password" className="input" required minLength={6} placeholder="Minst 6 tecken" />
                 </div>
               )}
               <div>
-                <label className="label">Roll</label>
-                <select name="role" defaultValue={editingUser?.role || 'EMPLOYEE'} className="input">
+                <label htmlFor="user-role" className="label">Roll</label>
+                <select id="user-role" name="role" defaultValue={editingUser?.role || 'EMPLOYEE'} className="input">
                   <option value="EMPLOYEE">Medarbetare</option>
                   <option value="ACCOUNTANT">Lön och ekonomi</option>
                   <option value="SUPERVISOR">Arbetsledare</option>
@@ -210,8 +212,9 @@ export default function UsersPage() {
                 </select>
               </div>
               <div>
-                <label className="label">Intern timkostnad (kr/tim)</label>
+                <label htmlFor="user-hourly-cost" className="label">Intern timkostnad (kr/tim)</label>
                 <input
+                  id="user-hourly-cost"
                   name="hourlyCost"
                   defaultValue={editingUser?.hourlyCost ?? ''}
                   className="input"

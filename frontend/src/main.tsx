@@ -4,9 +4,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { RefreshCw, X } from 'lucide-react';
+import { MotionConfig } from 'framer-motion';
 import '@fontsource/ibm-plex-mono/latin-400.css';
 import '@fontsource/ibm-plex-mono/latin-600.css';
 import App from './App';
+import AppErrorBoundary from './components/AppErrorBoundary';
 import './index.css';
 
 const APP_UPDATE_EVENT = 'tidapp:update-ready';
@@ -76,7 +78,11 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <App />
+        <MotionConfig reducedMotion="user">
+          <AppErrorBoundary>
+            <App />
+          </AppErrorBoundary>
+        </MotionConfig>
         <AppUpdateNotice />
         <Toaster
           position="top-center"

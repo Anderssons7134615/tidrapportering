@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import { customersApi } from '../services/api';
 import type { Customer } from '../types';
 import { ListSkeleton } from '../components/ui/Skeleton';
+import { QueryError } from '../components/ui/QueryError';
 import { AppShell, ConfirmDialog, DataTable, Dialog, EmptyState, FilterBar, KpiCard, PageHeader, StatusBadge } from '../components/ui/design';
 
 export default function Customers() {
@@ -16,7 +17,7 @@ export default function Customers() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'active' | 'inactive' | 'all'>('active');
 
-  const { data: customers, isLoading } = useQuery({
+  const { data: customers, isLoading, isError, refetch } = useQuery({
     queryKey: ['customers'],
     queryFn: () => customersApi.list(),
   });
@@ -92,6 +93,7 @@ export default function Customers() {
   };
 
   if (isLoading) return <ListSkeleton />;
+  if (isError) return <AppShell><QueryError title="Kundregistret kunde inte hämtas" onRetry={() => void refetch()} /></AppShell>;
 
   return (
     <AppShell>
@@ -115,6 +117,7 @@ export default function Customers() {
       <FilterBar>
         <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-center">
           <label className="relative block">
+            <span className="sr-only">Sök kund</span>
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-graphite-400" />
             <input
               value={search}
@@ -149,7 +152,7 @@ export default function Customers() {
       {!filteredCustomers.length ? (
         <EmptyState title="Inga kunder matchar filtret" description="Testa att ändra sökning eller visa alla kunder." />
       ) : (
-        <DataTable label="Kunder">
+        <DataTable label="Kundregister">
           <table className="min-w-[920px] w-full text-left text-sm">
             <thead className="table-head">
               <tr>
@@ -185,7 +188,7 @@ export default function Customers() {
                           setEditingCustomer(customer);
                           setIsModalOpen(true);
                         }}
-                        className="rounded-md p-2 text-graphite-500 hover:bg-primary-50 hover:text-primary-700"
+                        className="icon-button border-0 text-graphite-500 hover:bg-primary-50 hover:text-primary-700"
                         aria-label="Redigera kund"
                       >
                         <Edit2 className="h-4 w-4" />
@@ -195,7 +198,7 @@ export default function Customers() {
                           onClick={() => {
                           setDeletingCustomer(customer);
                           }}
-                          className="rounded-md p-2 text-graphite-500 hover:bg-rose-50 hover:text-rose-700"
+                          className="icon-button border-0 text-graphite-500 hover:bg-rose-50 hover:text-rose-700"
                           aria-label="Inaktivera kund"
                         >
                           <Trash2 className="h-4 w-4" />
@@ -218,29 +221,29 @@ export default function Customers() {
       >
             <form id="customer-form" onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="label">Namn *</label>
-                <input name="name" defaultValue={editingCustomer?.name} className="input" required />
+                <label htmlFor="customer-name" className="label">Namn *</label>
+                <input id="customer-name" name="name" defaultValue={editingCustomer?.name} className="input" required />
               </div>
               <div>
-                <label className="label">Organisationsnummer</label>
-                <input name="orgNumber" defaultValue={editingCustomer?.orgNumber || ''} className="input" placeholder="556xxx-xxxx" />
+                <label htmlFor="customer-org-number" className="label">Organisationsnummer</label>
+                <input id="customer-org-number" name="orgNumber" defaultValue={editingCustomer?.orgNumber || ''} className="input" placeholder="556xxx-xxxx" />
               </div>
               <div>
-                <label className="label">Adress</label>
-                <input name="address" defaultValue={editingCustomer?.address || ''} className="input" />
+                <label htmlFor="customer-address" className="label">Adress</label>
+                <input id="customer-address" name="address" defaultValue={editingCustomer?.address || ''} className="input" />
               </div>
               <div>
-                <label className="label">Kontaktperson</label>
-                <input name="contactPerson" defaultValue={editingCustomer?.contactPerson || ''} className="input" />
+                <label htmlFor="customer-contact-person" className="label">Kontaktperson</label>
+                <input id="customer-contact-person" name="contactPerson" defaultValue={editingCustomer?.contactPerson || ''} className="input" />
               </div>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
-                  <label className="label">E-post</label>
-                  <input name="email" type="email" defaultValue={editingCustomer?.email || ''} className="input" />
+                  <label htmlFor="customer-email" className="label">E-post</label>
+                  <input id="customer-email" name="email" type="email" defaultValue={editingCustomer?.email || ''} className="input" />
                 </div>
                 <div>
-                  <label className="label">Telefon</label>
-                  <input name="phone" defaultValue={editingCustomer?.phone || ''} className="input" />
+                  <label htmlFor="customer-phone" className="label">Telefon</label>
+                  <input id="customer-phone" name="phone" defaultValue={editingCustomer?.phone || ''} className="input" />
                 </div>
               </div>
             </form>

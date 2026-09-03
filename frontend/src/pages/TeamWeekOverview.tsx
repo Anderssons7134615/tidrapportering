@@ -180,7 +180,9 @@ export default function TeamWeekOverview() {
 
           <div className="relative w-full xl:w-80">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <label htmlFor="team-week-search" className="sr-only">Sök medarbetare eller projekt</label>
             <input
+              id="team-week-search"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Sök anställd eller projekt..."
@@ -285,7 +287,7 @@ function TeamWeekUserRow({
           <ActionPanel user={user} weekStart={weekStart} />
 
           <div className="grid gap-4 xl:grid-cols-2">
-            <div className="table-wrap">
+            <div className="table-wrap overflow-x-auto" role="region" aria-label={`Projektfördelning för ${user.userName}`} tabIndex={0}>
               <table className="min-w-full text-sm">
                 <thead>
                   <tr className="table-head">
@@ -312,7 +314,7 @@ function TeamWeekUserRow({
               </table>
             </div>
 
-            <div className="table-wrap">
+            <div className="table-wrap overflow-x-auto" role="region" aria-label={`Tidrader för ${user.userName}`} tabIndex={0}>
               <table className="min-w-full text-sm">
                 <thead>
                   <tr className="table-head">

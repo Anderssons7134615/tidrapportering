@@ -11,16 +11,17 @@ const sizeClasses = {
 
 export default function LoadingSpinner({ fullScreen, size = 'md' }: LoadingSpinnerProps) {
   const spinner = (
-    <div className={`animate-spin rounded-full border-2 border-graphite-200 border-t-primary-600 ${sizeClasses[size]}`} />
+    <div aria-hidden="true" className={`animate-spin rounded-full border-2 border-graphite-200 border-t-primary-600 motion-reduce:animate-none ${sizeClasses[size]}`} />
   );
 
   if (fullScreen) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex min-h-screen items-center justify-center" role="status" aria-live="polite">
         {spinner}
+        <span className="sr-only">Laddar innehåll</span>
       </div>
     );
   }
 
-  return spinner;
+  return <span className="inline-flex" role="status" aria-live="polite">{spinner}<span className="sr-only">Laddar</span></span>;
 }

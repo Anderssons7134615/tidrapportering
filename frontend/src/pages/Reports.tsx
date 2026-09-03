@@ -9,6 +9,7 @@ import { QueryError } from '../components/ui/QueryError';
 import { AppShell, Button, EmptyState, PageHeader, ReviewSummary, StatusBadge, Toolbar } from '../components/ui/design';
 import { formatDate, formatHours } from '../utils/format';
 import { currentPayrollPeriod, latestClosedPayrollPeriod, previousClosedPayrollPeriod } from '../utils/payrollPeriod';
+import { getReportExportBlockReason } from '../utils/frontendGuards';
 
 type TimeKind = 'regular' | 'overtime' | 'vacation' | 'absence';
 
@@ -91,8 +92,14 @@ export default function Reports() {
   const [backupFromDate, setBackupFromDate] = useState(format(new Date(new Date().getFullYear(), 0, 1), 'yyyy-MM-dd'));
   const [backupToDate, setBackupToDate] = useState(format(new Date(new Date().getFullYear(), 11, 31), 'yyyy-MM-dd'));
 
-  const { data: users } = useQuery({ queryKey: ['users'], queryFn: usersApi.list });
-  const { data: reportData, isLoading, isError, refetch } = useQuery<any>({
+  const {
+    data: users,
+    isLoading: usersLoading,
+    isFetching: usersFetching,
+    isError: usersError,
+    refetch: refetchUsers,
+  } = useQuery({ queryKey: ['users'], queryFn: usersApi.list });
+  const { data: reportData, isLoading, isFetching, isError, refetch } = useQuery<any>({
     queryKey: ['report', 'payroll', fromDate, toDate, selectedUserId],
     queryFn: () => reportsApi.salary(fromDate, toDate, selectedUserId || undefined),
   });
@@ -207,6 +214,11 @@ export default function Reports() {
   const vacationRows = payrollData.absenceEntries.filter((entry) => classifyActivity(entry.activity) === 'vacation').length;
   const reviewHours = payrollData.totals.absenceHours + payrollData.totals.overtimeHours;
   const filteredUserName = selectedUserId ? users?.find((user) => user.id === selectedUserId)?.name : '';
+  const exportDisabledReason = getReportExportBlockReason({
+    isFetching: isFetching || usersFetching,
+    isError: isError || usersError,
+    hasReviewData: reportData != null && users != null,
+  });
 
   const setQuickPeriod = (period: 'closedPayroll' | 'currentPayroll' | 'previousPayroll') => {
     const range =
@@ -285,20 +297,6 @@ export default function Reports() {
       <PageHeader
         title="Rapport för timmar"
         description="Attesterat löne- och revisorsunderlag för vald period."
-        action={<div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-          <Button type="button" onClick={handleSalaryExcelExport} isLoading={isExportingExcel}>
-            <Download className="h-4 w-4" />
-            Löne-Excel
-          </Button>
-          <Button type="button" variant="secondary" onClick={handleSalaryCsvExport} isLoading={isExportingCsv}>
-            <Download className="h-4 w-4" />
-            CSV
-          </Button>
-          <Button type="button" variant="secondary" onClick={handleAccountantExport} isLoading={isExportingAccountant}>
-            <Download className="h-4 w-4" />
-            Revisor
-          </Button>
-        </div>}
       />
 
       <Toolbar className="grid grid-cols-1 lg:grid-cols-[minmax(260px,1fr)_170px_170px_220px]">
@@ -332,10 +330,17 @@ export default function Reports() {
         </div>
       </Toolbar>
 
-      {isLoading ? (
+      {isLoading || usersLoading ? (
         <ReportsSkeleton />
-      ) : isError ? (
-        <QueryError title="Kunde inte hämta rapporten" onRetry={() => void refetch()} />
+      ) : isError || usersError ? (
+        <QueryError
+          title={usersError ? 'Kunde inte kontrollera rapportens fullständighet' : 'Kunde inte hämta rapporten'}
+          description={usersError ? 'Användarlistan saknas, så det går inte att avgöra vem som saknar attesterad tid. Exporten är spärrad.' : undefined}
+          onRetry={() => {
+            void refetch();
+            void refetchUsers();
+          }}
+        />
       ) : (
         <main className="space-y-7">
           <section className="space-y-3 text-sm leading-7 text-graphite-700">
@@ -373,6 +378,29 @@ export default function Reports() {
               <ReportLine label="Granska före lön" value={reviewHours ? formatHours(reviewHours) : 'Inget särskilt'} warning={reviewHours > 0} />
             </div>
           </ReviewSummary>
+
+          <section className="space-y-3 border-y border-graphite-200 bg-white/80 px-4 py-4 sm:px-5" aria-labelledby="report-export-heading">
+            <div>
+              <h2 id="report-export-heading" className="text-lg font-semibold text-graphite-950">Exportera granskat urval</h2>
+              <p className="mt-1 text-sm leading-6 text-graphite-600">
+                Kontrollera perioden, antal personer, saknad tid och avvikelser ovan innan du skapar filen. Exporterna använder samma period och personurval som sammanfattningen.
+              </p>
+            </div>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+              <Button type="button" onClick={handleSalaryExcelExport} isLoading={isExportingExcel} disabledReason={exportDisabledReason}>
+                <Download className="h-4 w-4" />
+                Löne-Excel
+              </Button>
+              <Button type="button" variant="secondary" onClick={handleSalaryCsvExport} isLoading={isExportingCsv} disabledReason={exportDisabledReason}>
+                <Download className="h-4 w-4" />
+                CSV
+              </Button>
+              <Button type="button" variant="secondary" onClick={handleAccountantExport} isLoading={isExportingAccountant} disabledReason={exportDisabledReason}>
+                <Download className="h-4 w-4" />
+                Revisor
+              </Button>
+            </div>
+          </section>
 
           <section className="space-y-3">
             <div className="flex items-center gap-2">

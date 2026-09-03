@@ -6,10 +6,11 @@ import toast from 'react-hot-toast';
 import { projectsApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
 import type { MaterialArticle, Project, ProjectMaterial, ProjectSummary, ProjectUpdate, ProjectUpdateType, TimeEntry } from '../types';
-import { AppShell, Button, DataList, DataRow, DataTable, EmptyState, FormField, KpiCard, PageHeader, StatusBadge, Tabs, TaskSection } from '../components/ui/design';
+import { AppShell, Button, ConfirmDialog, DataList, DataRow, DataTable, EmptyState, FormField, KpiCard, PageHeader, StatusBadge, Tabs, TaskSection } from '../components/ui/design';
 import { QueryError } from '../components/ui/QueryError';
 import { formatCurrency, formatDate, formatHours, formatPercent, parseSwedishNumber, toDateInputValue } from '../utils/format';
 import { searchMaterialArticles } from '../utils/materialSearch';
+import { canModifyProjectMaterial, getProjectQueryAccess } from '../utils/frontendGuards';
 
 const tabs = [
   { id: 'overview', label: 'Översikt' },
@@ -54,33 +55,41 @@ export default function ProjectDetail() {
   const [activeTab, setActiveTab] = useState('overview');
   const [materialForm, setMaterialForm] = useState<MaterialForm>(emptyMaterialForm);
   const [editingMaterial, setEditingMaterial] = useState<ProjectMaterial | null>(null);
+  const [deletingMaterial, setDeletingMaterial] = useState<ProjectMaterial | null>(null);
   const [importErrors, setImportErrors] = useState<Array<{ row: number; message: string }>>([]);
   const [materialSearch, setMaterialSearch] = useState('');
   const [materialPickerOpen, setMaterialPickerOpen] = useState(false);
   const [projectUpdateForm, setProjectUpdateForm] = useState<ProjectUpdateForm>(emptyProjectUpdateForm);
 
-  const { data: project, isLoading } = useQuery({
+  const { data: project, isLoading, isError: projectFailed, error: projectError, refetch: refetchProject } = useQuery({
     queryKey: ['project', id],
     queryFn: () => projectsApi.get(id),
     enabled: !!id,
   });
 
-  const { data: summary } = useQuery({
+  const { data: summary, isError: summaryFailed, refetch: refetchSummary } = useQuery({
     queryKey: ['project', id, 'summary'],
     queryFn: () => projectsApi.getSummary(id),
     enabled: !!id,
   });
 
-  const { data: timeEntries } = useQuery({
-    queryKey: ['project', id, 'time-entries'],
-    queryFn: () => projectsApi.listTimeEntries(id),
-    enabled: !!id && Boolean(project?.hoursVisibleToCurrentUser || project?.employeeCanSeeResults || isManager),
+  const { canLoadTimeEntries, canLoadManagerSummary } = getProjectQueryAccess({
+    hasProjectId: Boolean(id),
+    isManager,
+    hoursVisibleToCurrentUser: project?.hoursVisibleToCurrentUser,
+    employeeCanSeeResults: project?.employeeCanSeeResults,
   });
 
-  const { data: managerSummary } = useQuery({
+  const { data: timeEntries, isError: timeEntriesFailed, refetch: refetchTimeEntries } = useQuery({
+    queryKey: ['project', id, 'time-entries'],
+    queryFn: () => projectsApi.listTimeEntries(id),
+    enabled: canLoadTimeEntries,
+  });
+
+  const { data: managerSummary, isError: managerSummaryFailed, refetch: refetchManagerSummary } = useQuery({
     queryKey: ['project', id, 'manager-summary'],
     queryFn: () => projectsApi.getManagerSummary(id),
-    enabled: !!id && isManager,
+    enabled: canLoadManagerSummary,
   });
 
   const {
@@ -94,7 +103,7 @@ export default function ProjectDetail() {
     enabled: !!id,
   });
 
-  const { data: materialsResponse } = useQuery({
+  const { data: materialsResponse, isError: materialsFailed, refetch: refetchMaterials } = useQuery({
     queryKey: ['project', id, 'materials'],
     queryFn: () => projectsApi.listMaterials(id),
     enabled: !!id,
@@ -203,6 +212,7 @@ export default function ProjectDetail() {
     mutationFn: (materialId: string) => projectsApi.deleteMaterial(id, materialId),
     onSuccess: () => {
       toast.success('Materialrad borttagen');
+      setDeletingMaterial(null);
       invalidateProjectData(queryClient, id);
     },
     onError: handleMaterialMutationError,
@@ -286,6 +296,18 @@ export default function ProjectDetail() {
 
   if (isLoading) return <TaskSection>Laddar projekt...</TaskSection>;
 
+  if (projectFailed) {
+    const status = (projectError as Error & { status?: number } | null)?.status;
+    return (
+      <AppShell>
+        <Link to="/projects" className="btn-secondary inline-flex w-fit"><ArrowLeft className="h-4 w-4" /> Tillbaka</Link>
+        {status === 404
+          ? <EmptyState title="Projektet hittades inte" description="Projektet kan ha inaktiverats eller länken kan vara fel." />
+          : <QueryError title="Projektet kunde inte hämtas" onRetry={() => void refetchProject()} />}
+      </AppShell>
+    );
+  }
+
   if (!p) {
     return (
       <AppShell>
@@ -313,6 +335,19 @@ export default function ProjectDetail() {
           </div>
         }
       />
+
+      {(summaryFailed || (canLoadTimeEntries && timeEntriesFailed) || (canLoadManagerSummary && managerSummaryFailed) || materialsFailed) && (
+        <QueryError
+          title="Delar av projektet kunde inte hämtas"
+          description="Vissa timmar, material eller ekonomivärden kan saknas. Försök igen innan du använder sammanställningen."
+          onRetry={() => {
+            void refetchSummary();
+            if (canLoadTimeEntries) void refetchTimeEntries();
+            if (canLoadManagerSummary) void refetchManagerSummary();
+            void refetchMaterials();
+          }}
+        />
+      )}
 
       <div className={`grid grid-cols-1 gap-3 sm:grid-cols-2 ${canSeeMoney ? 'xl:grid-cols-4' : ''}`}>
         <KpiCard label="Attesterade timmar" value={projectSummary?.totals.totalHours != null ? formatHours(projectSummary.totals.totalHours) : !canSeeMoney && p.totalHours != null ? formatHours(p.totalHours) : '—'} tone="blue" />
@@ -482,8 +517,9 @@ export default function ProjectDetail() {
                 onSelect={selectMaterialArticle}
               />
               <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(9rem,0.55fr)_minmax(10rem,0.7fr)_minmax(14rem,1.4fr)_auto]">
-                <FormField label={selectedMaterialArticle ? `Antal (${selectedMaterialArticle.unit})` : 'Antal'}>
+                <FormField label={selectedMaterialArticle ? `Antal (${selectedMaterialArticle.unit})` : 'Antal'} controlId="project-material-quantity">
                   <input
+                    id="project-material-quantity"
                     className="input"
                     inputMode="decimal"
                     value={materialForm.quantity}
@@ -492,11 +528,11 @@ export default function ProjectDetail() {
                     required
                   />
                 </FormField>
-                <FormField label="Datum">
-                  <input type="date" className="input" value={materialForm.date} onChange={(event) => setMaterialForm((current) => ({ ...current, date: event.target.value }))} />
+                <FormField label="Datum" controlId="project-material-date">
+                  <input id="project-material-date" type="date" className="input" value={materialForm.date} onChange={(event) => setMaterialForm((current) => ({ ...current, date: event.target.value }))} />
                 </FormField>
-                <FormField label="Kommentar">
-                  <input className="input" value={materialForm.note} onChange={(event) => setMaterialForm((current) => ({ ...current, note: event.target.value }))} placeholder="Valfritt" />
+                <FormField label="Kommentar" controlId="project-material-note">
+                  <input id="project-material-note" className="input" value={materialForm.note} onChange={(event) => setMaterialForm((current) => ({ ...current, note: event.target.value }))} placeholder="Valfritt" />
                 </FormField>
                 <div className="flex items-end gap-2">
                   <Button type="submit" isLoading={createMaterialMutation.isPending || updateMaterialMutation.isPending} disabledReason={!materialForm.articleId ? 'Välj artikel' : !materialForm.quantity ? 'Ange antal' : null}>
@@ -521,8 +557,10 @@ export default function ProjectDetail() {
             materials={materials}
             canSeeMoney={canSeeMoney}
             canChange={p.active}
+            canManageAll={isManager}
+            currentUserId={user?.id}
             onEdit={startEditMaterial}
-            onDelete={(item) => deleteMaterialMutation.mutate(item.id)}
+            onDelete={setDeletingMaterial}
           />
         </TaskSection>
       )}
@@ -557,7 +595,9 @@ export default function ProjectDetail() {
       )}
 
       {activeTab === 'summary' && canSeeMoney && (
-        <SummaryPanel summary={projectSummary} project={p} canSeeMoney={canSeeMoney} />
+        <div>
+          <SummaryPanel summary={projectSummary} project={p} canSeeMoney={canSeeMoney} />
+        </div>
       )}
 
       {activeTab === 'notes' && (
@@ -577,8 +617,9 @@ export default function ProjectDetail() {
                 createProjectUpdateMutation.mutate();
               }}
             >
-              <FormField label="Typ">
+              <FormField label="Typ" controlId="project-update-type">
                 <select
+                  id="project-update-type"
                   className="input"
                   value={projectUpdateForm.type}
                   onChange={(event) => setProjectUpdateForm((current) => ({
@@ -593,8 +634,9 @@ export default function ProjectDetail() {
                   <option value="NOTE">Anteckning</option>
                 </select>
               </FormField>
-              <FormField label="Datum">
+              <FormField label="Datum" controlId="project-update-date">
                 <input
+                  id="project-update-date"
                   type="date"
                   className="input"
                   value={projectUpdateForm.date}
@@ -602,8 +644,9 @@ export default function ProjectDetail() {
                   required
                 />
               </FormField>
-              <FormField label="Vad har hänt?">
+              <FormField label="Vad har hänt?" controlId="project-update-content">
                 <textarea
+                  id="project-update-content"
                   className="input min-h-[48px] resize-y py-3"
                   rows={1}
                   value={projectUpdateForm.content}
@@ -636,6 +679,16 @@ export default function ProjectDetail() {
         </TaskSection>
       )}
       </Tabs>
+      <ConfirmDialog
+        open={Boolean(deletingMaterial)}
+        onClose={() => setDeletingMaterial(null)}
+        onConfirm={() => deletingMaterial && deleteMaterialMutation.mutate(deletingMaterial.id)}
+        title="Ta bort materialraden?"
+        description={deletingMaterial ? `${deletingMaterial.articleName} · ${deletingMaterial.quantity.toLocaleString('sv-SE')} ${deletingMaterial.unit}` : undefined}
+        confirmLabel="Ta bort materialrad"
+        consequence="Materialraden tas bort från projektet och projektets materialkostnad räknas om."
+        isLoading={deleteMaterialMutation.isPending}
+      />
     </AppShell>
   );
 }
@@ -937,7 +990,7 @@ function MaterialArticlePicker({
         {value && !disabled && (
           <button
             type="button"
-            className="absolute right-1 top-1/2 inline-flex min-h-9 min-w-9 -translate-y-1/2 items-center justify-center rounded-md text-graphite-500 hover:bg-graphite-100 hover:text-graphite-950"
+            className="absolute right-0 top-1/2 inline-flex min-h-11 min-w-11 -translate-y-1/2 items-center justify-center rounded-md text-graphite-500 hover:bg-graphite-100 hover:text-graphite-950"
             onClick={() => {
               matchesRef.current = [];
               onChange('');
@@ -1004,12 +1057,16 @@ function MaterialsTable({
   materials,
   canSeeMoney,
   canChange,
+  canManageAll,
+  currentUserId,
   onEdit,
   onDelete,
 }: {
   materials: ProjectMaterial[];
   canSeeMoney: boolean;
   canChange: boolean;
+  canManageAll: boolean;
+  currentUserId?: string;
   onEdit: (item: ProjectMaterial) => void;
   onDelete: (item: ProjectMaterial) => void;
 }) {
@@ -1028,7 +1085,15 @@ function MaterialsTable({
           </tr>
         </thead>
         <tbody>
-          {materials.map((item) => (
+          {materials.map((item) => {
+            const canChangeItem = canModifyProjectMaterial({
+              projectActive: canChange,
+              isManager: canManageAll,
+              currentUserId,
+              createdByUserId: item.createdByUserId,
+              invoiceStatus: item.invoiceStatus,
+            });
+            return (
             <tr key={item.id} className="border-b border-slate-100">
               <td className="px-3 py-2">{formatDate(item.date)}</td>
               <td className="px-3 py-2">
@@ -1045,16 +1110,17 @@ function MaterialsTable({
               <td className="px-3 py-2">{item.note || '-'}</td>
               <td className="px-3 py-2 text-right">
                 <div className="inline-flex gap-1">
-                  <button type="button" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-40" onClick={() => onEdit(item)} title={!canChange ? 'Projektet är inaktivt' : item.invoiceStatus === 'INVOICED' ? 'Fakturerat material kan inte ändras' : 'Redigera'} disabled={!canChange || item.invoiceStatus === 'INVOICED'}>
+                  <button type="button" className="icon-button border-0 text-slate-500 hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-40" onClick={() => onEdit(item)} title={!canChange ? 'Projektet är inaktivt' : item.invoiceStatus === 'INVOICED' ? 'Fakturerat material kan inte ändras' : !canChangeItem ? 'Endast den som registrerade raden eller en arbetsledare kan ändra den' : 'Redigera'} aria-label="Redigera materialrad" disabled={!canChangeItem}>
                     <Edit2 className="h-4 w-4" />
                   </button>
-                  <button type="button" className="rounded-lg p-2 text-rose-600 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40" onClick={() => window.confirm('Ta bort materialraden?') && onDelete(item)} title={!canChange ? 'Projektet är inaktivt' : item.invoiceStatus === 'INVOICED' ? 'Fakturerat material kan inte tas bort' : 'Ta bort'} disabled={!canChange || item.invoiceStatus === 'INVOICED'}>
+                  <button type="button" className="icon-button border-0 text-rose-600 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40" onClick={() => onDelete(item)} title={!canChange ? 'Projektet är inaktivt' : item.invoiceStatus === 'INVOICED' ? 'Fakturerat material kan inte tas bort' : !canChangeItem ? 'Endast den som registrerade raden eller en arbetsledare kan ta bort den' : 'Ta bort'} aria-label="Ta bort materialrad" disabled={!canChangeItem}>
                     <Trash2 className="h-4 w-4" />
                   </button>
                 </div>
               </td>
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
     </DataTable>

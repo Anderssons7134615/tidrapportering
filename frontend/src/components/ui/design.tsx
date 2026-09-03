@@ -163,7 +163,7 @@ export function StatusBadge({ label, tone = 'gray' }: { label: string; tone?: To
   return <span className={`inline-flex items-center rounded-md border px-2.5 py-1 text-xs font-bold ${toneClasses[tone]}`}>{label}</span>;
 }
 
-export function DataTable({ children, label = 'Datatabell' }: { children: ReactNode; label?: string }) {
+export function DataTable({ children, label }: { children: ReactNode; label: string }) {
   return (
     <div
       className="table-wrap overflow-x-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2"
@@ -190,17 +190,34 @@ export function FormField({
   label,
   hint,
   children,
+  ...association
 }: {
   label: string;
   hint?: string;
   children: ReactNode;
-}) {
+} & (
+  | { controlId: string; group?: false }
+  | { controlId?: never; group: true }
+)) {
+  const generatedHintId = useId();
+  const hintId = association.group ? generatedHintId : `${association.controlId}-hint`;
+
+  if (association.group) {
+    return (
+      <fieldset aria-describedby={hint ? hintId : undefined} className="min-w-0">
+        <legend className="label">{label}</legend>
+        {children}
+        {hint && <span id={hintId} className="mt-1 block text-xs text-graphite-600">{hint}</span>}
+      </fieldset>
+    );
+  }
+
   return (
-    <label className="block">
-      <span className="label">{label}</span>
+    <div className="min-w-0">
+      <label htmlFor={association.controlId} className="label">{label}</label>
       {children}
-      {hint && <span className="mt-1 block text-xs text-graphite-600">{hint}</span>}
-    </label>
+      {hint && <span id={hintId} className="mt-1 block text-xs text-graphite-600">{hint}</span>}
+    </div>
   );
 }
 
