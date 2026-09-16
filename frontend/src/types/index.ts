@@ -26,13 +26,13 @@ export interface Customer {
 
 export interface Project {
   id: string;
-  customerId?: string;
+  customerId?: string | null;
   customer?: { id: string; name: string; defaultRate?: number | null };
   name: string;
   code: string;
-  site?: string;
+  site?: string | null;
   status: 'PLANNED' | 'ONGOING' | 'COMPLETED';
-  budgetHours?: number;
+  budgetHours?: number | null;
   fixedPrice?: number | null;
   billingModel: 'HOURLY' | 'FIXED';
   defaultRate?: number | null;

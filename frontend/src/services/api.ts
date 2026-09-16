@@ -279,18 +279,19 @@ export const projectsApi = {
     fetchApi<Project>('/projects', { method: 'POST', body: JSON.stringify(data) }),
   update: (id: string, data: Partial<Project>) =>
     fetchApi<Project>(`/projects/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  restore: (id: string) => fetchApi<Project>(`/projects/${id}/restore`, { method: 'POST' }),
   delete: (id: string) => fetchApi<{ message: string }>(`/projects/${id}`, { method: 'DELETE' }),
 };
 
 export const projectTasksApi = {
-  control: (params?: { q?: string; projectStatus?: string; assigneeId?: string; taskStatus?: string; deadline?: string }) => {
+  control: (params?: { active?: 'true' | 'false'; q?: string; projectStatus?: string; assigneeId?: string; taskStatus?: string; deadline?: string }) => {
     const searchParams = new URLSearchParams();
     Object.entries(params || {}).forEach(([key, value]) => { if (value) searchParams.set(key, value); });
     const query = searchParams.toString();
     return fetchApi<ProjectControlResponse>(`/project-control/projects${query ? `?${query}` : ''}`);
   },
   list: (projectId: string) => fetchApi<ProjectTask[]>(`/projects/${projectId}/tasks`),
-  create: (projectId: string, data: { title: string; note?: string; assigneeId: string; priority: ProjectTaskPriority; status: ProjectTaskStatus; dueDate: string }) =>
+  create: (projectId: string, data: { title: string; note?: string | null; assigneeId: string; priority: ProjectTaskPriority; status: ProjectTaskStatus; dueDate: string }) =>
     fetchApi<ProjectTask>(`/projects/${projectId}/tasks`, { method: 'POST', body: JSON.stringify(data) }),
   update: (taskId: string, data: Partial<Pick<ProjectTask, 'title' | 'note' | 'assigneeId' | 'priority' | 'status' | 'dueDate'>>) =>
     fetchApi<ProjectTask>(`/project-tasks/${taskId}`, { method: 'PATCH', body: JSON.stringify(data) }),

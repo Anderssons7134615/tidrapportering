@@ -1,15 +1,16 @@
-import { useState, type FormEvent, type InputHTMLAttributes } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronDown, ChevronRight, Plus, Search, SlidersHorizontal } from 'lucide-react';
+import { Archive, ChevronDown, ChevronRight, Edit2, Plus, RotateCcw, Search, SlidersHorizontal } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { customersApi, projectTasksApi, projectsApi, usersApi } from '../services/api';
+import { projectTasksApi, projectsApi, usersApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
 import type { Project, ProjectControlItem, ProjectTask, ProjectTaskPriority, ProjectTaskStatus, User } from '../types';
 import { AppShell, ConfirmDialog, Dialog, EmptyState, PageHeader } from '../components/ui/design';
 import { ListSkeleton, Skeleton } from '../components/ui/Skeleton';
 import { QueryError } from '../components/ui/QueryError';
-import { parseSwedishNumber } from '../utils/format';
+import { ProjectDialog } from '../components/ProjectDialog';
+import { refreshProjectQueries } from '../utils/projectQueries';
 import { toDateInputValue } from '../utils/format';
 
 const taskStatusLabels: Record<ProjectTaskStatus, string> = {
@@ -30,6 +31,11 @@ function formatTaskDate(date: string) {
 export default function Projects() {
   const { user } = useAuthStore();
   const isManager = user?.role === 'ADMIN' || user?.role === 'SUPERVISOR';
+  const queryClient = useQueryClient();
+  const [archived, setArchived] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [confirmProjects, setConfirmProjects] = useState<ProjectControlItem[]>([]);
+  const [batchError, setBatchError] = useState('');
   const [search, setSearch] = useState('');
   const [deadline, setDeadline] = useState('');
   const [projectStatus, setProjectStatus] = useState('');
@@ -39,16 +45,46 @@ export default function Projects() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [taskDialog, setTaskDialog] = useState<{ project?: ProjectControlItem; task?: ProjectTask } | null>(null);
   const [projectDialog, setProjectDialog] = useState<{ project?: Project } | null>(null);
-  const [projectToInactivate, setProjectToInactivate] = useState<ProjectControlItem | null>(null);
 
   const { data, isLoading, isFetching, isError, refetch } = useQuery({
-    queryKey: ['project-control', search, projectStatus, deadline, assigneeId, taskStatus],
-    queryFn: () => projectTasksApi.control({ q: search || undefined, projectStatus: projectStatus || undefined, deadline: deadline || undefined, assigneeId: assigneeId || undefined, taskStatus: taskStatus || undefined }),
+    queryKey: ['project-control', archived, search, projectStatus, deadline, assigneeId, taskStatus],
+    queryFn: () => projectTasksApi.control({ active: archived ? 'false' : 'true', q: search || undefined, projectStatus: projectStatus || undefined, deadline: deadline || undefined, assigneeId: assigneeId || undefined, taskStatus: taskStatus || undefined }),
     placeholderData: keepPreviousData,
   });
   const { data: users } = useQuery({ queryKey: ['users', 'project-tasks'], queryFn: usersApi.list, enabled: isManager });
   const loadProjectMutation = useMutation({ mutationFn: projectsApi.get, onSuccess: (project) => setProjectDialog({ project }), onError: (error: Error) => toast.error(error.message) });
-  const inactivateProjectMutation = useMutation({ mutationFn: projectsApi.delete, onSuccess: () => { toast.success('Projektet inaktiverades'); setProjectToInactivate(null); refetch(); }, onError: (error: Error) => toast.error(error.message) });
+  const changeArchive = useMutation({
+    mutationFn: async (items: ProjectControlItem[]) => {
+      const failed: Array<{ project: ProjectControlItem; message: string }> = [];
+      for (const project of items) {
+        try {
+          if (project.active) await projectsApi.delete(project.id);
+          else await projectsApi.restore(project.id);
+        } catch (error) {
+          failed.push({ project, message: error instanceof Error ? error.message : 'Kunde inte spara' });
+        }
+      }
+      return { failed, succeeded: items.length - failed.length };
+    },
+    onSuccess: ({ failed, succeeded }) => {
+      setConfirmProjects([]);
+      setSelected(new Set(failed.map((item) => item.project.id)));
+      setBatchError(failed.map(({ project, message }) => `${project.code} · ${project.name}: ${message}`).join(' · '));
+      if (succeeded) toast.success(`${succeeded} projekt ${archived ? 'återställdes' : 'arkiverades'}`);
+      void refreshProjectQueries(queryClient);
+    },
+  });
+  useEffect(() => {
+    setSelected(new Set());
+    setBatchError('');
+  }, [archived, search, projectStatus, deadline, assigneeId, taskStatus]);
+  const selectedProjects = (data?.items || []).filter((project) => selected.has(project.id));
+  const allSelected = Boolean(data?.items.length) && selectedProjects.length === data?.items.length;
+  const toggleSelected = (id: string) => setSelected((current) => {
+    const next = new Set(current);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
   const activeFilterCount = [projectStatus, deadline, taskStatus, assigneeId].filter(Boolean).length;
   const hasFilters = activeFilterCount > 0;
   const activeFilterLabels = [
@@ -79,22 +115,29 @@ export default function Projects() {
     <AppShell>
       <PageHeader
         title="Projekt"
-        description={isManager ? 'Sök projekt och följ det som kräver åtgärd.' : 'Alla aktiva projekt visas. Dina öppna uppgifter visas först.'}
+        description={isManager ? 'Öppna och redigera projekt. Kryssa i dem du vill arkivera.' : 'Alla aktiva projekt visas. Dina öppna uppgifter visas först.'}
         action={isManager ? (
           <div className="flex flex-wrap gap-2">
             <button type="button" className="btn-secondary" onClick={() => setProjectDialog({})}>Nytt projekt</button>
-            <button type="button" className="btn-primary" onClick={() => setTaskDialog({})} disabled={!data?.items.length}>
+            <button type="button" className="btn-primary" onClick={() => setTaskDialog({})} disabled={archived || !data?.items.length}>
               <Plus className="h-4 w-4" aria-hidden="true" />Ny uppgift
             </button>
           </div>
         ) : undefined}
       />
 
+      {isManager && <div className="flex gap-2 border-b border-graphite-200" aria-label="Projektvy">
+        <button type="button" className={`min-h-11 px-3 text-sm font-semibold border-b-2 ${!archived ? 'border-primary-600 text-primary-700' : 'border-transparent text-graphite-600'}`} aria-pressed={!archived} disabled={changeArchive.isPending} onClick={() => { setArchived(false); clearFilters(); }}>Aktiva</button>
+        <button type="button" className={`min-h-11 px-3 text-sm font-semibold border-b-2 ${archived ? 'border-primary-600 text-primary-700' : 'border-transparent text-graphite-600'}`} aria-pressed={archived} disabled={changeArchive.isPending} onClick={() => { setArchived(true); clearFilters(); }}>Arkiverade</button>
+      </div>}
+      {archived && <p className="text-sm text-graphite-600">Historiken finns kvar. Återställ ett projekt när arbetet ska fortsätta.</p>}
+      {batchError && <p role="alert" className="text-sm text-rose-700">Några projekt kunde inte ändras och är fortfarande markerade. {batchError}</p>}
+      {loadProjectMutation.isPending && <p role="status" className="text-sm text-graphite-600">Öppnar projekt…</p>}
       {isError ? (
         <QueryError title="Projektkontrollen kunde inte hämtas" description="Kontrollera anslutningen och försök igen." onRetry={() => void refetch()} />
       ) : (
         <>
-          <div className="mb-3 grid grid-cols-4 items-stretch gap-x-2 border-y border-graphite-200 text-xs text-graphite-600 sm:text-sm" aria-label="Projektstatus">
+          {!archived && <div className="mb-3 grid grid-cols-4 items-stretch gap-x-2 border-y border-graphite-200 text-xs text-graphite-600 sm:text-sm" aria-label="Projektstatus">
             <button type="button" className={`min-h-11 min-w-0 border-b-2 px-0.5 font-semibold ${!deadline ? 'border-primary-600 text-graphite-950' : 'border-transparent hover:text-graphite-950'}`} aria-pressed={!deadline} onClick={() => setDeadline('')}>
               {data?.summary.active ?? 0} projekt
             </button>
@@ -107,7 +150,7 @@ export default function Projects() {
             <button type="button" className={`min-h-11 min-w-0 border-b-2 px-0.5 font-semibold ${deadline === 'UPCOMING' ? 'border-primary-600 text-graphite-950' : 'border-transparent hover:text-graphite-950'}`} aria-pressed={deadline === 'UPCOMING'} onClick={() => setDeadline(deadline === 'UPCOMING' ? '' : 'UPCOMING')}>
               {data?.summary.upcoming ?? 0} / 7 dagar
             </button>
-          </div>
+          </div>}
 
           <div className="mb-3 flex gap-2 border-b border-graphite-200 pb-3">
             <label className="relative min-w-0 flex-1">
@@ -145,7 +188,19 @@ export default function Projects() {
             </div>
           )}
 
-          {isFetching ? (
+          {isManager && Boolean(data?.items.length) && <div className="sticky top-0 z-10 mb-2 flex min-h-14 flex-wrap items-center gap-2 border-y border-graphite-200 bg-white px-2 py-1">
+            <label className="flex min-h-11 cursor-pointer items-center gap-2 px-2 text-sm">
+              <input type="checkbox" checked={allSelected} ref={(element) => { if (element) element.indeterminate = selectedProjects.length > 0 && !allSelected; }} disabled={isFetching || changeArchive.isPending} onChange={() => setSelected(allSelected ? new Set() : new Set(data?.items.map((project) => project.id)))} />
+              Markera alla visade
+            </label>
+            <span className="text-sm text-graphite-600" role="status">{selectedProjects.length} valda</span>
+            {selectedProjects.length > 0 && <>
+              <button type="button" className="btn-primary ml-auto" disabled={isFetching || changeArchive.isPending} onClick={() => setConfirmProjects(selectedProjects)}><Archive className="h-4 w-4" aria-hidden="true" />{archived ? 'Återställ valda' : 'Arkivera valda'}</button>
+              <button type="button" className="btn-secondary" disabled={changeArchive.isPending} onClick={() => setSelected(new Set())}>Avmarkera</button>
+            </>}
+          </div>}
+          {isFetching && <p role="status" className="mb-2 text-sm text-graphite-600">Uppdaterar projektlistan…</p>}
+          {isFetching && !data ? (
             <div className="border-t border-graphite-200 bg-white" role="status" aria-live="polite" aria-label="Uppdaterar projektlistan">
               {[0, 1, 2, 3].map((row) => (
                 <div key={row} className="flex min-h-[52px] items-center justify-between gap-3 border-b border-graphite-200 px-3 py-1">
@@ -156,8 +211,8 @@ export default function Projects() {
             </div>
           ) : !data?.items.length ? (
             <EmptyState
-              title={!search && !hasFilters ? 'Inga aktiva projekt' : 'Inga projekt matchar'}
-              description={!search && !hasFilters ? 'Det finns inga aktiva projekt att visa.' : 'Justera sökningen eller filtren.'}
+              title={!search && !hasFilters ? archived ? 'Inga arkiverade projekt' : 'Inga aktiva projekt' : 'Inga projekt matchar'}
+              description={!search && !hasFilters ? archived ? 'Arkiverade projekt visas här.' : 'Det finns inga aktiva projekt att visa.' : 'Justera sökningen eller filtren.'}
             />
           ) : (
             <div className="border-t border-graphite-200 bg-white">
@@ -172,7 +227,11 @@ export default function Projects() {
                   onAddTask={() => setTaskDialog({ project })}
                   onEditTask={(task) => setTaskDialog({ project, task })}
                   onEditProject={() => loadProjectMutation.mutate(project.id)}
-                  onInactivateProject={() => setProjectToInactivate(project)}
+                  selected={selected.has(project.id)}
+                  disabled={isFetching || changeArchive.isPending}
+                  loadingEditor={loadProjectMutation.isPending}
+                  onSelect={() => toggleSelected(project.id)}
+                  onInactivateProject={() => setConfirmProjects([project])}
                 />
               ))}
             </div>
@@ -180,14 +239,14 @@ export default function Projects() {
         </>
       )}
 
-      {taskDialog && <TaskDialog context={taskDialog} projects={data?.items || []} users={(users || []) as User[]} isManager={isManager} onClose={() => setTaskDialog(null)} onSaved={() => { setTaskDialog(null); refetch(); }} />}
+      {taskDialog && <TaskDialog context={taskDialog} projects={(data?.items || []).filter((project) => project.active)} users={(users || []) as User[]} isManager={isManager} onClose={() => setTaskDialog(null)} onSaved={() => { setTaskDialog(null); refetch(); }} />}
       {projectDialog && <ProjectDialog project={projectDialog.project} onClose={() => setProjectDialog(null)} onSaved={() => { setProjectDialog(null); refetch(); }} />}
-      <ConfirmDialog open={Boolean(projectToInactivate)} onClose={() => setProjectToInactivate(null)} onConfirm={() => projectToInactivate && inactivateProjectMutation.mutate(projectToInactivate.id)} title="Inaktivera projektet?" description={projectToInactivate ? `${projectToInactivate.code} · ${projectToInactivate.name} försvinner från aktiva projekt. Historiken sparas.` : undefined} confirmLabel="Inaktivera" isLoading={inactivateProjectMutation.isPending} />
+      <ConfirmDialog open={confirmProjects.length > 0} onClose={() => { if (!changeArchive.isPending) setConfirmProjects([]); }} onConfirm={() => changeArchive.mutate(confirmProjects)} title={`${archived ? 'Återställ' : 'Arkivera'} ${confirmProjects.length} projekt?`} description={confirmProjects.map((project) => `${project.code} · ${project.name}`).join(', ')} consequence={archived ? 'Projekten blir valbara för tid och material igen. Tidigare projektstatus behålls.' : 'Projekten flyttas till Arkiverade och blir inte längre valbara för ny tid eller nytt material. Timmar, material och historik finns kvar. Du kan återställa dem senare.'} confirmLabel={archived ? 'Återställ projekt' : 'Arkivera projekt'} confirmVariant="primary" isLoading={changeArchive.isPending} />
     </AppShell>
   );
 }
 
-function ProjectControlRow({ project, open, isManager, showDone, onToggle, onAddTask, onEditTask, onEditProject, onInactivateProject }: { project: ProjectControlItem; open: boolean; isManager: boolean; showDone: boolean; onToggle: () => void; onAddTask: () => void; onEditTask: (task: ProjectTask) => void; onEditProject: () => void; onInactivateProject: () => void }) {
+function ProjectControlRow({ project, open, isManager, showDone, onToggle, onAddTask, onEditTask, onEditProject, onInactivateProject, selected, disabled, loadingEditor, onSelect }: { selected: boolean; disabled: boolean; loadingEditor: boolean; onSelect: () => void; project: ProjectControlItem; open: boolean; isManager: boolean; showDone: boolean; onToggle: () => void; onAddTask: () => void; onEditTask: (task: ProjectTask) => void; onEditProject: () => void; onInactivateProject: () => void }) {
   const queryClient = useQueryClient();
   const statusMutation = useMutation({
     mutationFn: ({ task, status }: { task: ProjectTask; status: ProjectTaskStatus }) => projectTasksApi.updateStatus(task.id, { status }),
@@ -196,8 +255,8 @@ function ProjectControlRow({ project, open, isManager, showDone, onToggle, onAdd
   });
   const openTaskCount = project.tasks.filter((task) => task.status !== 'DONE').length;
   const visibleTasks = project.tasks.filter((task) => showDone ? task.status === 'DONE' : task.status !== 'DONE');
-  const canExpand = isManager || visibleTasks.length > 0;
-  const rowTone = project.overdueCount > 0 ? 'bg-rose-50/70' : project.dueTodayCount > 0 ? 'bg-orange-50/70' : project.upcomingCount > 0 ? 'bg-amber-50/60' : '';
+  const canExpand = project.active && (isManager || visibleTasks.length > 0);
+  const rowTone = selected ? 'bg-primary-50/60' : '';
   const attentionLabel = project.overdueCount > 0
     ? (project.overdueCount === 1 ? '1 försenad' : `${project.overdueCount} försenade`)
     : project.dueTodayCount > 0
@@ -224,24 +283,24 @@ function ProjectControlRow({ project, open, isManager, showDone, onToggle, onAdd
 
   return (
     <article className={`border-b border-graphite-200 ${rowTone}`}>
-      <div className={`grid min-h-[52px] items-center gap-2 px-3 py-1 ${canExpand ? 'grid-cols-[minmax(0,1fr)_auto_44px]' : 'grid-cols-[minmax(0,1fr)_auto]'}`}>
-        <div className="min-w-0">
+      <div className="flex min-h-16 items-center gap-2 px-2 py-2 sm:px-3">
+        {isManager && <label className="flex min-h-11 min-w-11 cursor-pointer items-center justify-center"><input type="checkbox" aria-label={`Markera ${project.code} · ${project.name}`} checked={selected} disabled={disabled} onChange={onSelect} /></label>}
+        <div className="min-w-0 flex-1">
           <Link to={`/projects/${project.id}`} className="flex min-h-11 min-w-0 items-center font-semibold text-graphite-950 hover:text-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400">
-            <span className="truncate">{project.code} · {project.name}</span>
+            <span className="[overflow-wrap:anywhere]">{project.code} · {project.name}</span>
           </Link>
+          <p className="text-xs leading-5 text-graphite-600 [overflow-wrap:anywhere]">{project.customer?.name || 'Intern'}{project.site ? ` · ${project.site}` : ''} · {project.status === 'PLANNED' ? 'Planerad' : project.status === 'COMPLETED' ? 'Avslutad' : 'Pågående'}{!project.active ? ' · Arkiverad' : ''}</p>
+          {attentionLabel && project.active && <span className={`text-xs font-semibold ${attentionTone}`}>{attentionLabel}</span>}
         </div>
-        {attentionLabel && <span className={`whitespace-nowrap text-xs font-semibold ${attentionTone}`}>{attentionLabel}</span>}
-        {canExpand && (
-          <button type="button" className="icon-button col-start-3 border-0" onClick={onToggle} aria-expanded={open} aria-controls={`project-tasks-${project.id}`} aria-label={`${open ? 'Dölj' : 'Visa'} ${isManager ? 'uppgifter och projektåtgärder' : 'uppgifter'} för ${project.name}`}>
-            <ChevronDown aria-hidden="true" className={`h-5 w-5 transition ${open ? 'rotate-180' : ''}`} />
-          </button>
-        )}
+        {isManager && <button type="button" className="btn-secondary min-w-11 shrink-0 px-3" disabled={disabled || loadingEditor} onClick={onEditProject} aria-label={`Redigera ${project.code} · ${project.name}`}><Edit2 className="h-4 w-4" aria-hidden="true" /><span className="hidden sm:inline">Redigera</span></button>}
+        {isManager && !project.active && <button type="button" className="btn-secondary min-w-11 shrink-0 px-3" aria-label={`Återställ ${project.code} · ${project.name}`} disabled={disabled} onClick={onInactivateProject}><RotateCcw className="h-4 w-4" aria-hidden="true" /><span className="hidden sm:inline">Återställ</span></button>}
+        {canExpand && <button type="button" className="icon-button shrink-0 border-0" onClick={onToggle} disabled={disabled} aria-expanded={open} aria-controls={`project-tasks-${project.id}`} aria-label={`${open ? 'Dölj' : 'Visa'} uppgifter för ${project.name}`}><ChevronDown aria-hidden="true" className={`h-5 w-5 transition ${open ? 'rotate-180' : ''}`} /></button>}
       </div>
       {open && canExpand && (
         <div id={`project-tasks-${project.id}`} className="mx-3 mb-3 rounded-lg border border-graphite-200 bg-white px-3">
           <div className="flex min-h-12 flex-wrap items-center justify-between gap-2">
             <h2 className="text-sm font-semibold text-graphite-950">{showDone ? 'Klara uppgifter' : 'Öppna uppgifter'}</h2>
-            {isManager && <div className="flex flex-wrap items-center gap-1"><button type="button" className="min-h-11 px-2 text-sm font-semibold text-primary-700" onClick={onAddTask}>Lägg till uppgift</button><button type="button" className="min-h-11 px-2 text-sm font-semibold text-graphite-700" onClick={onEditProject}>Redigera projekt</button><button type="button" className="min-h-11 px-2 text-sm font-semibold text-rose-700" onClick={onInactivateProject}>Inaktivera</button></div>}
+            {isManager && <div className="flex flex-wrap items-center gap-1"><button type="button" className="min-h-11 px-2 text-sm font-semibold text-primary-700" onClick={onAddTask}>Lägg till uppgift</button><button type="button" className="min-h-11 px-2 text-sm font-semibold text-rose-700" disabled={disabled} onClick={onInactivateProject}>Arkivera</button></div>}
           </div>
           {!visibleTasks.length ? <p className="border-t border-graphite-200 py-4 text-sm text-graphite-600">{showDone ? 'Inga klara uppgifter.' : 'Inga öppna uppgifter.'}</p> : visibleTasks.map((task) => (
             <div key={task.id} className="grid gap-2 border-t border-graphite-200 py-3 md:grid-cols-[minmax(180px,1fr)_150px_140px_44px] md:items-center">
@@ -267,7 +326,7 @@ function TaskDialog({ context, projects, users, isManager, onClose, onSaved }: {
   const today = toDateInputValue(new Date());
   const initialDueDate = task?.deadlineBucket === 'OVERDUE' && task.status === 'WAITING' ? today : task?.dueDate || today;
   const saveMutation = useMutation({
-    mutationFn: (data: { projectId: string; title: string; note?: string; assigneeId: string; priority: ProjectTaskPriority; status: ProjectTaskStatus; dueDate: string }) => task
+    mutationFn: (data: { projectId: string; title: string; note?: string | null; assigneeId: string; priority: ProjectTaskPriority; status: ProjectTaskStatus; dueDate: string }) => task
       ? isManager ? projectTasksApi.update(task.id, data) : projectTasksApi.updateStatus(task.id, { status: data.status, ...(data.status === 'WAITING' ? { dueDate: data.dueDate } : {}) })
       : projectTasksApi.create(data.projectId, { title: data.title, note: data.note, assigneeId: data.assigneeId, priority: data.priority, status: data.status, dueDate: data.dueDate }),
     onSuccess: () => { toast.success(task ? 'Uppgiften sparades' : 'Uppgiften skapades'); queryClient.invalidateQueries({ queryKey: ['project-control'] }); onSaved(); },
@@ -281,7 +340,7 @@ function TaskDialog({ context, projects, users, isManager, onClose, onSaved }: {
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    saveMutation.mutate({ projectId: String(form.get('projectId') || context.project?.id || ''), title: String(form.get('title') || task?.title || ''), note: String(form.get('note') || task?.note || '') || undefined, assigneeId: String(form.get('assigneeId') || task?.assigneeId || ''), priority: String(form.get('priority') || task?.priority || 'NORMAL') as ProjectTaskPriority, status: String(form.get('status')) as ProjectTaskStatus, dueDate: String(form.get('dueDate') || task?.dueDate || '') });
+    saveMutation.mutate({ projectId: String(form.get('projectId') || context.project?.id || ''), title: String(form.get('title') || task?.title || ''), note: isManager ? String(form.get('note') || '').trim() || null : undefined, assigneeId: String(form.get('assigneeId') || task?.assigneeId || ''), priority: String(form.get('priority') || task?.priority || 'NORMAL') as ProjectTaskPriority, status: String(form.get('status')) as ProjectTaskStatus, dueDate: String(form.get('dueDate') || task?.dueDate || '') });
   };
   const availableUsers = users.filter((item) => item.active && item.role !== 'ACCOUNTANT');
   return <>
@@ -296,40 +355,6 @@ function TaskDialog({ context, projects, users, isManager, onClose, onSaved }: {
         <label className="sm:col-span-2"><span className="label">Anteckning, valfri</span><textarea name="note" className="input min-h-24" maxLength={2000} defaultValue={task?.note || ''} disabled={!isManager} /></label>
       </form>
     </Dialog>
-    {task && <ConfirmDialog open={confirmArchive} onClose={() => setConfirmArchive(false)} onConfirm={() => archiveMutation.mutate()} title="Arkivera uppgiften?" description={`”${task.title}” tas bort från projektets arbetslista men historiken sparas.`} confirmLabel="Arkivera" isLoading={archiveMutation.isPending} />}
+    {task && <ConfirmDialog open={confirmArchive} onClose={() => setConfirmArchive(false)} onConfirm={() => archiveMutation.mutate()} title="Arkivera uppgiften?" description={`”${task.title}” tas bort från projektets arbetslista men historiken sparas.`} confirmLabel="Arkivera" consequence="Uppgiften döljs från arbetslistan. Historiken sparas." isLoading={archiveMutation.isPending} />}
   </>;
-}
-
-function ProjectDialog({ project, onClose, onSaved }: { project?: Project; onClose: () => void; onSaved: () => void }) {
-  const { data: customers } = useQuery({ queryKey: ['customers', 'active'], queryFn: () => customersApi.list(true) });
-  const { data: nextCode } = useQuery({ queryKey: ['projects', 'next-code'], queryFn: projectsApi.nextCode, enabled: !project });
-  const createMutation = useMutation({ mutationFn: projectsApi.create, onSuccess: () => { toast.success('Projektet skapades'); onSaved(); }, onError: (error: Error) => toast.error(error.message) });
-  const updateMutation = useMutation({ mutationFn: (data: Partial<Project>) => projectsApi.update(project!.id, data), onSuccess: () => { toast.success('Projektet uppdaterades'); onSaved(); }, onError: (error: Error) => toast.error(error.message) });
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const budgetText = String(form.get('budgetHours') || '').trim();
-    const fixedPriceText = String(form.get('fixedPrice') || '').trim();
-    const defaultRateText = String(form.get('defaultRate') || '').trim();
-    const budgetHours = budgetText ? parseSwedishNumber(budgetText) : undefined;
-    const fixedPrice = fixedPriceText ? parseSwedishNumber(fixedPriceText) : null;
-    const defaultRate = defaultRateText ? parseSwedishNumber(defaultRateText) : null;
-    const billingModel = String(form.get('billingModel')) as Project['billingModel'];
-    if ((budgetText && (!Number.isFinite(budgetHours) || (budgetHours ?? 0) < 0)) || (fixedPriceText && !Number.isFinite(fixedPrice)) || (defaultRateText && (!Number.isFinite(defaultRate) || (defaultRate ?? 0) < 0))) {
-      toast.error('Kontrollera budget, timpris och fast pris.');
-      return;
-    }
-    if (billingModel === 'FIXED' && fixedPrice == null) {
-      toast.error('Ange anbud eller fast pris för ett fastprisprojekt.');
-      return;
-    }
-    const data = { name: String(form.get('name')), code: String(form.get('code')), customerId: String(form.get('customerId') || '') || undefined, site: String(form.get('site') || '') || undefined, status: String(form.get('status')) as Project['status'], budgetHours, billingModel, fixedPrice, defaultRate, notes: String(form.get('notes') || '') || undefined, employeeCanSeeResults: form.get('employeeCanSeeResults') === 'on' };
-    if (project) updateMutation.mutate(data); else createMutation.mutate(data);
-  };
-  const saving = createMutation.isPending || updateMutation.isPending;
-  return <Dialog open onClose={onClose} title={project ? 'Redigera projekt' : 'Nytt projekt'} description={!project && nextCode?.code ? `Nästa lediga projektnummer är förifyllt: ${nextCode.code}.` : undefined} footer={<div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><button type="button" className="btn-secondary" onClick={onClose}>Avbryt</button><button type="submit" form="project-form" className="btn-primary" disabled={saving}>{project ? 'Spara' : 'Skapa projekt'}</button></div>}><form id="project-form" onSubmit={handleSubmit} className="grid grid-cols-1 gap-4 sm:grid-cols-2"><label className="sm:col-span-2"><span className="label">Kund</span><select name="customerId" className="input" defaultValue={project?.customerId || ''}><option value="">Intern</option>{customers?.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><ProjectField autoFocus name="name" label="Projektnamn" defaultValue={project?.name} required /><ProjectField key={project?.code || nextCode?.code || 'code'} name="code" label="Projektnummer" defaultValue={project?.code || nextCode?.code || ''} required /><ProjectField name="site" label="Arbetsplats" defaultValue={project?.site} /><label><span className="label">Status</span><select name="status" className="input" defaultValue={project?.status || 'PLANNED'}><option value="PLANNED">Planerad</option><option value="ONGOING">Pågående</option><option value="COMPLETED">Avslutad</option></select></label><ProjectField name="budgetHours" label="Budget timmar" defaultValue={project?.budgetHours} inputMode="decimal" placeholder="80" /><label><span className="label">Debitering</span><select name="billingModel" className="input" defaultValue={project?.billingModel || 'HOURLY'}><option value="HOURLY">Löpande</option><option value="FIXED">Fast pris</option></select></label><ProjectField name="defaultRate" label="Timpris till kund (kr/tim)" defaultValue={project?.defaultRate ?? ''} inputMode="decimal" placeholder="650" /><ProjectField name="fixedPrice" label="Anbud / fast pris (exkl. moms)" defaultValue={project?.fixedPrice ?? ''} inputMode="decimal" placeholder="150 000" /><label className="sm:col-span-2"><span className="label">Anteckningar</span><textarea name="notes" className="input min-h-24" defaultValue={project?.notes || ''} /></label><label className="sm:col-span-2 flex min-h-11 items-center gap-3 border-y border-graphite-200 py-3 text-sm"><input name="employeeCanSeeResults" type="checkbox" defaultChecked={project?.employeeCanSeeResults || false} /><span>Visa attesterade projekttimmar för medarbetare</span></label></form></Dialog>;
-}
-
-function ProjectField({ label, ...props }: InputHTMLAttributes<HTMLInputElement> & { label: string }) {
-  return <label><span className="label">{label}</span><input {...props} className="input" /></label>;
 }

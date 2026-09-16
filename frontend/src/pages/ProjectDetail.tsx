@@ -11,6 +11,7 @@ import { QueryError } from '../components/ui/QueryError';
 import { formatCurrency, formatDate, formatHours, formatPercent, parseSwedishNumber, toDateInputValue } from '../utils/format';
 import { searchMaterialArticles } from '../utils/materialSearch';
 import { canModifyProjectMaterial, getProjectQueryAccess } from '../utils/frontendGuards';
+import { ProjectDialog } from '../components/ProjectDialog';
 
 const tabs = [
   { id: 'overview', label: 'Översikt' },
@@ -53,6 +54,7 @@ export default function ProjectDetail() {
   const { user } = useAuthStore();
   const isManager = user?.role === 'ADMIN' || user?.role === 'SUPERVISOR';
   const [activeTab, setActiveTab] = useState('overview');
+  const [editingProject, setEditingProject] = useState(false);
   const [materialForm, setMaterialForm] = useState<MaterialForm>(emptyMaterialForm);
   const [editingMaterial, setEditingMaterial] = useState<ProjectMaterial | null>(null);
   const [deletingMaterial, setDeletingMaterial] = useState<ProjectMaterial | null>(null);
@@ -325,6 +327,7 @@ export default function ProjectDetail() {
         description={`${p.code} · ${p.customer?.name || 'Intern'}${p.site ? ` · ${p.site}` : ''}${metrics?.lastActivityAt ? ` · Senaste aktivitet ${formatDate(metrics.lastActivityAt)}` : ''}`}
         action={
           <div className="flex flex-wrap items-center gap-2">
+            {isManager && <button type="button" className="btn-primary" onClick={() => setEditingProject(true)}><Edit2 className="h-4 w-4" aria-hidden="true" />Redigera projekt</button>}
             {metrics?.status && <StatusBadge label={metrics.status.label} tone={metrics.status.tone} />}
             {isManager && p.active && (
               <button type="button" className="btn-secondary" onClick={() => setActiveTab('materials')}>
@@ -689,6 +692,8 @@ export default function ProjectDetail() {
         consequence="Materialraden tas bort från projektet och projektets materialkostnad räknas om."
         isLoading={deleteMaterialMutation.isPending}
       />
+
+      {editingProject && isManager && <ProjectDialog key={id} project={p} onClose={() => setEditingProject(false)} onSaved={() => setEditingProject(false)} />}
     </AppShell>
   );
 }

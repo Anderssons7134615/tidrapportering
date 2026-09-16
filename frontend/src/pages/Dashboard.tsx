@@ -1,14 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, ArrowRight, CalendarDays, CheckCircle2, FileText, ListChecks } from 'lucide-react';
+import { ArrowRight, CalendarDays, CheckCircle2, FileText, ListChecks } from 'lucide-react';
 import { dashboardApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
 import { DashboardSkeleton } from '../components/ui/Skeleton';
 import { QueryError } from '../components/ui/QueryError';
-import { StatusBadge } from '../components/ui/design';
-import type { DashboardActionItem, ProjectListItem } from '../types';
-import { formatHours, formatPercent, parseDateOnlyLocal, toDateInputValue } from '../utils/format';
+import type { DashboardActionItem } from '../types';
+import { formatHours, parseDateOnlyLocal, toDateInputValue } from '../utils/format';
 import { buildDashboardActionRows, getDashboardPrimaryAction } from '../utils/dashboardPresentation';
 
 export default function Dashboard() {
@@ -36,9 +35,7 @@ export default function Dashboard() {
   }
 
   const pendingCount = data?.summary.pendingApprovalCount || 0;
-  const riskCount = data?.summary.riskProjectCount || 0;
-  const runningCount = data?.summary.projectsWithoutBudgetCount || 0;
-  const primaryAction = getDashboardPrimaryAction({ isManager, pendingCount, riskCount, runningCount, now: dashboardNow });
+  const primaryAction = getDashboardPrimaryAction({ isManager, pendingCount, now: dashboardNow });
   const approvalReminderCount = primaryAction.approvalReminderCount;
   const weekRows = buildWeekRows(data?.dailyHours, data?.period?.weekStart);
   const weekMaxHours = Math.max(8, ...weekRows.map((row) => row.hours));
@@ -49,8 +46,6 @@ export default function Dashboard() {
     missingWeekdays,
     pendingWeeks: data?.myPendingWeeks || [],
     approvalReminderCount,
-    riskCount,
-    runningCount,
   });
 
   return (
@@ -59,7 +54,7 @@ export default function Dashboard() {
         <div className="min-w-0">
           <h1 className="page-title">{isManager ? 'Dagens läge' : `God arbetsdag${firstName ? `, ${firstName}` : ''}`}</h1>
           <p className="mt-1 max-w-3xl text-sm leading-6 text-graphite-600">
-            {headlineText({ isManager, approvalReminderCount, riskCount, runningCount, hasMissingWeekdays: missingWeekdays.length > 0 })}{' '}
+            {headlineText({ isManager, approvalReminderCount, hasMissingWeekdays: missingWeekdays.length > 0 })}{' '}
             {formatPeriod(data?.period?.weekStart, data?.period?.weekEnd)}.
           </p>
         </div>
@@ -87,9 +82,7 @@ export default function Dashboard() {
         <PriorityList rows={actionRows} isManager={isManager} />
       </div>
 
-      {isManager && (riskCount > 0 || runningCount > 0) && (
-        <ProjectFocus riskProjects={data?.riskProjects || []} runningProjects={data?.projectsWithoutBudget || []} />
-      )}
+
     </div>
   );
 }
@@ -162,7 +155,7 @@ function PriorityList({ rows, isManager }: { rows: DashboardActionItem[]; isMana
       <div className="flex min-h-14 items-center justify-between gap-3 border-b border-graphite-200 bg-graphite-50/75 px-4 py-2">
         <div className="flex items-center gap-2">
           <ListChecks className="h-5 w-5 text-primary-700" aria-hidden="true" />
-          <h2 id="dashboard-priority-title" className="font-semibold text-graphite-950">Att göra nu</h2>
+          <h2 id="dashboard-priority-title" className="font-semibold text-graphite-950">{isManager ? 'Genvägar' : 'Att göra nu'}</h2>
         </div>
         <Link
           to={isManager ? '/team-week' : '/week'}
@@ -184,62 +177,11 @@ function PriorityList({ rows, isManager }: { rows: DashboardActionItem[]; isMana
               <span className="mt-0.5 block text-xs leading-5 text-graphite-600">{item.description}</span>
             </span>
             <span className="flex items-center gap-2">
-              <StatusBadge label={statusLabel(item.tone)} tone={item.tone} />
               <ArrowRight className="h-4 w-4 text-graphite-400" aria-hidden="true" />
             </span>
           </Link>
         ))}
       </div>
-    </section>
-  );
-}
-
-function ProjectFocus({ riskProjects, runningProjects }: { riskProjects: ProjectListItem[]; runningProjects: ProjectListItem[] }) {
-  const rows = buildProjectRows(riskProjects, runningProjects);
-
-  return (
-    <section className="overflow-hidden rounded-lg border border-graphite-200 bg-white" aria-labelledby="dashboard-project-title">
-      <div className="flex min-h-14 items-center justify-between gap-3 border-b border-graphite-200 bg-graphite-50/75 px-4 py-2">
-        <div className="flex items-center gap-2">
-          <AlertTriangle className="h-5 w-5 text-primary-700" aria-hidden="true" />
-          <h2 id="dashboard-project-title" className="font-semibold text-graphite-950">Projekt som kräver kontroll</h2>
-        </div>
-        <Link
-          to="/projects"
-          className="inline-flex min-h-11 items-center text-sm font-semibold text-primary-700 hover:text-primary-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
-        >
-          Alla projekt
-        </Link>
-      </div>
-
-      {rows.length ? (
-        <div className="grid sm:grid-cols-2">
-          {rows.map(({ project, reason, tone }, index) => (
-            <Link
-              key={project.id}
-              to={`/projects/${project.id}`}
-              className={`flex min-h-16 min-w-0 items-center justify-between gap-3 px-4 py-2.5 transition hover:bg-primary-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-400 ${
-                index > 0 ? 'border-t border-graphite-200' : ''
-              } ${index % 2 === 1 ? 'sm:border-l sm:border-t-0' : ''} ${index > 1 ? 'sm:border-t' : ''}`}
-            >
-              <span className="min-w-0">
-                <span className="block text-sm font-semibold leading-5 text-graphite-950 [overflow-wrap:anywhere]">{project.code} · {project.name}</span>
-                <span className="mt-0.5 block text-xs text-graphite-600 [overflow-wrap:anywhere]">
-                  {project.customer?.name || 'Intern'} · {formatHours(project.metrics?.weekHours)} denna vecka
-                </span>
-              </span>
-              <span className="shrink-0 text-right">
-                <StatusBadge label={reason} tone={tone} />
-                {project.metrics?.budgetUsagePercent != null && (
-                  <span className="mt-1 block text-xs font-semibold tabular-nums text-graphite-600">{formatPercent(project.metrics.budgetUsagePercent)}</span>
-                )}
-              </span>
-            </Link>
-          ))}
-        </div>
-      ) : (
-        <CompactEmpty title="Inga projekt kräver extra koll" description="Budget och aktiva projekt ser stabila ut." />
-      )}
     </section>
   );
 }
@@ -254,15 +196,6 @@ function CompactEmpty({ title, description }: { title: string; description: stri
       </div>
     </div>
   );
-}
-
-function buildProjectRows(riskProjects: ProjectListItem[], runningProjects: ProjectListItem[]) {
-  const rows = new Map<string, { project: ProjectListItem; reason: string; tone: 'red' | 'yellow' }>();
-  riskProjects.forEach((project) => rows.set(project.id, { project, reason: 'Budgetrisk', tone: 'red' }));
-  runningProjects.forEach((project) => {
-    if (!rows.has(project.id)) rows.set(project.id, { project, reason: 'Saknar budget', tone: 'yellow' });
-  });
-  return Array.from(rows.values()).slice(0, 4);
 }
 
 function buildWeekRows(dailyHours?: Record<string, number>, weekStart?: string) {
@@ -297,31 +230,17 @@ function getMissingReportedWeekdays(dailyHours?: Record<string, number>, weekSta
 function headlineText({
   isManager,
   approvalReminderCount,
-  riskCount,
-  runningCount,
   hasMissingWeekdays,
 }: {
   isManager: boolean;
   approvalReminderCount: number;
-  riskCount: number;
-  runningCount: number;
   hasMissingWeekdays: boolean;
 }) {
   if (isManager) {
     if (approvalReminderCount) return 'Fredagens attestkontroll är redo.';
-    if (riskCount) return `${riskCount} projekt behöver följas upp.`;
-    if (runningCount) return `${runningCount} löpande projekt saknar budget.`;
-    return 'Teamets tid och projekt ser stabila ut.';
+    return 'Tid, projekt och teamets vecka på ett ställe.';
   }
   return hasMissingWeekdays ? 'Veckan behöver kompletteras.' : 'Veckan är i fas.';
-}
-
-function statusLabel(tone: DashboardActionItem['tone']) {
-  if (tone === 'red') return 'Risk';
-  if (tone === 'yellow') return 'Åtgärd';
-  if (tone === 'blue') return 'Info';
-  if (tone === 'green') return 'Klart';
-  return 'Status';
 }
 
 function formatPeriod(start?: string, end?: string) {

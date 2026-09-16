@@ -16,22 +16,17 @@ export function getDashboardApprovalReminderCount(pendingCount: number, isManage
 export function getDashboardPrimaryAction({
   isManager,
   pendingCount,
-  riskCount,
-  runningCount,
   now = new Date(),
 }: {
   isManager: boolean;
   pendingCount: number;
-  riskCount: number;
-  runningCount: number;
   now?: Date;
 }) {
   const approvalReminderCount = getDashboardApprovalReminderCount(pendingCount, isManager, now);
 
   if (!isManager) return { to: '/time-entry', label: 'Rapportera tid', approvalReminderCount };
   if (approvalReminderCount) return { to: '/approval', label: 'Öppna attest', approvalReminderCount };
-  if (riskCount || runningCount) return { to: '/projects', label: 'Granska projekt', approvalReminderCount };
-  return { to: '/team-week', label: 'Öppna teamvecka', approvalReminderCount };
+  return { to: '/projects', label: 'Öppna projekt', approvalReminderCount };
 }
 
 export function buildDashboardActionRows({
@@ -39,15 +34,11 @@ export function buildDashboardActionRows({
   missingWeekdays,
   pendingWeeks,
   approvalReminderCount,
-  riskCount,
-  runningCount,
 }: {
   isManager: boolean;
   missingWeekdays: string[];
   pendingWeeks: string[];
   approvalReminderCount: number;
-  riskCount: number;
-  runningCount: number;
 }): DashboardActionItem[] {
   if (isManager) {
     const rows: DashboardActionItem[] = [];
@@ -60,31 +51,18 @@ export function buildDashboardActionRows({
         to: '/approval',
       });
     }
-    if (riskCount) {
-      rows.push({
-        id: 'risk-projects',
-        title: `${riskCount} projekt behöver följas upp`,
-        description: 'Kontrollera budget och rapporterade timmar.',
-        tone: 'red',
-        to: '/projects',
-      });
-    }
-    if (runningCount) {
-      rows.push({
-        id: 'projects-missing-budget',
-        title: `${runningCount} löpande projekt saknar budget`,
-        description: 'Bedöm om budget eller bevakning behövs.',
-        tone: 'yellow',
-        to: '/projects',
-      });
-    }
-
-    return rows.length ? rows : [{
-      id: 'manager-status',
-      title: 'Inget akut just nu',
-      description: 'Teamets tid och projekt ser stabila ut.',
-      tone: 'green',
-      to: '/team-week',
+    return [...rows, {
+      id: 'manager-projects',
+      title: 'Mina projekt',
+      description: 'Öppna, redigera och arkivera projekt.',
+      tone: 'gray',
+      to: '/projects',
+    }, {
+      id: 'manager-economy',
+      title: 'Projektekonomi',
+      description: 'Se timmar, budget och resultat när du behöver.',
+      tone: 'gray',
+      to: '/project-economy',
     }];
   }
 

@@ -10,6 +10,21 @@ const actor = {
   ACCOUNTANT: { id: 'accountant-1', email: 'accountant@test', role: 'ACCOUNTANT', companyId: 'company-a', sessionVersion: 0 },
 } as const;
 
+test('archive list is company scoped and restricted to managers', async () => {
+  let where: any;
+  const app = await appWith({ project: { findMany: async (args: any) => { where = args.where; return []; } } });
+  try {
+    const employee = await app.inject({ method: 'GET', url: '/api/project-control/projects?active=false', headers: { 'x-test-role': 'EMPLOYEE' } });
+    assert.equal(employee.statusCode, 403);
+    assert.equal(where, undefined);
+    const admin = await app.inject({ method: 'GET', url: '/api/project-control/projects?active=false', headers: { 'x-test-role': 'ADMIN' } });
+    assert.equal(admin.statusCode, 200);
+    assert.deepEqual(where, { companyId: 'company-a', active: false });
+    const invalid = await app.inject({ method: 'GET', url: '/api/project-control/projects?active=maybe', headers: { 'x-test-role': 'ADMIN' } });
+    assert.equal(invalid.statusCode, 400);
+  } finally { await app.close(); }
+});
+
 async function appWith(db: any) {
   const app = Fastify();
   app.decorate('authenticate', async (request: any) => {

@@ -51,6 +51,7 @@ const taskStatusSchema = z.object({
 });
 
 const controlQuerySchema = z.object({
+  active: z.enum(['true', 'false']).optional(),
   q: z.string().trim().max(100).optional(),
   projectStatus: z.enum(['PLANNED', 'ONGOING', 'COMPLETED']).optional(),
   assigneeId: z.string().uuid().optional(),
@@ -97,15 +98,18 @@ export function createProjectTaskRoutes(db: typeof prisma = prisma): FastifyPlug
   return async (fastify) => {
   fastify.get('/project-control/projects', {
     preHandler: [requireRoles(workRoles, 'Lön och ekonomi använder den separata projektekonomin')],
-  }, async (request) => {
+  }, async (request, reply) => {
     const query = controlQuerySchema.parse(request.query);
+    if (query.active === 'false' && !getProjectTaskCapabilities(request.user.role).manage) {
+      return reply.status(403).send({ error: 'Endast arbetsledare kan visa arkiverade projekt' });
+    }
     const companyId = request.user.companyId;
     const taskScope = getProjectTaskScope(request.user);
     const searchQuery = query.q ? escapePrismaLikePattern(query.q) : undefined;
     const projects = await db.project.findMany({
       where: {
         companyId,
-        active: true,
+        active: query.active !== 'false',
         ...(query.projectStatus ? { status: query.projectStatus } : {}),
         ...(searchQuery ? {
           OR: [

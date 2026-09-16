@@ -2,7 +2,7 @@ import { FastifyPluginAsync } from 'fastify';
 import { Prisma } from '@prisma/client';
 import ExcelJS from 'exceljs';
 import { z } from 'zod';
-import { prisma } from '../index.js';
+import { prisma as defaultPrisma } from '../lib/prisma.js';
 import { calculateProjectFinancials, getHourlyCost, getHourlyCostValue, getProjectMetrics, getRate } from '../lib/projectMetrics.js';
 import { enqueueMaterialChanged, enqueueProjectChanged, enqueueTimeEntryChanged } from '../lib/obsidianSync.js';
 import { requireRoles } from '../lib/authorization.js';
@@ -160,7 +160,7 @@ function sanitizeProjectForRole<T extends Record<string, any>>(project: T, canVi
   return sanitized as T;
 }
 
-async function customerBelongsToCompany(customerId: string | null | undefined, companyId: string) {
+async function customerBelongsToCompany(prisma: typeof defaultPrisma, customerId: string | null | undefined, companyId: string) {
   if (!customerId) return true;
   const customer = await prisma.customer.findFirst({
     where: { id: customerId, companyId },
@@ -221,7 +221,7 @@ function parseDateFilter(from?: string, to?: string): { gte?: Date; lte?: Date }
   };
 }
 
-async function getNextProjectCode(companyId: string) {
+async function getNextProjectCode(prisma: typeof defaultPrisma, companyId: string) {
   const projects = await prisma.project.findMany({
     where: { companyId },
     select: { code: true },
@@ -298,7 +298,8 @@ function duplicateArticleErrors(rows: MaterialCatalogRow[]) {
   return errors;
 }
 
-const projectRoutes: FastifyPluginAsync = async (fastify) => {
+export function createProjectRoutes(prisma: typeof defaultPrisma = defaultPrisma): FastifyPluginAsync {
+return async (fastify) => {
   // List projects (same company)
   fastify.get('/', {
     preHandler: [fastify.authenticate, requireProjectAccess],
@@ -794,7 +795,7 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get('/next-code', {
     preHandler: [requireAdminOrSupervisor],
   }, async (request) => {
-    const code = await getNextProjectCode(request.user.companyId);
+    const code = await getNextProjectCode(prisma, request.user.companyId);
     return { code };
   });
 
@@ -1703,12 +1704,12 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
   }, async (request, reply) => {
     try {
       const body = createProjectSchema.parse(request.body);
-      if (!await customerBelongsToCompany(body.customerId, request.user.companyId)) {
+      if (!await customerBelongsToCompany(prisma, body.customerId, request.user.companyId)) {
         return reply.status(400).send({ error: 'Kunden finns inte i ditt företag' });
       }
 
       const requestedCode = body.code?.trim();
-      let code = requestedCode || await getNextProjectCode(request.user.companyId);
+      let code = requestedCode || await getNextProjectCode(prisma, request.user.companyId);
       let project: any = null;
 
       for (let attempt = 0; attempt < 10; attempt += 1) {
@@ -1727,7 +1728,7 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
         if (requestedCode) {
           return reply.status(400).send({ error: 'Projektkoden finns redan' });
         }
-        code = await getNextProjectCode(request.user.companyId);
+        code = await getNextProjectCode(prisma, request.user.companyId);
         continue;
       }
 
@@ -1746,7 +1747,7 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
         break;
       } catch (error: any) {
         if (!requestedCode && error?.code === 'P2002') {
-          code = await getNextProjectCode(request.user.companyId);
+          code = await getNextProjectCode(prisma, request.user.companyId);
           continue;
         }
         throw error;
@@ -1806,7 +1807,7 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(404).send({ error: 'Projekt hittades inte' });
       }
 
-      if (body.customerId !== undefined && !await customerBelongsToCompany(body.customerId, request.user.companyId)) {
+      if (body.customerId !== undefined && !await customerBelongsToCompany(prisma, body.customerId, request.user.companyId)) {
         return reply.status(400).send({ error: 'Kunden finns inte i ditt företag' });
       }
 
@@ -1825,40 +1826,44 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
         }
       }
 
-      const updatedProject = await prisma.project.update({
-        where: { id },
-        data: body,
-        include: {
-          customer: { select: { id: true, name: true } },
-        },
-      });
+      const updatedProject = await prisma.$transaction(async (tx) => {
+        const updatedProject = await tx.project.update({
+          where: { id },
+          data: body,
+          include: {
+            customer: { select: { id: true, name: true } },
+          },
+        });
 
-      // Audit log
-      await prisma.auditLog.create({
-        data: {
-          userId: request.user.id,
-          action: 'UPDATE',
-          entityType: 'Project',
+        // Audit log
+        await tx.auditLog.create({
+          data: {
+            userId: request.user.id,
+            action: 'UPDATE',
+            entityType: 'Project',
+            entityId: id,
+            oldValue: JSON.stringify({
+              name: project.name,
+              status: project.status,
+              employeeCanSeeResults: project.employeeCanSeeResults,
+            }),
+            newValue: JSON.stringify(body),
+          },
+        });
+
+        await enqueueProjectChanged(tx, {
+          companyId: request.user.companyId,
+          projectId: id,
           entityId: id,
-          oldValue: JSON.stringify({
-            name: project.name,
-            status: project.status,
-            employeeCanSeeResults: project.employeeCanSeeResults,
-          }),
-          newValue: JSON.stringify(body),
-        },
-      });
+          action: 'UPDATE',
+          payload: {
+            code: updatedProject.code,
+            name: updatedProject.name,
+            changedFields: Object.keys(body),
+          },
+        });
 
-      await enqueueProjectChanged(prisma, {
-        companyId: request.user.companyId,
-        projectId: id,
-        entityId: id,
-        action: 'UPDATE',
-        payload: {
-          code: updatedProject.code,
-          name: updatedProject.name,
-          changedFields: Object.keys(body),
-        },
+        return updatedProject;
       });
 
       return updatedProject;
@@ -1881,35 +1886,52 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(404).send({ error: 'Projekt hittades inte' });
     }
 
-    await prisma.project.update({
-      where: { id },
-      data: { active: false },
-    });
+    await prisma.$transaction(async (tx) => {
+      await tx.project.update({
+        where: { id },
+        data: { active: false },
+      });
 
-    // Audit log
-    await prisma.auditLog.create({
-      data: {
-        userId: request.user.id,
-        action: 'DELETE',
-        entityType: 'Project',
+      // Audit log
+      await tx.auditLog.create({
+        data: {
+          userId: request.user.id,
+          action: 'DELETE',
+          entityType: 'Project',
+          entityId: id,
+          oldValue: JSON.stringify({ name: project.name, code: project.code }),
+        },
+      });
+
+      await enqueueProjectChanged(tx, {
+        companyId: request.user.companyId,
+        projectId: id,
         entityId: id,
-        oldValue: JSON.stringify({ name: project.name, code: project.code }),
-      },
-    });
+        action: 'DELETE',
+        payload: {
+          softDelete: true,
+          code: project.code,
+          name: project.name,
+        },
+      });
 
-    await enqueueProjectChanged(prisma, {
-      companyId: request.user.companyId,
-      projectId: id,
-      entityId: id,
-      action: 'DELETE',
-      payload: {
-        softDelete: true,
-        code: project.code,
-        name: project.name,
-      },
     });
 
     return { message: 'Projekt inaktiverat' };
+  });
+
+  // Restoring a project preserves its previous status and all historical records.
+  fastify.post('/:id/restore', { preHandler: [requireAdminOrSupervisor] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const project = await prisma.project.findFirst({ where: { id, companyId: request.user.companyId } });
+    if (!project) return reply.status(404).send({ error: 'Projekt hittades inte' });
+    if (project.active) return project;
+    return prisma.$transaction(async (tx) => {
+      const restored = await tx.project.update({ where: { id }, data: { active: true }, include: { customer: { select: { id: true, name: true } } } });
+      await tx.auditLog.create({ data: { userId: request.user.id, action: 'UPDATE', entityType: 'Project', entityId: id, oldValue: JSON.stringify({ active: false }), newValue: JSON.stringify({ active: true }) } });
+      await enqueueProjectChanged(tx, { companyId: request.user.companyId, projectId: id, entityId: id, action: 'UPDATE', payload: { code: restored.code, name: restored.name, changedFields: ['active'] } });
+      return restored;
+    });
   });
 
   // Delete project permanently (hard delete)
@@ -1920,4 +1942,6 @@ const projectRoutes: FastifyPluginAsync = async (fastify) => {
   });
 };
 
-export default projectRoutes;
+}
+
+export default createProjectRoutes();
