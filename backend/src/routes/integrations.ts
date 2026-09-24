@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { prisma } from '../index.js';
+import { prisma } from '../lib/prisma.js';
+import { listIntegrationCustomers } from '../lib/integrationCustomerList.js';
 import {
   authenticateIntegrationKey,
   extractIntegrationKey,
@@ -41,10 +42,10 @@ const listQuerySchema = z.object({
   message: 'from får inte vara efter to',
 });
 
-async function authenticateIntegration(request: FastifyRequest) {
+async function authenticateIntegration(request: FastifyRequest, db: typeof prisma) {
   const scope = await authenticateIntegrationKey(
     {
-      findByHash: (keyHash) => prisma.integrationAccessKey.findFirst({
+      findByHash: (keyHash) => db.integrationAccessKey.findFirst({
         where: { keyHash },
         select: {
           id: true,
@@ -90,16 +91,16 @@ function sendIntegrationError(error: unknown, reply: any) {
   throw error;
 }
 
-function scopedProject(projectId: string, companyId: string) {
-  return prisma.project.findFirst({
+function scopedProject(db: typeof prisma, projectId: string, companyId: string) {
+  return db.project.findFirst({
     where: { id: projectId, companyId, active: true },
     select: { id: true },
   });
 }
 
-const integrationRoutes: FastifyPluginAsync = async (fastify) => {
+export const createIntegrationRoutes = (db: typeof prisma): FastifyPluginAsync => async (fastify) => {
   fastify.addHook('preHandler', async (request, reply) => {
-    if (!await authenticateIntegration(request)) {
+    if (!await authenticateIntegration(request, db)) {
       return reply.status(401).send({
         error: 'Ogiltig eller saknad integrationsnyckel',
         code: 'INTEGRATION_AUTH_REQUIRED',
@@ -111,7 +112,7 @@ const integrationRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [requireIntegrationPermission('READ_ONLY')],
   }, async (request, reply) => {
     const { code } = projectCodeQuerySchema.parse(request.query);
-    const project = await prisma.project.findFirst({
+    const project = await db.project.findFirst({
       where: { code, companyId: request.integrationScope!.companyId, active: true },
       select: {
         id: true,
@@ -133,7 +134,7 @@ const integrationRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get('/projects/list', {
     preHandler: [requireIntegrationPermission('READ_ONLY')],
   }, async (request) => {
-    const projects = await prisma.project.findMany({
+    const projects = await db.project.findMany({
       where: { companyId: request.integrationScope!.companyId, active: true },
       select: {
         id: true,
@@ -150,16 +151,24 @@ const integrationRoutes: FastifyPluginAsync = async (fastify) => {
     return { items: projects };
   });
 
+  // The import picker needs customer identity and contact details only.
+  fastify.get('/customers/list', {
+    preHandler: [requireIntegrationPermission('READ_ONLY')],
+  }, async (request) => {
+    const customers = await listIntegrationCustomers(db, request.integrationScope!.companyId);
+    return { items: customers };
+  });
+
   fastify.get('/projects/:id/materials', {
     preHandler: [requireIntegrationPermission('READ_ONLY')],
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const { limit } = listQuerySchema.parse(request.query);
-    if (!await scopedProject(id, request.integrationScope!.companyId)) {
+    if (!await scopedProject(db, id, request.integrationScope!.companyId)) {
       return reply.status(404).send({ error: 'Projekt hittades inte' });
     }
 
-    const items = await prisma.projectMaterial.findMany({
+    const items = await db.projectMaterial.findMany({
       where: { projectId: id },
       select: {
         id: true,
@@ -182,11 +191,11 @@ const integrationRoutes: FastifyPluginAsync = async (fastify) => {
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const { limit, from, to } = listQuerySchema.parse(request.query);
-    if (!await scopedProject(id, request.integrationScope!.companyId)) {
+    if (!await scopedProject(db, id, request.integrationScope!.companyId)) {
       return reply.status(404).send({ error: 'Projekt hittades inte' });
     }
 
-    const entries = await prisma.timeEntry.findMany({
+    const entries = await db.timeEntry.findMany({
       where: {
         projectId: id,
         ...(from || to ? {
@@ -217,11 +226,11 @@ const integrationRoutes: FastifyPluginAsync = async (fastify) => {
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const { limit } = listQuerySchema.parse(request.query);
-    if (!await scopedProject(id, request.integrationScope!.companyId)) {
+    if (!await scopedProject(db, id, request.integrationScope!.companyId)) {
       return reply.status(404).send({ error: 'Projekt hittades inte' });
     }
 
-    const items = await prisma.projectUpdate.findMany({
+    const items = await db.projectUpdate.findMany({
       where: { projectId: id, companyId: request.integrationScope!.companyId },
       select: {
         id: true,
@@ -245,7 +254,7 @@ const integrationRoutes: FastifyPluginAsync = async (fastify) => {
   }, async (request, reply) => {
     try {
       const body = materialBatchBodySchema.parse(request.body);
-      const validation = await validateMaterialBatch(prisma, request.integrationScope!, body);
+      const validation = await validateMaterialBatch(db, request.integrationScope!, body);
       return {
         valid: true,
         project: validation.project,
@@ -275,7 +284,7 @@ const integrationRoutes: FastifyPluginAsync = async (fastify) => {
     try {
       const body = materialBatchBodySchema.parse(request.body);
       const idempotencyKey = parseIdempotencyKey(request.headers['idempotency-key']);
-      const result = await createMaterialBatch(prisma, request.integrationScope!, body, idempotencyKey);
+      const result = await createMaterialBatch(db, request.integrationScope!, body, idempotencyKey);
       return reply.status(result.created ? 201 : 200).send(result);
     } catch (error) {
       return sendIntegrationError(error, reply);
@@ -289,7 +298,7 @@ const integrationRoutes: FastifyPluginAsync = async (fastify) => {
     try {
       const params = z.object({ idempotencyKey: z.string() }).strict().parse(request.params);
       const idempotencyKey = parseIdempotencyKey(params.idempotencyKey);
-      return await getMaterialBatchStatus(prisma, request.integrationScope!, idempotencyKey);
+      return await getMaterialBatchStatus(db, request.integrationScope!, idempotencyKey);
     } catch (error) {
       return sendIntegrationError(error, reply);
     }
@@ -302,7 +311,7 @@ const integrationRoutes: FastifyPluginAsync = async (fastify) => {
   }, async (request, reply) => {
     try {
       const body = projectCreateBodySchema.parse(request.body);
-      const validation = await validateProjectCreate(prisma, request.integrationScope!, body);
+      const validation = await validateProjectCreate(db, request.integrationScope!, body);
       return {
         valid: true,
         project: {
@@ -325,7 +334,7 @@ const integrationRoutes: FastifyPluginAsync = async (fastify) => {
     try {
       const body = projectCreateBodySchema.parse(request.body);
       const idempotencyKey = parseIdempotencyKey(request.headers['idempotency-key']);
-      const result = await createProjectFromIntegration(prisma, request.integrationScope!, body, idempotencyKey);
+      const result = await createProjectFromIntegration(db, request.integrationScope!, body, idempotencyKey);
       return reply.status(result.created ? 201 : 200).send(result);
     } catch (error) {
       return sendIntegrationError(error, reply);
@@ -339,7 +348,7 @@ const integrationRoutes: FastifyPluginAsync = async (fastify) => {
     try {
       const params = z.object({ idempotencyKey: z.string() }).strict().parse(request.params);
       const idempotencyKey = parseIdempotencyKey(params.idempotencyKey);
-      return await getProjectCreateStatus(prisma, request.integrationScope!, idempotencyKey);
+      return await getProjectCreateStatus(db, request.integrationScope!, idempotencyKey);
     } catch (error) {
       return sendIntegrationError(error, reply);
     }
@@ -350,7 +359,7 @@ const integrationRoutes: FastifyPluginAsync = async (fastify) => {
     config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
   }, async (request, reply) => {
     const query = z.object({ name: z.string().trim().min(2).max(160) }).strict().parse(request.query);
-    const customers = await prisma.customer.findMany({
+    const customers = await db.customer.findMany({
       where: { companyId: request.integrationScope!.companyId, active: true, name: query.name },
       select: { id: true, name: true },
       take: 2,
@@ -365,4 +374,4 @@ const integrationRoutes: FastifyPluginAsync = async (fastify) => {
   });
 };
 
-export default integrationRoutes;
+export default createIntegrationRoutes(prisma);
