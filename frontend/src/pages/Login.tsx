@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowRight, CheckCircle2, Clock, Loader2, ShieldCheck, Building2 } from 'lucide-react';
+import { ArrowRight, CheckCircle2, Clock, Loader2, Building2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { authApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
@@ -46,12 +46,12 @@ export default function Login() {
         <section className="login-brand-panel order-2 lg:order-1">
           <div className="relative z-10">
             <div className="inline-flex h-11 w-11 items-center justify-center rounded-lg bg-white text-primary-800" aria-hidden="true"><Building2 className="h-5 w-5" /></div>
-            <p className="mt-12 text-sm font-semibold text-primary-100">Arbetsyta</p>
-            <h1 className="mt-3 max-w-3xl text-4xl font-extrabold leading-[1.05] tracking-[-0.045em] text-white sm:text-5xl lg:text-6xl">
-              Arbetstid. Projekt. Kontroll.
+            <p className="mt-12 text-sm font-semibold text-white/70">TidApp</p>
+            <h1 className="mt-3 max-w-xl text-3xl font-bold leading-tight text-white sm:text-4xl">
+              Tidrapportering för hantverk och bygg
             </h1>
-            <p className="mt-6 max-w-xl text-base leading-7 text-white/68 sm:text-lg">
-              Ett arbetsverktyg byggt för platsen, kontoret och ett tryggt löneunderlag.
+            <p className="mt-5 max-w-lg text-sm leading-6 text-white/72 sm:text-base">
+              Rapportera tid, attestera veckor och ta fram löneunderlag utan dubbelarbete.
             </p>
           </div>
 
@@ -72,12 +72,8 @@ export default function Login() {
         <section className="login-form-panel order-1 lg:order-2">
           <div className="login-form-surface">
             <div className="mb-6">
-              <p className="inline-flex items-center gap-2 text-sm font-bold text-primary-800">
-                <ShieldCheck className="h-4 w-4" />
-                Säker inloggning
-              </p>
-              <h2 className="mt-3 text-3xl font-extrabold tracking-[-0.035em] text-graphite-950">Välkommen tillbaka</h2>
-              <p className="mt-2 text-sm leading-6 text-graphite-600">Logga in med samma konto på mobil och dator.</p>
+              <h2 className="text-2xl font-bold text-graphite-950">Logga in</h2>
+              <p className="mt-2 text-sm leading-6 text-graphite-600">Samma konto på mobil och dator.</p>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
