@@ -2,13 +2,17 @@
 
 Status 2026-10-02: implementerad, lokalt provad och oberoende fullstackgranskad utan kvarvarande P0/P1. Inte körd i produktion. Gren: `codex/project-invoices`, bas `7e96493`.
 
-Appkod är lokalt committad i `1510be6`, kompletterad med PostgreSQL-integrationstester i `dcedbb3`. Push/driftsättning inväntar Ricks uttryckliga migrationsgodkännande och en aktuell verifierad backup.
+Appkod är committad i `1510be6`, kompletterad med PostgreSQL-integrationstester i `dcedbb3`. Rick godkände 2026-10-02 uttryckligen migration och driftsättning, med villkoret att säkerhetskopia tas först. Det villkoret är nu uppfyllt genom en verifierad logisk databasbackup och kodbackup enligt nedan. Produktionsutfallet ska efterkontrolleras vid leveransen.
 
 ## Kontroll av målmiljö och backup 2026-10-02
 
 Read-only Railway CLI/API bekräftar projekt `worthy-eagerness`, miljö `production`, tjänster `tidrapportering-api` och `tidrapportering-db`. API-tjänsten kör `7e96493` med status SUCCESS. Databasen är PostgreSQL 17. Volymen är READY och använder cirka 123,4 MB av 500 MB. PDF-lagringen bör därför börja som en liten pilot; lagringsutrymme behöver följas innan historik laddas in.
 
-Railway listar endast `Pre-Security-Patch Backup`, skapad 2026-08-22 med utgång 2026-09-21, och inga backupscheman. Ingen aktuell backup kan därför verifieras. Försök att skapa en separat manuell säkerhetskopia inför migrationen nekades av Railway med `Not Authorized`. Ingen ny backup skapades och inget schema/driftläge ändrades. Rick behöver skapa en manuell backup eller ordna behörighet; agenten ska läsa tillbaka och verifiera den innan driftsättning. Hemligheter har inte lästs ut. En återställning har inte testats.
+Railways snapshots innehåller endast `Pre-Security-Patch Backup`, skapad 2026-08-22 med utgång 2026-09-21; manuell volymsnapshot nekades åter med `Not Authorized`. Därför användes den separat dokumenterade logiska backupvägen med `pg_dump` genom befintlig auktoriserad SSH, utan att läsa ut hemligheter eller ändra driftkonfiguration.
+
+Backup 2026-10-02: `OneDrive/Tidsapp-backups/2026-10-02-before-invoices-165943`. Den innehåller fullständig Git-bundle, zip av produktionskod `7e96493` och en custom-format PostgreSQL-dump på 619 573 byte. Serverns och den lokala dumpens SHA-256 är identiska. Tolv centrala tabellräkningar togs i samma exporterade skrivskyddade snapshot som dumpen. Kopian återställdes i en separat lokal PostgreSQL 17.11-instans: alla tolv räknare matchade. Den nya migrationen provades därefter på den återställda kopian; verksamhetens radantal var oförändrade och de nya fakturatabellerna tomma. Instansen stoppades efter kontrollen. Git-bundlen har också återlästs i separat klon med lyckad integritetskontroll.
+
+Bilageinventering: noll `Attachment`-rader och tom `/app/uploads` (noll filer/byte), så inga bilagefiler saknas i backupen. API-tjänsten saknar beständig upload-volym; det behöver ordnas innan tidrapportsbilagor börjar användas. Nya fakturaoriginal ligger i databasen. Backupkatalogens README, tabellräkningar och verifieringsmanifest beskriver återställningsvägen. OneDrive-molnsynkningen är inte verifierad.
 
 ## Vad ändras?
 

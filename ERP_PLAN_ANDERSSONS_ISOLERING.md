@@ -1,6 +1,6 @@
 # Plan för Anderssons Isolering
 
-Datum: 2026-10-02. Status: projektöversikt och ekonomi driftsatta i `7e96493`; fakturadelen implementerad och verifierad lokalt till och med `dcedbb3`, men migrationsgodkännande, aktuell backup och Bevego-pilot återstår. Kartläggningens historiska utgångsläge var lokal `master`, commit `923c4af`. Aktuell leveransstatus finns även längre ned.
+Datum: 2026-10-02. Status: projektöversikt och ekonomi driftsatta i `7e96493`; fakturadelen implementerad och verifierad lokalt till och med `dcedbb3`. Rick har godkänt migration/driftsättning och en aktuell kod- och databasbackup har återställningsprovats. Produktionsutfall och Bevego-pilot ska efterkontrolleras. Kartläggningens historiska utgångsläge var lokal `master`, commit `923c4af`. Aktuell leveransstatus finns även längre ned.
 
 ## Rekommendation
 
@@ -25,7 +25,7 @@ Verifierat lokalt: backend 110 tester och bygge, frontend 37 tester och bygge, `
 
 Kvar i senare prestandaarbete: ekonomiläsningen använder två smala bulkfrågor men hämtar fortfarande historikrader till Node. Databassummering och mätning med stor representativ historik återstår. Ingen uppmätt förbättring av produktionssvarstiden påstås. Ingen schemaändring eller datamigration ingår i denna etapp.
 
-Den pågående fakturafasen är implementerad och verifierad lokalt: PDF-original, projektfördelning, dubblettskydd, krediter och granskning. Den är ännu inte driftsatt; migrationsgodkännande, aktuell backup och pilot med riktiga Bevego-original återstår. Lönedelen prioriteras inte i detta genomförande.
+Den pågående fakturafasen är implementerad och verifierad lokalt: PDF-original, projektfördelning, dubblettskydd, krediter och granskning. Migrationsgodkännande och verifierad backup är nu klara; produktionsutfall och pilot med riktiga Bevego-original ska kontrolleras vid leverans. Lönedelen prioriteras inte i detta genomförande.
 
 ## Utgångsläge vid kartläggningen
 
@@ -182,7 +182,7 @@ Steg 2 byggs i samma app på `codex/project-invoices`. Första leveransen är en
 
 Denna version fördelar fakturans kontrollerade netto på projektnivå. Artikelrader, OCR, automatisk projektmatchning, matchning mot en ursprunglig kreditfaktura och Spiris-synk ingår inte ännu. Det är en insnävning av den långsiktiga modellen ovan. Ingen riktig Bevego-faktura finns som verifierad testkälla; den riktiga pilotavstämningen återstår. Därför är målet om färdig Bevego-import inte markerat klart.
 
-Appkoden för steg 2 är lokalt committad som `1510be6`. Målmiljön är verifierad läsande i Railway. Där kunde ingen aktuell backup verifieras: den enda listade kopians utgångsdatum är 2026-09-21, backupschema saknas och skapande av en ny kopia nekades med `Not Authorized`. Godkännande av migrationen och aktuell backup inväntas före push/driftsättning; inget produktionsunderlag har ändrats i fakturafasen.
+Appkoden för steg 2 är committad som `1510be6`. Rick godkände migration och fortsatt driftsättning 2026-10-02, efter säkerhetskopia. Railway nekade volymsnapshot med `Not Authorized`, men en logisk `pg_dump` kunde tas genom befintlig SSH. Databasdump, Git-bundle och zip av produktionskoden finns i `OneDrive/Tidsapp-backups/2026-10-02-before-invoices-165943`. Databasen har återställts lokalt med matchande tabellräkningar och den godkända migrationen har provats på kopian utan ändrade verksamhetsrader. Bilageinventeringen visade noll lagrade bilagor. Kodkopian har återlästs och integritetskontrollerats. Ingen produktionsmigration kördes före dessa kontroller.
 
 Lokala tester har passerat för företagsskydd, roller, pengar, statusövergångar, atomär audit, dubbletter och PDF-parserns timeout/felfall: 127 backendtester och 43 frontendtester, båda byggena och diffkontroll godkända. Alla migrationer har provats i en ny PGlite-databas. UI har provats med syntetisk data på dator/mobil och med 200 procent textstorlek. Oberoende fullstackgranskning är klar utan kvarvarande P0/P1; upptäckta fel i rättelse och skydd av osparade uppgifter är rättade och regressionstestade. Produktionsstart inväntar uttryckligt godkännande av den granskade migrationen enligt AGENTS.md; se `backend/prisma/migrations/20261002153000_supplier_invoices/REVIEW.md`.
 
