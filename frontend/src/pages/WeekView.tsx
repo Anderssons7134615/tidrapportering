@@ -1,3 +1,4 @@
+import { refreshProjectQueries } from '../utils/projectQueries';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -172,8 +173,7 @@ export default function WeekView() {
       queryClient.invalidateQueries({ queryKey: ['timeEntries'] });
       queryClient.invalidateQueries({ queryKey: ['weekLocks'] });
       queryClient.invalidateQueries({ queryKey: ['team-week-summary'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      void refreshProjectQueries(queryClient);
     },
     onError: (error: Error) => {
       haptic('error');
@@ -195,7 +195,7 @@ export default function WeekView() {
       queryClient.invalidateQueries({ queryKey: ['timeEntries'] });
       queryClient.invalidateQueries({ queryKey: ['weekLocks'] });
       queryClient.invalidateQueries({ queryKey: ['team-week-summary'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      void refreshProjectQueries(queryClient);
     },
     onError: (error: Error) => {
       haptic('error');

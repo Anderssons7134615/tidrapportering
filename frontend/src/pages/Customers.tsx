@@ -1,3 +1,4 @@
+import { refreshProjectQueries } from '../utils/projectQueries';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -38,6 +39,7 @@ export default function Customers() {
       toast.success('Kund uppdaterad!');
       closeModal();
       queryClient.invalidateQueries({ queryKey: ['customers'] });
+      void refreshProjectQueries(queryClient);
     },
     onError: (error: Error) => toast.error(error.message),
   });

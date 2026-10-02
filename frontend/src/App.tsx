@@ -67,6 +67,9 @@ function HomeRoute() {
   if (user?.role === 'ACCOUNTANT') {
     return <Navigate to="/reports" replace />;
   }
+  if (user?.role === 'ADMIN' || user?.role === 'SUPERVISOR') {
+    return <Navigate to="/projects" replace />;
+  }
   return <PageLoader><Dashboard /></PageLoader>;
 }
 
@@ -98,6 +101,7 @@ export default function App() {
         }
       >
         <Route index element={<HomeRoute />} />
+        <Route path="time-overview" element={<WorkRoute><PageLoader><Dashboard /></PageLoader></WorkRoute>} />
         <Route path="overview/details/:metric" element={<WorkRoute><PageLoader><DashboardDetail /></PageLoader></WorkRoute>} />
         <Route path="time-entry" element={<WorkRoute><PageLoader><TimeEntry /></PageLoader></WorkRoute>} />
         <Route path="week" element={<WorkRoute><PageLoader><WeekView /></PageLoader></WorkRoute>} />

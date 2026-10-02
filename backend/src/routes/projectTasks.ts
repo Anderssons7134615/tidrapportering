@@ -12,7 +12,7 @@ import {
   getProjectTaskScope,
   type ProjectTaskPriorityValue,
 } from '../lib/projectControl.js';
-import { calculateProjectFinancials, getHourlyCost, getHourlyCostValue, getRate } from '../lib/projectMetrics.js';
+import { loadProjectEconomies } from '../lib/projectEconomy.js';
 
 const taskStatuses = ['TODO', 'IN_PROGRESS', 'WAITING', 'DONE'] as const;
 const taskPriorities = ['LOW', 'NORMAL', 'HIGH'] as const;
@@ -104,6 +104,7 @@ export function createProjectTaskRoutes(db: typeof prisma = prisma): FastifyPlug
       return reply.status(403).send({ error: 'Endast arbetsledare kan visa arkiverade projekt' });
     }
     const companyId = request.user.companyId;
+    const canReadEconomy = managerRoles.includes(request.user.role as typeof managerRoles[number]);
     const taskScope = getProjectTaskScope(request.user);
     const searchQuery = query.q ? escapePrismaLikePattern(query.q) : undefined;
     const projects = await db.project.findMany({
@@ -122,13 +123,14 @@ export function createProjectTaskRoutes(db: typeof prisma = prisma): FastifyPlug
       },
       select: {
         id: true, code: true, name: true, site: true, status: true, active: true, updatedAt: true,
+        ...(canReadEconomy ? { budgetHours: true, billingModel: true, fixedPrice: true } : {}),
         customer: { select: { id: true, name: true } },
       },
     });
     if (!projects.length) return { summary: { active: 0, overdue: 0, dueToday: 0, upcoming: 0 }, items: [] };
 
     const projectIds = projects.map((project) => project.id);
-    const [tasks, timeActivity, materialActivity, updateActivity] = await Promise.all([
+    const [tasks, timeActivity, materialActivity, updateActivity, economies] = await Promise.all([
       db.projectTask.findMany({
         where: {
           ...taskScope!,
@@ -143,6 +145,7 @@ export function createProjectTaskRoutes(db: typeof prisma = prisma): FastifyPlug
       db.timeEntry.groupBy({ where: { projectId: { in: projectIds } }, by: ['projectId'], _max: { updatedAt: true } }),
       db.projectMaterial.groupBy({ where: { projectId: { in: projectIds } }, by: ['projectId'], _max: { updatedAt: true } }),
       db.projectUpdate.groupBy({ where: { projectId: { in: projectIds } }, by: ['projectId'], _max: { occurredAt: true } }),
+      canReadEconomy ? loadProjectEconomies(db, companyId, projects) : Promise.resolve(null),
     ]);
 
     const now = new Date();
@@ -165,7 +168,9 @@ export function createProjectTaskRoutes(db: typeof prisma = prisma): FastifyPlug
       const priorityOrder: ProjectTaskPriorityValue[] = ['HIGH', 'NORMAL', 'LOW'];
       const highestPriority = priorityOrder.find((priority) => openTasks.some((task) => task.priority === priority)) ?? null;
       return {
-        ...project,
+        id: project.id, code: project.code, name: project.name, site: project.site,
+        status: project.status, active: project.active, updatedAt: project.updatedAt, customer: project.customer,
+        ...(canReadEconomy ? { economy: economies?.get(project.id) } : {}),
         nextTask: openTasks[0] ? publicTask(openTasks[0], now) : null,
         tasks: projectTasks.map((task) => publicTask(task, now)),
         overdueCount: buckets.filter((bucket) => bucket === 'OVERDUE').length,
@@ -296,54 +301,12 @@ export function createProjectTaskRoutes(db: typeof prisma = prisma): FastifyPlug
   fastify.get('/project-portfolio', { preHandler: [requireRoles(portfolioRoles)] }, async (request) => {
     const companyId = request.user.companyId;
     const projects = await db.project.findMany({ where: { companyId, active: true }, include: { customer: { select: { id: true, name: true, defaultRate: true } } }, orderBy: { code: 'asc' } });
-    const projectIds = projects.map((project) => project.id);
-    const [entries, materials] = await Promise.all([
-      db.timeEntry.findMany({ where: { projectId: { in: projectIds } }, include: { user: { select: { hourlyCost: true } }, project: { select: { defaultRate: true, customer: { select: { defaultRate: true } } } }, activity: { select: { rateOverride: true } } } }),
-      db.projectMaterial.findMany({ where: { projectId: { in: projectIds } } }),
-    ]);
-    const entriesByProject = new Map<string, typeof entries>();
-    for (const entry of entries) {
-      if (!entry.projectId) continue;
-      const bucket = entriesByProject.get(entry.projectId) ?? [];
-      bucket.push(entry);
-      entriesByProject.set(entry.projectId, bucket);
-    }
-    const materialsByProject = new Map<string, typeof materials>();
-    for (const material of materials) {
-      const bucket = materialsByProject.get(material.projectId) ?? [];
-      bucket.push(material);
-      materialsByProject.set(material.projectId, bucket);
-    }
-    return projects.map((project) => {
-      const allEntries = entriesByProject.get(project.id) ?? [];
-      const approvedEntries = allEntries.filter((entry) => entry.status === 'APPROVED');
-      const projectMaterials = materialsByProject.get(project.id) ?? [];
-      const reportedHours = allEntries.reduce((sum, entry) => sum + entry.hours, 0);
-      const approvedHours = approvedEntries.reduce((sum, entry) => sum + entry.hours, 0);
-      const billableEntries = approvedEntries.filter((entry) => entry.billable);
-      const billableValue = billableEntries.reduce((sum, entry) => sum + entry.hours * getRate(entry), 0);
-      const laborCost = approvedEntries.reduce((sum, entry) => sum + entry.hours * getHourlyCost(entry), 0);
-      const materialCost = projectMaterials.reduce((sum, item) => sum + item.quantity * (item.purchasePrice ?? 0), 0);
-      const materialSalesValue = projectMaterials.reduce((sum, item) => sum + item.quantity * (item.unitPrice ?? 0), 0);
-      const financials = calculateProjectFinancials({ billingModel: project.billingModel, fixedPrice: project.fixedPrice, billableValue, laborCost, materialCost, materialSalesValue });
-      const warnings: string[] = [];
-      if (approvedEntries.some((entry) => !entry.financialSnapshotCapturedAt)) warnings.push('Äldre attesterad tid saknar sparad prisbild');
-      if (approvedEntries.some((entry) => getHourlyCostValue(entry) == null)) warnings.push('Timkostnad saknas');
-      return {
+    const economies = await loadProjectEconomies(db, companyId, projects);
+    return projects.map((project) => ({
         project: { id: project.id, code: project.code, name: project.name, status: project.status, customer: project.customer ? { id: project.customer.id, name: project.customer.name } : null },
-        reportedHours,
-        approvedHours,
-        unapprovedHours: reportedHours - approvedHours,
-        budgetHours: project.budgetHours,
         billingModel: project.billingModel,
-        revenue: financials.revenue,
-        laborCost,
-        materialCost,
-        result: financials.result,
-        marginPercent: financials.marginPercent,
-        warnings,
-      };
-    });
+        ...economies.get(project.id)!,
+    }));
   });
   };
 }

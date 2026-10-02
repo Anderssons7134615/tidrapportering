@@ -11,7 +11,8 @@ import { ListSkeleton, Skeleton } from '../components/ui/Skeleton';
 import { QueryError } from '../components/ui/QueryError';
 import { ProjectDialog } from '../components/ProjectDialog';
 import { refreshProjectQueries } from '../utils/projectQueries';
-import { toDateInputValue } from '../utils/format';
+import { formatHours, toDateInputValue } from '../utils/format';
+import { useDebouncedValue } from '../hooks/useDebouncedValue';
 
 const taskStatusLabels: Record<ProjectTaskStatus, string> = {
   TODO: 'Att göra',
@@ -28,6 +29,12 @@ function formatTaskDate(date: string) {
   return new Intl.DateTimeFormat('sv-SE', { day: 'numeric', month: 'short' }).format(new Date(`${date}T12:00:00`));
 }
 
+function needsAttention(project: ProjectControlItem) {
+  return project.overdueCount > 0 || project.dueTodayCount > 0 || project.waitingCount > 0
+    || Boolean(project.economy && (project.economy.unapprovedHours > 0
+      || (project.economy.budgetUsagePercent ?? 0) >= 100 || project.economy.warnings.length > 0));
+}
+
 export default function Projects() {
   const { user } = useAuthStore();
   const isManager = user?.role === 'ADMIN' || user?.role === 'SUPERVISOR';
@@ -37,6 +44,8 @@ export default function Projects() {
   const [confirmProjects, setConfirmProjects] = useState<ProjectControlItem[]>([]);
   const [batchError, setBatchError] = useState('');
   const [search, setSearch] = useState('');
+  const searchTerm = useDebouncedValue(search);
+  const [attentionOnly, setAttentionOnly] = useState(false);
   const [deadline, setDeadline] = useState('');
   const [projectStatus, setProjectStatus] = useState('');
   const [assigneeId, setAssigneeId] = useState('');
@@ -47,8 +56,8 @@ export default function Projects() {
   const [projectDialog, setProjectDialog] = useState<{ project?: Project } | null>(null);
 
   const { data, isLoading, isFetching, isError, refetch } = useQuery({
-    queryKey: ['project-control', archived, search, projectStatus, deadline, assigneeId, taskStatus],
-    queryFn: () => projectTasksApi.control({ active: archived ? 'false' : 'true', q: search || undefined, projectStatus: projectStatus || undefined, deadline: deadline || undefined, assigneeId: assigneeId || undefined, taskStatus: taskStatus || undefined }),
+    queryKey: ['project-control', archived, searchTerm, projectStatus, deadline, assigneeId, taskStatus],
+    queryFn: () => projectTasksApi.control({ active: archived ? 'false' : 'true', q: searchTerm || undefined, projectStatus: projectStatus || undefined, deadline: deadline || undefined, assigneeId: assigneeId || undefined, taskStatus: taskStatus || undefined }),
     placeholderData: keepPreviousData,
   });
   const { data: users } = useQuery({ queryKey: ['users', 'project-tasks'], queryFn: usersApi.list, enabled: isManager });
@@ -77,9 +86,11 @@ export default function Projects() {
   useEffect(() => {
     setSelected(new Set());
     setBatchError('');
-  }, [archived, search, projectStatus, deadline, assigneeId, taskStatus]);
-  const selectedProjects = (data?.items || []).filter((project) => selected.has(project.id));
-  const allSelected = Boolean(data?.items.length) && selectedProjects.length === data?.items.length;
+  }, [archived, search, projectStatus, deadline, assigneeId, taskStatus, attentionOnly]);
+  const visibleProjects = (data?.items || []).filter((project) => !attentionOnly || needsAttention(project));
+  const selectedProjects = visibleProjects.filter((project) => selected.has(project.id));
+  const allSelected = Boolean(visibleProjects.length) && selectedProjects.length === visibleProjects.length;
+  const listUpdating = isFetching || search !== searchTerm;
   const toggleSelected = (id: string) => setSelected((current) => {
     const next = new Set(current);
     if (next.has(id)) next.delete(id); else next.add(id);
@@ -115,20 +126,22 @@ export default function Projects() {
     <AppShell>
       <PageHeader
         title="Projekt"
-        description={isManager ? 'Öppna och redigera projekt. Kryssa i dem du vill arkivera.' : 'Alla aktiva projekt visas. Dina öppna uppgifter visas först.'}
+        description={isManager ? 'Nästa uppgift, timmar och det som behöver följas upp.' : 'Alla aktiva projekt visas. Dina öppna uppgifter visas först.'}
         action={isManager ? (
           <div className="flex flex-wrap gap-2">
-            <button type="button" className="btn-secondary" onClick={() => setProjectDialog({})}>Nytt projekt</button>
-            <button type="button" className="btn-primary" onClick={() => setTaskDialog({})} disabled={archived || !data?.items.length}>
+            <button type="button" className="btn-primary" onClick={() => setProjectDialog({})}>Nytt projekt</button>
+            <button type="button" className="btn-secondary" onClick={() => setTaskDialog({})} disabled={archived || !data?.items.length}>
               <Plus className="h-4 w-4" aria-hidden="true" />Ny uppgift
             </button>
           </div>
         ) : undefined}
       />
 
-      {isManager && <div className="flex gap-2 border-b border-graphite-200" aria-label="Projektvy">
-        <button type="button" className={`min-h-11 px-3 text-sm font-semibold border-b-2 ${!archived ? 'border-primary-600 text-primary-700' : 'border-transparent text-graphite-600'}`} aria-pressed={!archived} disabled={changeArchive.isPending} onClick={() => { setArchived(false); clearFilters(); }}>Aktiva</button>
-        <button type="button" className={`min-h-11 px-3 text-sm font-semibold border-b-2 ${archived ? 'border-primary-600 text-primary-700' : 'border-transparent text-graphite-600'}`} aria-pressed={archived} disabled={changeArchive.isPending} onClick={() => { setArchived(true); clearFilters(); }}>Arkiverade</button>
+      {isManager && <div className="flex flex-wrap gap-2 border-b border-graphite-200" aria-label="Projektvy">
+        <button type="button" className={`min-h-11 px-3 text-sm font-semibold border-b-2 ${!archived && !attentionOnly ? 'border-primary-600 text-primary-700' : 'border-transparent text-graphite-600'}`} aria-pressed={!archived && !attentionOnly} disabled={changeArchive.isPending} onClick={() => { setArchived(false); setAttentionOnly(false); clearFilters(); }}>Aktiva</button>
+        {!archived && <button type="button" className={`min-h-11 px-3 text-sm font-semibold border-b-2 ${attentionOnly ? 'border-primary-600 text-primary-700' : 'border-transparent text-graphite-600'}`} aria-pressed={attentionOnly} onClick={() => setAttentionOnly(!attentionOnly)}>Behöver åtgärd</button>}
+        <Link to="/project-economy" className="flex min-h-11 items-center px-3 text-sm font-semibold text-graphite-600 hover:text-primary-700">Ekonomi</Link>
+        <button type="button" className={`min-h-11 px-3 text-sm font-semibold border-b-2 ${archived ? 'border-primary-600 text-primary-700' : 'border-transparent text-graphite-600'}`} aria-pressed={archived} disabled={changeArchive.isPending} onClick={() => { setArchived(true); setAttentionOnly(false); clearFilters(); }}>Arkiverade</button>
       </div>}
       {archived && <p className="text-sm text-graphite-600">Historiken finns kvar. Återställ ett projekt när arbetet ska fortsätta.</p>}
       {batchError && <p role="alert" className="text-sm text-rose-700">Några projekt kunde inte ändras och är fortfarande markerade. {batchError}</p>}
@@ -190,12 +203,12 @@ export default function Projects() {
 
           {isManager && Boolean(data?.items.length) && <div className="sticky top-0 z-10 mb-2 flex min-h-14 flex-wrap items-center gap-2 border-y border-graphite-200 bg-white px-2 py-1">
             <label className="flex min-h-11 cursor-pointer items-center gap-2 px-2 text-sm">
-              <input type="checkbox" checked={allSelected} ref={(element) => { if (element) element.indeterminate = selectedProjects.length > 0 && !allSelected; }} disabled={isFetching || changeArchive.isPending} onChange={() => setSelected(allSelected ? new Set() : new Set(data?.items.map((project) => project.id)))} />
+              <input type="checkbox" checked={allSelected} ref={(element) => { if (element) element.indeterminate = selectedProjects.length > 0 && !allSelected; }} disabled={listUpdating || changeArchive.isPending} onChange={() => setSelected(allSelected ? new Set() : new Set(visibleProjects.map((project) => project.id)))} />
               Markera alla visade
             </label>
             <span className="text-sm text-graphite-600" role="status">{selectedProjects.length} valda</span>
             {selectedProjects.length > 0 && <>
-              <button type="button" className="btn-primary ml-auto" disabled={isFetching || changeArchive.isPending} onClick={() => setConfirmProjects(selectedProjects)}><Archive className="h-4 w-4" aria-hidden="true" />{archived ? 'Återställ valda' : 'Arkivera valda'}</button>
+              <button type="button" className="btn-primary ml-auto" disabled={listUpdating || changeArchive.isPending} onClick={() => setConfirmProjects(selectedProjects)}><Archive className="h-4 w-4" aria-hidden="true" />{archived ? 'Återställ valda' : 'Arkivera valda'}</button>
               <button type="button" className="btn-secondary" disabled={changeArchive.isPending} onClick={() => setSelected(new Set())}>Avmarkera</button>
             </>}
           </div>}
@@ -209,14 +222,14 @@ export default function Projects() {
                 </div>
               ))}
             </div>
-          ) : !data?.items.length ? (
+          ) : !visibleProjects.length ? (
             <EmptyState
-              title={!search && !hasFilters ? archived ? 'Inga arkiverade projekt' : 'Inga aktiva projekt' : 'Inga projekt matchar'}
-              description={!search && !hasFilters ? archived ? 'Arkiverade projekt visas här.' : 'Det finns inga aktiva projekt att visa.' : 'Justera sökningen eller filtren.'}
+              title={attentionOnly ? 'Inga projekt behöver åtgärd i detta urval' : !search && !hasFilters ? archived ? 'Inga arkiverade projekt' : 'Inga aktiva projekt' : 'Inga projekt matchar'}
+              description={attentionOnly ? 'Välj Aktiva för att se alla projekt i urvalet.' : !search && !hasFilters ? archived ? 'Arkiverade projekt visas här.' : 'Det finns inga aktiva projekt att visa.' : 'Justera sökningen eller filtren.'}
             />
           ) : (
             <div className="border-t border-graphite-200 bg-white">
-              {data.items.map((project) => (
+              {visibleProjects.map((project) => (
                 <ProjectControlRow
                   key={project.id}
                   project={project}
@@ -228,7 +241,7 @@ export default function Projects() {
                   onEditTask={(task) => setTaskDialog({ project, task })}
                   onEditProject={() => loadProjectMutation.mutate(project.id)}
                   selected={selected.has(project.id)}
-                  disabled={isFetching || changeArchive.isPending}
+                  disabled={listUpdating || changeArchive.isPending}
                   loadingEditor={loadProjectMutation.isPending}
                   onSelect={() => toggleSelected(project.id)}
                   onInactivateProject={() => setConfirmProjects([project])}
@@ -291,6 +304,13 @@ function ProjectControlRow({ project, open, isManager, showDone, onToggle, onAdd
           </Link>
           <p className="text-xs leading-5 text-graphite-600 [overflow-wrap:anywhere]">{project.customer?.name || 'Intern'}{project.site ? ` · ${project.site}` : ''} · {project.status === 'PLANNED' ? 'Planerad' : project.status === 'COMPLETED' ? 'Avslutad' : 'Pågående'}{!project.active ? ' · Arkiverad' : ''}</p>
           {attentionLabel && project.active && <span className={`text-xs font-semibold ${attentionTone}`}>{attentionLabel}</span>}
+          {project.nextTask && <p className="mt-1 text-sm text-graphite-700 [overflow-wrap:anywhere]">{project.nextTask.title} · {project.nextTask.assignee.name} · {formatTaskDate(project.nextTask.dueDate)}</p>}
+          {isManager && project.economy && <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-graphite-600">
+            <span>{formatHours(project.economy.reportedHours)} rapporterat{project.economy.budgetHours != null ? ` / ${formatHours(project.economy.budgetHours)} budget` : ' · Ingen timbudget'}</span>
+            {project.economy.unapprovedHours > 0 && <span className="text-amber-800">{formatHours(project.economy.unapprovedHours)} ej attesterat</span>}
+            {(project.economy.budgetUsagePercent ?? 0) >= 100 && <span className="font-semibold text-rose-700">Timbudget nådd</span>}
+            {project.economy.warnings.length > 0 && <span className="text-amber-800">{project.economy.warnings[0]}</span>}
+          </div>}
         </div>
         {isManager && <button type="button" className="btn-secondary min-w-11 shrink-0 px-3" disabled={disabled || loadingEditor} onClick={onEditProject} aria-label={`Redigera ${project.code} · ${project.name}`}><Edit2 className="h-4 w-4" aria-hidden="true" /><span className="hidden sm:inline">Redigera</span></button>}
         {isManager && !project.active && <button type="button" className="btn-secondary min-w-11 shrink-0 px-3" aria-label={`Återställ ${project.code} · ${project.name}`} disabled={disabled} onClick={onInactivateProject}><RotateCcw className="h-4 w-4" aria-hidden="true" /><span className="hidden sm:inline">Återställ</span></button>}

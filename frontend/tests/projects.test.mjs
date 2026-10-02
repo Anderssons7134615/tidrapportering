@@ -145,9 +145,32 @@ test('changing search clears selection so hidden projects cannot be archived', a
   assert.equal(requests.some((r) => r.method === 'DELETE'), false);
 });
 
+test('manager sees missing financial basis and filters projects needing action', async () => {
+  const economy = { reportedHours: 12, approvedHours: 8, unapprovedHours: 4, budgetHours: 10, budgetUsagePercent: 120, warnings: ['Inköpspris saknas på material'] };
+  const { view } = renderProjects({ extraProjects: [{ id: 'project-2', code: '0043', name: 'Följ upp', economy }] });
+  await view.findByText('Inköpspris saknas på material');
+  assert.ok(view.getByText('Timbudget nådd'));
+  fireEvent.click(view.getByRole('button', { name: 'Behöver åtgärd' }));
+  assert.ok(view.getByRole('link', { name: /0043.*Följ upp/ }));
+  assert.equal(view.queryByRole('link', { name: /0042.*Testprojekt/ }), null);
+  fireEvent.click(view.getByRole('checkbox', { name: 'Markera alla visade' }));
+  assert.ok(view.getByText('1 valda'));
+  fireEvent.click(view.getByRole('button', { name: 'Aktiva', exact: true }));
+  assert.ok(view.getByRole('link', { name: /0042.*Testprojekt/ }));
+  assert.equal(view.getByRole('button', { name: 'Behöver åtgärd' }).getAttribute('aria-pressed'), 'false');
+});
+
+test('employee never renders economic fields even if an old cache contains them', async () => {
+  const { view } = renderProjects({ role: 'EMPLOYEE', extraProjects: [{ id: 'project-2', code: '0043', name: 'Följ upp', economy: { reportedHours: 12, approvedHours: 8, unapprovedHours: 4, budgetHours: 10, budgetUsagePercent: 120, warnings: ['Timkostnad saknas'] } }] });
+  await view.findByRole('link', { name: /0043.*Följ upp/ });
+  assert.equal(view.queryByText('Timkostnad saknas'), null);
+  assert.equal(view.queryByRole('button', { name: 'Behöver åtgärd' }), null);
+  assert.equal(view.queryByRole('link', { name: 'Ekonomi' }), null);
+});
+
 test('saving a project refreshes cached detail, dashboard, portfolio and selectors', async () => {
   const { view, client } = renderProjects();
-  const keys = [['project', project.id], ['project', project.id, 'summary'], ['dashboard'], ['projects', 'active'], ['project-portfolio']];
+  const keys = [['project', project.id], ['project', project.id, 'summary'], ['dashboard'], ['projects', 'active'], ['project-portfolio'], ['project-control', 'cached-filter']];
   keys.forEach((key) => client.setQueryData(key, { old: true }));
   const dialog = await openEditor(view);
   fireEvent.change(dialog.getByLabelText('Projektnamn'), { target: { value: 'Uppdaterat projekt' } });

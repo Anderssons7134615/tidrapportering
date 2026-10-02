@@ -20,10 +20,10 @@ export type ProjectMetrics = {
   totalHours: number;
   weekHours: number;
   billableHours: number;
-  billableValue: number;
-  laborCost: number;
-  materialCost: number;
-  materialSalesValue: number;
+  billableValue: number | null;
+  laborCost: number | null;
+  materialCost: number | null;
+  materialSalesValue: number | null;
   projectResult: number | null;
   marginPercent: number | null;
   budgetUsagePercent: number | null;
@@ -42,10 +42,14 @@ const STATUS: Record<ProjectComputedStatus, ProjectStatusInfo> = {
 };
 
 export function getRate(entry: any): number {
+  return getRateValue(entry) ?? 0;
+}
+
+export function getRateValue(entry: any): number | null {
   if (entry.financialSnapshotCapturedAt) {
-    return entry.approvedBillingRateSnapshot ?? 0;
+    return entry.approvedBillingRateSnapshot ?? null;
   }
-  return entry.activity?.rateOverride ?? entry.project?.defaultRate ?? entry.project?.customer?.defaultRate ?? 0;
+  return entry.activity?.rateOverride ?? entry.project?.defaultRate ?? entry.project?.customer?.defaultRate ?? null;
 }
 
 export function getHourlyCost(entry: any): number {
@@ -76,10 +80,10 @@ export function captureFinancialSnapshot(entry: any, capturedAt = new Date()) {
 export function calculateProjectFinancials(input: {
   billingModel?: string | null;
   fixedPrice?: number | null;
-  billableValue: number;
-  materialSalesValue: number;
-  laborCost: number;
-  materialCost: number;
+  billableValue: number | null;
+  materialSalesValue: number | null;
+  laborCost: number | null;
+  materialCost: number | null;
 }): {
   revenue: number | null;
   result: number | null;
@@ -88,10 +92,10 @@ export function calculateProjectFinancials(input: {
   let revenue: number | null = null;
   if (input.billingModel === 'FIXED') {
     revenue = input.fixedPrice ?? null;
-  } else if (input.billingModel === 'HOURLY') {
+  } else if (input.billingModel === 'HOURLY' && input.billableValue != null && input.materialSalesValue != null) {
     revenue = input.billableValue + input.materialSalesValue;
   }
-  const result = revenue != null && revenue > 0
+  const result = revenue != null && input.laborCost != null && input.materialCost != null
     ? revenue - input.laborCost - input.materialCost
     : null;
   const marginPercent = result != null && revenue != null && revenue > 0
@@ -99,6 +103,52 @@ export function calculateProjectFinancials(input: {
     : null;
 
   return { revenue, result, marginPercent };
+}
+
+type EconomyProject = { billingModel?: string | null; fixedPrice?: number | null; budgetHours?: number | null };
+type EconomyEntry = {
+  hours: number; status: string; billable: boolean;
+  financialSnapshotCapturedAt?: Date | null;
+  approvedHourlyCostSnapshot?: number | null;
+  approvedBillingRateSnapshot?: number | null;
+  user?: { hourlyCost?: number | null };
+  project?: { defaultRate?: number | null; customer?: { defaultRate?: number | null } | null } | null;
+  activity?: { rateOverride?: number | null };
+};
+type EconomyMaterial = { quantity: number; purchasePrice?: number | null; unitPrice?: number | null };
+
+/** The same estimate is used in the work list, portfolio and project details. */
+export function summarizeProjectEconomy(project: EconomyProject, entries: EconomyEntry[], materials: EconomyMaterial[]) {
+  const approved = entries.filter((entry) => entry.status === 'APPROVED');
+  const billable = approved.filter((entry) => entry.billable);
+  const reportedHours = entries.reduce((sum, entry) => sum + entry.hours, 0);
+  const approvedHours = approved.reduce((sum, entry) => sum + entry.hours, 0);
+  const billableHours = billable.reduce((sum, entry) => sum + entry.hours, 0);
+  const missingCost = approved.some((entry) => getHourlyCostValue(entry) == null);
+  const missingRate = billable.some((entry) => getRateValue(entry) == null);
+  const missingPurchasePrice = materials.some((item) => item.purchasePrice == null);
+  const missingSalesPrice = materials.some((item) => item.unitPrice == null);
+  const laborCost = missingCost ? null : approved.reduce((sum, entry) => sum + entry.hours * getHourlyCost(entry), 0);
+  const billableValue = missingRate ? null : billable.reduce((sum, entry) => sum + entry.hours * getRate(entry), 0);
+  const materialCost = missingPurchasePrice ? null : materials.reduce((sum, item) => sum + item.quantity * item.purchasePrice!, 0);
+  const materialSalesValue = missingSalesPrice ? null : materials.reduce((sum, item) => sum + item.quantity * item.unitPrice!, 0);
+  const financials = calculateProjectFinancials({ ...project, billableValue, materialSalesValue, laborCost, materialCost });
+  const warnings: string[] = [];
+  if (missingCost) warnings.push('Timkostnad saknas');
+  if (missingPurchasePrice) warnings.push('Inköpspris saknas på material');
+  if (project.billingModel === 'HOURLY' && missingRate) warnings.push('Timpris saknas för debiterbar tid');
+  if (project.billingModel === 'HOURLY' && missingSalesPrice) warnings.push('Försäljningspris saknas på material');
+  if (project.billingModel === 'FIXED' && project.fixedPrice == null) warnings.push('Fast pris saknas');
+  if (!['FIXED', 'HOURLY'].includes(project.billingModel || '')) warnings.push('Projekttyp saknas eller är ogiltig');
+  if (approved.some((entry) => !entry.financialSnapshotCapturedAt)) warnings.push('Äldre attesterad tid beräknas med aktuella priser');
+  return {
+    basis: 'APPROVED_TIME_AND_REPORTED_MATERIAL' as const,
+    reportedHours, approvedHours, unapprovedHours: reportedHours - approvedHours,
+    budgetHours: project.budgetHours ?? null,
+    budgetUsagePercent: project.budgetHours ? reportedHours / project.budgetHours * 100 : null,
+    billableHours, billableValue, laborCost, materialCost, materialSalesValue,
+    ...financials, warnings,
+  };
 }
 
 export async function getProjectMetrics(
@@ -129,43 +179,14 @@ export async function getProjectMetrics(
   const weekHours = entries
     .filter((entry) => entry.date >= weekStart && entry.date <= weekEnd)
     .reduce((sum, entry) => sum + entry.hours, 0);
-  const billableEntries = entries.filter((entry) => entry.billable);
-  const billableHours = billableEntries.reduce((sum, entry) => sum + entry.hours, 0);
-  const billableValue = billableEntries.reduce((sum, entry) => sum + entry.hours * getRate(entry), 0);
-  const laborCost = entries.reduce((sum, entry) => sum + entry.hours * getHourlyCost(entry), 0);
-  const materialCost = materials.reduce(
-    (sum, item) => sum + item.quantity * (item.purchasePrice ?? 0),
-    0
-  );
-  const materialSalesValue = materials.reduce((sum, item) => sum + item.quantity * (item.unitPrice ?? 0), 0);
-  const financials = calculateProjectFinancials({
-    billingModel: project.billingModel,
-    fixedPrice: project.fixedPrice,
-    billableValue,
-    materialSalesValue,
-    laborCost,
-    materialCost,
-  });
-  const projectResult = financials.result;
-  const marginPercent = financials.marginPercent;
+  const economy = summarizeProjectEconomy(project, entries, materials);
+  const { billableHours, billableValue, laborCost, materialCost, materialSalesValue, result: projectResult, marginPercent } = economy;
   const budgetUsagePercent = project.budgetHours ? (totalHours / project.budgetHours) * 100 : null;
   const lastActivityAt = entries.reduce<Date | null>((latest, entry) => {
     const candidate = entry.createdAt > entry.date ? entry.createdAt : entry.date;
     return !latest || candidate > latest ? candidate : latest;
   }, null);
-  const warnings: string[] = [];
-
-  if (project.billingModel === 'FIXED' && project.fixedPrice == null) warnings.push('Fast pris saknas');
-  else if (!['FIXED', 'HOURLY'].includes(project.billingModel)) warnings.push('Projekttyp saknas eller är ogiltig');
-  if (entries.some((entry) => getHourlyCostValue(entry) == null)) {
-    warnings.push('Timkostnad saknas på minst en användare');
-  }
-  if (entries.some((entry) => entry.status === 'APPROVED' && !entry.financialSnapshotCapturedAt)) {
-    warnings.push('Äldre attesterad tid saknar sparad prisbild och beräknas med aktuella priser');
-  }
-  if (project.billingModel === 'HOURLY' && billableEntries.some((entry) => getRate(entry) <= 0)) {
-    warnings.push('Timpris saknas för debiterbar tid');
-  }
+  const warnings = [...economy.warnings];
   if (budgetUsagePercent != null && budgetUsagePercent >= 100) warnings.push('Över budget');
   else if (budgetUsagePercent != null && budgetUsagePercent >= 80) warnings.push('Nära budget');
   return {

@@ -1,3 +1,4 @@
+import { refreshProjectQueries } from '../utils/projectQueries';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { usersApi } from '../services/api';
@@ -51,6 +52,7 @@ export default function UsersPage() {
       toast.success('Användare uppdaterad!');
       closeModal();
       queryClient.invalidateQueries({ queryKey: ['users'] });
+      void refreshProjectQueries(queryClient);
     },
     onError: (error: Error) => toast.error(error.message),
   });

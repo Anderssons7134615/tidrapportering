@@ -6,6 +6,7 @@ import { createProjectTaskRoutes } from './projectTasks.js';
 
 const actor = {
   ADMIN: { id: 'admin-1', email: 'admin@test', role: 'ADMIN', companyId: 'company-a', sessionVersion: 0 },
+  SUPERVISOR: { id: 'supervisor-1', email: 'supervisor@test', role: 'SUPERVISOR', companyId: 'company-a', sessionVersion: 0 },
   EMPLOYEE: { id: 'employee-1', email: 'employee@test', role: 'EMPLOYEE', companyId: 'company-a', sessionVersion: 0 },
   ACCOUNTANT: { id: 'accountant-1', email: 'accountant@test', role: 'ACCOUNTANT', companyId: 'company-a', sessionVersion: 0 },
 } as const;
@@ -92,8 +93,8 @@ test('employee queue shows all active projects with own open tasks first', async
       taskWhere = args.where;
       return [ownTask, colleagueTask].filter((item) => !args.where.assigneeId || item.assigneeId === args.where.assigneeId);
     } },
-    timeEntry: { groupBy: async () => [] },
-    projectMaterial: { groupBy: async () => [] },
+    timeEntry: { groupBy: async () => [], findMany: async () => [] },
+    projectMaterial: { groupBy: async () => [], findMany: async () => [] },
     projectUpdate: { groupBy: async () => [] },
   };
   const app = await appWith(db);
@@ -161,7 +162,7 @@ test('deadline filter excludes completed tasks and projects without matching ope
   const db = {
     project: { findMany: async () => [{ id: 'project-1', code: '1001', name: 'Projekt', site: null, status: 'ONGOING', active: true, updatedAt: new Date(), customer: null }] },
     projectTask: { findMany: async () => [task({ status: 'DONE', completedAt: new Date() })] },
-    timeEntry: { groupBy: async () => [] }, projectMaterial: { groupBy: async () => [] }, projectUpdate: { groupBy: async () => [] },
+    timeEntry: { groupBy: async () => [], findMany: async () => [] }, projectMaterial: { groupBy: async () => [], findMany: async () => [] }, projectUpdate: { groupBy: async () => [] },
   };
   const app = await appWith(db);
   const response = await app.inject({ method: 'GET', url: '/api/project-control/projects?deadline=TODAY', headers: { 'x-test-role': 'ADMIN' } });
@@ -180,7 +181,7 @@ test('deadline filter keeps overview counts stable and returns only matching tas
       task({ id: 'overdue', dueDate: new Date('2020-01-01T00:00:00.000Z') }),
       task({ id: 'later', dueDate: new Date('2099-01-01T00:00:00.000Z') }),
     ] },
-    timeEntry: { groupBy: async () => [] }, projectMaterial: { groupBy: async () => [] }, projectUpdate: { groupBy: async () => [] },
+    timeEntry: { groupBy: async () => [], findMany: async () => [] }, projectMaterial: { groupBy: async () => [], findMany: async () => [] }, projectUpdate: { groupBy: async () => [] },
   };
   const app = await appWith(db);
   const response = await app.inject({ method: 'GET', url: '/api/project-control/projects?deadline=OVERDUE', headers: { 'x-test-role': 'ADMIN' } });
@@ -204,6 +205,38 @@ test('portfolio separates reported from approved and calculates money from appro
   const [row] = response.json();
   assert.deepEqual({ reported: row.reportedHours, approved: row.approvedHours, unapproved: row.unapprovedHours, revenue: row.revenue, laborCost: row.laborCost, result: row.result }, { reported: 15, approved: 5, unapproved: 10, revenue: 500, laborCost: 250, result: 250 });
   await app.close();
+});
+
+test('work queue includes scoped economy only for managers, never in employee JSON', async () => {
+  const sourceWhere: any[] = [];
+  const project = { id: 'project-1', code: '42', name: 'Projekt', site: null, status: 'ONGOING', active: true, updatedAt: new Date(), customer: null, budgetHours: 8, billingModel: 'HOURLY', fixedPrice: null };
+  const db = {
+    project: { findMany: async ({ where }: any) => { assert.equal(where.companyId, 'company-a'); return [project]; } },
+    projectTask: { findMany: async () => [] }, projectUpdate: { groupBy: async () => [] },
+    timeEntry: { groupBy: async () => [], findMany: async ({ where }: any) => {
+      sourceWhere.push(where);
+      return [{ projectId: 'project-1', hours: 4, status: 'APPROVED', billable: true, financialSnapshotCapturedAt: new Date(), approvedBillingRateSnapshot: 800, approvedHourlyCostSnapshot: null }];
+    } },
+    projectMaterial: { groupBy: async () => [], findMany: async ({ where }: any) => { sourceWhere.push(where); return []; } },
+  };
+  const app = await appWith(db);
+  try {
+    for (const role of ['ADMIN', 'SUPERVISOR']) {
+      const response = await app.inject({ method: 'GET', url: '/api/project-control/projects', headers: { 'x-test-role': role } });
+      assert.equal(response.statusCode, 200);
+      const { economy } = response.json().items[0];
+      assert.equal(economy.basis, 'APPROVED_TIME_AND_REPORTED_MATERIAL');
+      assert.equal(economy.approvedHours, 4);
+      assert.equal(economy.laborCost, null);
+      assert.equal(economy.result, null);
+    }
+    assert.equal(sourceWhere.length, 4);
+    assert.ok(sourceWhere.every((where) => where.project.companyId === 'company-a' && where.projectId.in[0] === 'project-1'));
+    const response = await app.inject({ method: 'GET', url: '/api/project-control/projects', headers: { 'x-test-role': 'EMPLOYEE' } });
+    const row = response.json().items[0];
+    for (const field of ['economy', 'fixedPrice', 'budgetHours', 'billingModel', 'revenue', 'result', 'laborCost']) assert.equal(field in row, false, field);
+    assert.equal(sourceWhere.length, 4, 'employee must not query monetary source records');
+  } finally { await app.close(); }
 });
 
 test('manager cannot assign a task to a user outside the company', async () => {

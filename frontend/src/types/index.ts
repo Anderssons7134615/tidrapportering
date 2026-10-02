@@ -83,10 +83,10 @@ export interface ProjectMetrics {
   totalHours: number;
   weekHours: number;
   billableHours: number;
-  billableValue: number;
-  laborCost: number;
-  materialCost: number;
-  materialSalesValue: number;
+  billableValue: number | null;
+  laborCost: number | null;
+  materialCost: number | null;
+  materialSalesValue: number | null;
   projectResult: number | null;
   marginPercent: number | null;
   budgetUsagePercent: number | null;
@@ -136,6 +136,7 @@ export interface ProjectControlItem {
   upcomingCount: number;
   waitingCount: number;
   lastActivityAt: string | null;
+  economy?: ProjectEconomy;
 }
 
 export interface ProjectControlResponse {
@@ -143,19 +144,24 @@ export interface ProjectControlResponse {
   items: ProjectControlItem[];
 }
 
-export interface ProjectPortfolioItem {
-  project: { id: string; code: string; name: string; status: Project['status']; customer?: { id: string; name: string } | null };
+export interface ProjectEconomy {
+  basis: 'APPROVED_TIME_AND_REPORTED_MATERIAL';
   reportedHours: number;
   approvedHours: number;
   unapprovedHours: number;
   budgetHours?: number | null;
-  billingModel: Project['billingModel'];
+  budgetUsagePercent: number | null;
   revenue: number | null;
-  laborCost: number;
-  materialCost: number;
+  laborCost: number | null;
+  materialCost: number | null;
   result: number | null;
   marginPercent: number | null;
   warnings: string[];
+}
+
+export interface ProjectPortfolioItem extends ProjectEconomy {
+  project: { id: string; code: string; name: string; status: Project['status']; customer?: { id: string; name: string } | null };
+  billingModel: Project['billingModel'];
 }
 
 export interface MaterialArticle {

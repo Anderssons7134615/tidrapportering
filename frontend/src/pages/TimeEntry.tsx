@@ -1,3 +1,4 @@
+import { refreshProjectQueries } from '../utils/projectQueries';
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
@@ -167,9 +168,7 @@ export default function TimeEntry() {
     queryClient.invalidateQueries({ queryKey: ['week'] });
     queryClient.invalidateQueries({ queryKey: ['weekLocks'] });
     queryClient.invalidateQueries({ queryKey: ['team-week-summary'] });
-    queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-    queryClient.invalidateQueries({ queryKey: ['projects'] });
-    if (projectId) queryClient.invalidateQueries({ queryKey: ['project', projectId] });
+    void refreshProjectQueries(queryClient);
   };
 
   const rememberProject = (id: string) => {

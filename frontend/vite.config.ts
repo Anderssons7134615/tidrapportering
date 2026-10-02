@@ -9,9 +9,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['tidapp-icon.svg', 'apple-touch-icon.png', 'push-sw.js'],
       manifest: {
-        name: 'Arbetsyta - tid och projekt',
-        short_name: 'Arbetsyta',
-        description: 'Tidrapporteringsapp för hantverks- och byggföretag',
+        name: 'Anderssons Isolering',
+        short_name: 'Anderssons',
+        description: 'Projekt, tid och ekonomi för Anderssons Isolering',
         lang: 'sv',
         theme_color: '#185c56',
         background_color: '#eef2f1',

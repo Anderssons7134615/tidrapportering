@@ -1,3 +1,4 @@
+import { refreshProjectQueries } from '../utils/projectQueries';
 import { Fragment, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
@@ -50,7 +51,7 @@ export default function Approval() {
   const invalidateApprovalData = () => {
     queryClient.invalidateQueries({ queryKey: ['weekLocks'] });
     queryClient.invalidateQueries({ queryKey: ['weekDetails'] });
-    queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    void refreshProjectQueries(queryClient);
     queryClient.invalidateQueries({ queryKey: ['team-week-summary'] });
     queryClient.invalidateQueries({ queryKey: ['timeEntries'] });
   };

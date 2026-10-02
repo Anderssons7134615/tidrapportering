@@ -1,3 +1,4 @@
+import { refreshProjectQueries } from '../utils/projectQueries';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { activitiesApi } from '../services/api';
@@ -54,6 +55,7 @@ export default function Activities() {
       toast.success('Aktivitet uppdaterad!');
       closeModal();
       queryClient.invalidateQueries({ queryKey: ['activities'] });
+      void refreshProjectQueries(queryClient);
     },
     onError: (error: Error) => toast.error(error.message),
   });

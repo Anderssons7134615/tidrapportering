@@ -1,3 +1,4 @@
+import { refreshProjectQueries } from '../utils/projectQueries';
 import { useEffect, useMemo, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useOfflineStore } from '../stores/offlineStore';
@@ -73,9 +74,7 @@ export function useSync() {
         queryClient.invalidateQueries({ queryKey: ['week'] });
         queryClient.invalidateQueries({ queryKey: ['weekLocks'] });
         queryClient.invalidateQueries({ queryKey: ['team-week-summary'] });
-        queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-        queryClient.invalidateQueries({ queryKey: ['projects'] });
-        queryClient.invalidateQueries({ queryKey: ['project'] });
+        if (successfulLocalIds.length > 0) void refreshProjectQueries(queryClient);
         queryClient.invalidateQueries({ queryKey: ['report'] });
       } catch (error) {
         console.error('Sync failed:', error);

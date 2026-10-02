@@ -6,12 +6,13 @@ import toast from 'react-hot-toast';
 import { projectsApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
 import type { MaterialArticle, Project, ProjectMaterial, ProjectSummary, ProjectUpdate, ProjectUpdateType, TimeEntry } from '../types';
-import { AppShell, Button, ConfirmDialog, DataList, DataRow, DataTable, EmptyState, FormField, KpiCard, PageHeader, StatusBadge, Tabs, TaskSection } from '../components/ui/design';
+import { AppShell, Button, ConfirmDialog, DataList, DataRow, DataTable, EmptyState, FormField, PageHeader, StatusBadge, Tabs, TaskSection } from '../components/ui/design';
 import { QueryError } from '../components/ui/QueryError';
 import { formatCurrency, formatDate, formatHours, formatPercent, parseSwedishNumber, toDateInputValue } from '../utils/format';
 import { searchMaterialArticles } from '../utils/materialSearch';
 import { canModifyProjectMaterial, getProjectQueryAccess } from '../utils/frontendGuards';
 import { ProjectDialog } from '../components/ProjectDialog';
+import { refreshProjectQueries } from '../utils/projectQueries';
 
 const tabs = [
   { id: 'overview', label: 'Översikt' },
@@ -69,29 +70,23 @@ export default function ProjectDetail() {
     enabled: !!id,
   });
 
-  const { data: summary, isError: summaryFailed, refetch: refetchSummary } = useQuery({
+  const { data: summary, isLoading: summaryLoading, isError: summaryFailed, refetch: refetchSummary } = useQuery({
     queryKey: ['project', id, 'summary'],
     queryFn: () => projectsApi.getSummary(id),
     enabled: !!id,
   });
 
-  const { canLoadTimeEntries, canLoadManagerSummary } = getProjectQueryAccess({
+  const { canLoadTimeEntries } = getProjectQueryAccess({
     hasProjectId: Boolean(id),
     isManager,
     hoursVisibleToCurrentUser: project?.hoursVisibleToCurrentUser,
     employeeCanSeeResults: project?.employeeCanSeeResults,
   });
 
-  const { data: timeEntries, isError: timeEntriesFailed, refetch: refetchTimeEntries } = useQuery({
+  const { data: timeEntries, isLoading: timeEntriesLoading, isError: timeEntriesFailed, refetch: refetchTimeEntries } = useQuery({
     queryKey: ['project', id, 'time-entries'],
     queryFn: () => projectsApi.listTimeEntries(id),
-    enabled: canLoadTimeEntries,
-  });
-
-  const { data: managerSummary, isError: managerSummaryFailed, refetch: refetchManagerSummary } = useQuery({
-    queryKey: ['project', id, 'manager-summary'],
-    queryFn: () => projectsApi.getManagerSummary(id),
-    enabled: canLoadManagerSummary,
+    enabled: canLoadTimeEntries && activeTab === 'hours',
   });
 
   const {
@@ -102,13 +97,13 @@ export default function ProjectDetail() {
   } = useQuery({
     queryKey: ['material-articles', 'active'],
     queryFn: () => projectsApi.listMaterialArticles(true),
-    enabled: !!id,
+    enabled: !!id && activeTab === 'materials',
   });
 
-  const { data: materialsResponse, isError: materialsFailed, refetch: refetchMaterials } = useQuery({
+  const { data: materialsResponse, isLoading: materialsLoading, isError: materialsFailed, refetch: refetchMaterials } = useQuery({
     queryKey: ['project', id, 'materials'],
     queryFn: () => projectsApi.listMaterials(id),
-    enabled: !!id,
+    enabled: !!id && activeTab === 'materials',
   });
 
   const {
@@ -119,7 +114,7 @@ export default function ProjectDetail() {
   } = useQuery({
     queryKey: ['project', id, 'updates'],
     queryFn: () => projectsApi.listUpdates(id),
-    enabled: !!id,
+    enabled: !!id && activeTab === 'notes',
   });
 
   const p = project as Project | undefined;
@@ -185,7 +180,7 @@ export default function ProjectDetail() {
       setMaterialForm(emptyMaterialForm());
       setMaterialSearch('');
       setMaterialPickerOpen(false);
-      invalidateProjectData(queryClient, id);
+      void refreshProjectQueries(queryClient);
     },
     onError: handleMaterialMutationError,
   });
@@ -205,7 +200,7 @@ export default function ProjectDetail() {
       setMaterialForm(emptyMaterialForm());
       setMaterialSearch('');
       setMaterialPickerOpen(false);
-      invalidateProjectData(queryClient, id);
+      void refreshProjectQueries(queryClient);
     },
     onError: handleMaterialMutationError,
   });
@@ -215,7 +210,7 @@ export default function ProjectDetail() {
     onSuccess: () => {
       toast.success('Materialrad borttagen');
       setDeletingMaterial(null);
-      invalidateProjectData(queryClient, id);
+      void refreshProjectQueries(queryClient);
     },
     onError: handleMaterialMutationError,
   });
@@ -225,7 +220,7 @@ export default function ProjectDetail() {
     onSuccess: (result) => {
       setImportErrors(result.errors || []);
       toast.success(`Importerade ${result.imported} materialrader`);
-      invalidateProjectData(queryClient, id);
+      void refreshProjectQueries(queryClient);
       if (fileInputRef.current) fileInputRef.current.value = '';
     },
     onError: async (error: Error) => {
@@ -244,6 +239,7 @@ export default function ProjectDetail() {
       toast.success('Projekthändelsen sparades');
       setProjectUpdateForm(emptyProjectUpdateForm());
       queryClient.invalidateQueries({ queryKey: ['project', id, 'updates'] });
+      void queryClient.invalidateQueries({ queryKey: ['project-control'] });
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -259,10 +255,8 @@ export default function ProjectDetail() {
     return Array.from(rows.values()).sort((a, b) => b.hours - a.hours);
   }, [entries]);
 
-  const budgetUsage = p?.budgetHours && projectSummary?.totals.totalHours != null ? (projectSummary.totals.totalHours / p.budgetHours) * 100 : null;
+  const budgetUsage = metrics?.budgetUsagePercent ?? null;
   const result = projectSummary?.totals.result ?? null;
-  const margin = projectSummary?.totals.marginPercent ?? null;
-  const summaryTone = result == null ? 'slate' : result >= 0 ? 'green' : 'red';
 
   const startEditMaterial = (item: ProjectMaterial) => {
     setEditingMaterial(item);
@@ -339,42 +333,39 @@ export default function ProjectDetail() {
         }
       />
 
-      {(summaryFailed || (canLoadTimeEntries && timeEntriesFailed) || (canLoadManagerSummary && managerSummaryFailed) || materialsFailed) && (
+      {(summaryFailed || (activeTab === 'hours' && canLoadTimeEntries && timeEntriesFailed) || (activeTab === 'materials' && materialsFailed)) && (
         <QueryError
           title="Delar av projektet kunde inte hämtas"
           description="Vissa timmar, material eller ekonomivärden kan saknas. Försök igen innan du använder sammanställningen."
           onRetry={() => {
             void refetchSummary();
-            if (canLoadTimeEntries) void refetchTimeEntries();
-            if (canLoadManagerSummary) void refetchManagerSummary();
-            void refetchMaterials();
+            if (activeTab === 'hours' && canLoadTimeEntries) void refetchTimeEntries();
+            if (activeTab === 'materials') void refetchMaterials();
           }}
         />
       )}
 
-      <div className={`grid grid-cols-1 gap-3 sm:grid-cols-2 ${canSeeMoney ? 'xl:grid-cols-4' : ''}`}>
-        <KpiCard label="Attesterade timmar" value={projectSummary?.totals.totalHours != null ? formatHours(projectSummary.totals.totalHours) : !canSeeMoney && p.totalHours != null ? formatHours(p.totalHours) : '—'} tone="blue" />
-        {canSeeMoney && <>
-          <KpiCard label="Budgetläge" value={p.budgetHours ? formatPercent(budgetUsage) : 'Löpande'} hint={p.budgetHours ? `${formatHours(p.budgetHours)} budget` : 'Ingen timbudget'} tone={(budgetUsage || 0) >= 80 ? 'red' : 'green'} />
-          <KpiCard label="Materialkostnad" value={formatCurrency(projectSummary?.totals.materialCost ?? materialsResponse?.totals.amount)} tone="orange" />
-          <KpiCard label={p.status === 'COMPLETED' ? 'Slutresultat' : 'Preliminärt resultat'} value={formatCurrency(result)} hint={formatPercent(margin)} tone={summaryTone} />
-        </>}
+      <div className="flex flex-wrap gap-x-6 gap-y-2 border-y border-graphite-200 py-3 text-sm text-graphite-600">
+        {canSeeMoney && <span><strong className="text-graphite-950">{metrics?.totalHours != null ? formatHours(metrics.totalHours) : '—'}</strong> rapporterat</span>}
+        <span><strong className="text-graphite-950">{projectSummary?.totals.totalHours != null ? formatHours(projectSummary.totals.totalHours) : '—'}</strong> attesterat</span>
+        {canSeeMoney && <><span>{p.budgetHours != null ? `${formatHours(p.budgetHours)} timbudget` : 'Ingen timbudget'}</span><span>{formatCurrency(projectSummary?.totals.materialCost)} material enligt åtgång</span><span>{formatCurrency(result)} beräknat resultat</span></>}
       </div>
 
       <Tabs tabs={visibleTabs} active={activeTab} onChange={setActiveTab} label="Projektinnehåll">
 
-      {activeTab === 'overview' && (
+      {(activeTab === 'overview' || activeTab === 'summary') && summaryLoading && <TaskSection><p role="status">Laddar sammanställning…</p></TaskSection>}
+      {activeTab === 'overview' && !summaryLoading && !summaryFailed && (
         <div className={`grid grid-cols-1 gap-5 ${canSeeMoney ? 'xl:grid-cols-[1.1fr_0.9fr]' : ''}`}>
           <TaskSection className="space-y-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <h2 className="section-title">Projektläge</h2>
-                <p className="mt-1 text-sm text-slate-500">{canSeeMoney ? 'Budget, timmar och senaste händelser i ett snabbare arbetsläge.' : 'Attesterade projekttimmar för teamet.'}</p>
+                <p className="mt-1 text-sm text-graphite-600">{canSeeMoney ? 'Timmar, budget och underlag att följa upp.' : 'Attesterade projekttimmar för teamet.'}</p>
               </div>
               <StatusBadge label={p.status === 'COMPLETED' ? 'Avslutad' : p.status === 'ONGOING' ? 'Pågående' : 'Planerad'} tone={p.status === 'COMPLETED' ? 'gray' : 'green'} />
             </div>
             {canSeeMoney && <>
-              <BudgetPanel budgetHours={p.budgetHours} totalHours={projectSummary?.totals.totalHours} usage={budgetUsage} />
+              <BudgetPanel budgetHours={p.budgetHours} totalHours={metrics?.totalHours} usage={budgetUsage} />
               <WarningList warnings={projectSummary?.warnings || []} />
             </>}
           </TaskSection>
@@ -392,10 +383,11 @@ export default function ProjectDetail() {
                         : 'Saknas'
                   }
                 />
-                <Line label="Intäkt" value={formatCurrency(projectSummary?.totals.revenue)} />
+                <Line label="Beräknad intäkt" value={formatCurrency(projectSummary?.totals.revenue)} />
                 <Line label="Arbetskostnad" value={formatCurrency(projectSummary?.totals.laborCost)} />
-                <Line label="Materialkostnad" value={formatCurrency(projectSummary?.totals.materialCost ?? materialsResponse?.totals.amount)} />
-                <Line label="Resultat" value={formatCurrency(result)} strong tone={result != null && result < 0 ? 'red' : 'green'} />
+                <Line label="Material enligt åtgång" value={formatCurrency(projectSummary?.totals.materialCost)} />
+                <Line label="Beräknat resultat" value={formatCurrency(result)} strong tone={result != null && result < 0 ? 'red' : 'green'} />
+                <p className="pt-2 text-xs text-graphite-600">Attesterad tid och registrerad materialåtgång, exklusive moms. {p.billingModel === 'FIXED' ? 'Fastpriset omfattar hela arbetet; återstående kostnader ingår inte.' : 'Fakturerade och betalda belopp visas inte här.'}</p>
               </div>
             }
           </TaskSection>}
@@ -404,27 +396,27 @@ export default function ProjectDetail() {
             <SimpleEntries entries={(projectSummary?.recentEntries?.length ? projectSummary.recentEntries : entries).slice(0, 6)} />
           </TaskSection>
 
-          <TaskSection title="Team och veckor">
-            {managerSummary?.employeeBreakdown?.length ? (
+          <TaskSection title="Attesterad tid per person">
+            {projectSummary?.byUser?.length ? (
               <DataList>
-                {managerSummary.employeeBreakdown.slice(0, 5).map((row) => (
-                  <DataRow key={`${row.userId}-${row.weekStartDate || row.userName}`} className="min-h-0">
+                {projectSummary.byUser.slice(0, 5).map((row) => (
+                  <DataRow key={row.userId} className="min-h-0">
                     <div className="flex items-center justify-between gap-3">
                       <span className="font-semibold text-graphite-950">{row.userName}</span>
-                      <span className="text-sm font-semibold">{formatHours(row.totalHours)}</span>
+                      <span className="text-sm font-semibold">{formatHours(row.hours)}</span>
                     </div>
-                    {row.weekNumber && <p className="mt-1 text-xs text-graphite-500">Vecka {row.weekNumber}</p>}
                   </DataRow>
                 ))}
               </DataList>
             ) : (
-              <EmptyState title="Ingen teamdata" description="När tid rapporteras visas personer och veckor här." />
+              <EmptyState title="Ingen attesterad tid att visa" />
             )}
           </TaskSection>
         </div>
       )}
 
-      {activeTab === 'materials' && (
+      {activeTab === 'materials' && materialsLoading && <TaskSection><p role="status">Laddar material…</p></TaskSection>}
+      {activeTab === 'materials' && !materialsLoading && !materialsFailed && (
         <TaskSection>
           <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
@@ -568,7 +560,9 @@ export default function ProjectDetail() {
         </TaskSection>
       )}
 
-      {activeTab === 'hours' && (
+      {activeTab === 'hours' && canLoadTimeEntries && timeEntriesLoading && <TaskSection><p role="status">Laddar tidrader…</p></TaskSection>}
+      {activeTab === 'hours' && !canLoadTimeEntries && <EmptyState title="Projekttimmar är dolda" description="Du saknar behörighet att se projektets tidrader." />}
+      {activeTab === 'hours' && canLoadTimeEntries && !timeEntriesLoading && !timeEntriesFailed && (
         <TaskSection title={hoursOnly ? 'Attesterade projekttimmar' : 'Tid'}>
           <DataTable label="Projektets tidrader">
             <table className="min-w-full text-sm">
@@ -585,19 +579,20 @@ export default function ProjectDetail() {
                       <div className="text-xs text-slate-500">{entry.activity?.code || '-'}</div>
                     </td>
                     <td className="px-3 py-2 font-semibold">{formatHours(entry.hours)}</td>
-                    {!hoursOnly && <><td className="px-3 py-2">{entry.status}</td><td className="px-3 py-2">{entry.note || '-'}</td></>}
+                    {!hoursOnly && <><td className="px-3 py-2">{{ DRAFT: 'Utkast', SUBMITTED: 'Inskickad', APPROVED: 'Attesterad', REJECTED: 'Behöver rättas' }[entry.status] || entry.status}</td><td className="px-3 py-2">{entry.note || '-'}</td></>}
                   </tr>
                 ))}
               </tbody>
             </table>
           </DataTable>
-          <div className="mt-4 grid grid-cols-1 gap-2 md:grid-cols-3">
-            {groupedByPerson.map((row) => <KpiCard key={row.name} label={row.name} value={formatHours(row.hours)} />)}
+          {!entries.length && <EmptyState title="Inga tidrader att visa" />}
+          <div className="mt-4 divide-y divide-graphite-200">
+            {groupedByPerson.map((row) => <Line key={row.name} label={row.name} value={formatHours(row.hours)} />)}
           </div>
         </TaskSection>
       )}
 
-      {activeTab === 'summary' && canSeeMoney && (
+      {activeTab === 'summary' && canSeeMoney && !summaryLoading && !summaryFailed && (
         <div>
           <SummaryPanel summary={projectSummary} project={p} canSeeMoney={canSeeMoney} />
         </div>
@@ -808,14 +803,6 @@ function ProjectUpdateIcon({ type }: { type: ProjectUpdateType }) {
   }
 }
 
-function invalidateProjectData(queryClient: ReturnType<typeof useQueryClient>, id: string) {
-  queryClient.invalidateQueries({ queryKey: ['project', id] });
-  queryClient.invalidateQueries({ queryKey: ['project', id, 'summary'] });
-  queryClient.invalidateQueries({ queryKey: ['project', id, 'materials'] });
-  queryClient.invalidateQueries({ queryKey: ['projects'] });
-  queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-}
-
 function BudgetPanel({ budgetHours, totalHours, usage }: { budgetHours?: number | null; totalHours?: number | null; usage?: number | null }) {
   const bounded = Math.max(0, Math.min(usage || 0, 100));
   const tone = (usage || 0) >= 100 ? 'bg-rose-500' : (usage || 0) >= 80 ? 'bg-amber-500' : 'bg-emerald-500';
@@ -823,12 +810,12 @@ function BudgetPanel({ budgetHours, totalHours, usage }: { budgetHours?: number 
     <div className="border-y border-graphite-200 bg-graphite-50 px-4 py-4">
       <div className="mb-2 flex items-center justify-between text-sm">
         <span className="font-semibold text-graphite-950">Budgetförbrukning</span>
-        <span className="font-semibold">{budgetHours ? formatPercent(usage) : 'Löpande jobb'}</span>
+        <span className="font-semibold">{budgetHours == null ? 'Ingen timbudget' : budgetHours === 0 ? '0 h budget' : formatPercent(usage)}</span>
       </div>
       <div className="h-3 overflow-hidden rounded-full bg-white">
-        <div className={`h-full rounded-full ${tone}`} style={{ width: budgetHours ? `${bounded}%` : '100%' }} />
+        <div className={`h-full rounded-full ${tone}`} style={{ width: budgetHours != null && budgetHours > 0 ? `${bounded}%` : '0%' }} />
       </div>
-      <p className="mt-2 text-xs text-graphite-500">{formatHours(totalHours)} rapporterat {budgetHours ? `av ${formatHours(budgetHours)}` : 'utan timbudget'}</p>
+      <p className="mt-2 text-xs text-graphite-600">{totalHours == null ? '—' : formatHours(totalHours)} rapporterat {budgetHours != null ? `av ${formatHours(budgetHours)}` : 'utan timbudget'}</p>
     </div>
   );
 }
@@ -1143,17 +1130,19 @@ function SummaryPanel({ summary, project, canSeeMoney }: { summary?: ProjectSumm
       <TaskSection>
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="section-title">{isCompleted ? 'Slutsammanfattning' : 'Preliminär sammanfattning'}</h2>
-            <p className="mt-1 text-sm text-slate-500">Bygger på attesterade timmar och registrerat material.</p>
+            <h2 className="section-title">Beräknad projektekonomi</h2>
+            <p className="mt-1 text-sm text-graphite-600">Attesterade timmar och registrerad materialåtgång, exklusive moms. {project.billingModel === 'FIXED' ? 'Hela fastpriset ingår, men bara hittills registrerade kostnader.' : 'Beloppen är inte hämtade från kundfakturor.'}</p>
           </div>
           <StatusBadge label={isCompleted ? 'Avslutad' : 'Pågående'} tone={isCompleted ? 'gray' : 'green'} />
         </div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <KpiCard label="Intäkt" value={formatCurrency(summary.totals.revenue)} tone="blue" />
-          <KpiCard label="Kostnad" value={formatCurrency((summary.totals.laborCost || 0) + (summary.totals.materialCost || 0))} tone="orange" />
-          <KpiCard label="Resultat" value={formatCurrency(result)} tone={result != null && result < 0 ? 'red' : 'green'} />
-          <KpiCard label="Marginal" value={formatPercent(summary.totals.marginPercent)} tone="slate" />
+        <div className="divide-y divide-graphite-200 text-sm">
+          <Line label="Beräknad intäkt" value={formatCurrency(summary.totals.revenue)} />
+          <Line label="Arbetskostnad" value={formatCurrency(summary.totals.laborCost)} />
+          <Line label="Material enligt åtgång" value={formatCurrency(summary.totals.materialCost)} />
+          <Line label="Beräknat resultat" value={result == null ? 'Underlag saknas' : formatCurrency(result)} strong tone={result != null && result < 0 ? 'red' : 'green'} />
+          <Line label="Beräknad marginal" value={formatPercent(summary.totals.marginPercent)} />
         </div>
+        {summary.warnings.length > 0 && <div className="mt-4"><WarningList warnings={summary.warnings} /></div>}
       </TaskSection>
 
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">

@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import ExcelJS from 'exceljs';
 import { z } from 'zod';
 import { prisma as defaultPrisma } from '../lib/prisma.js';
-import { calculateProjectFinancials, getHourlyCost, getHourlyCostValue, getProjectMetrics, getRate } from '../lib/projectMetrics.js';
+import { getProjectMetrics, getRate, summarizeProjectEconomy } from '../lib/projectMetrics.js';
 import { enqueueMaterialChanged, enqueueProjectChanged, enqueueTimeEntryChanged } from '../lib/obsidianSync.js';
 import { requireRoles } from '../lib/authorization.js';
 import {
@@ -868,29 +868,10 @@ return async (fastify) => {
       }),
     ]);
 
-    const totalHours = approvedEntries.reduce((sum, entry) => sum + entry.hours, 0);
-    const billableEntries = approvedEntries.filter((entry) => entry.billable);
-    const billableHours = billableEntries.reduce((sum, entry) => sum + entry.hours, 0);
-    const billableValue = billableEntries.reduce((sum, entry) => sum + entry.hours * getRate(entry), 0);
-    const laborCost = approvedEntries.reduce((sum, entry) => sum + entry.hours * getHourlyCost(entry), 0);
-    const materialCost = materials.reduce((sum, item) => sum + item.quantity * (item.purchasePrice ?? 0), 0);
-    const materialSalesValue = materials.reduce((sum, item) => sum + item.quantity * (item.unitPrice ?? 0), 0);
-    const { revenue, result, marginPercent } = calculateProjectFinancials({
-      billingModel: project.billingModel,
-      fixedPrice: project.fixedPrice,
-      billableValue,
-      materialSalesValue,
-      laborCost,
-      materialCost,
-    });
-    const warnings: string[] = [];
+    const economy = summarizeProjectEconomy(project, approvedEntries, materials);
+    const { approvedHours: totalHours, billableHours, billableValue, laborCost, materialCost, materialSalesValue, revenue, result, marginPercent } = economy;
+    const warnings = [...economy.warnings];
     if (openEntryCount > 0) warnings.push(`${openEntryCount} tidrader är inte attesterade`);
-    if (approvedEntries.some((entry) => getHourlyCostValue(entry) == null)) warnings.push('Timkostnad saknas på minst en användare');
-    if (approvedEntries.some((entry) => !entry.financialSnapshotCapturedAt)) warnings.push('Äldre attesterad tid saknar sparad prisbild och beräknas med aktuella priser');
-    if (materials.some((item) => item.purchasePrice == null)) warnings.push('Inköpspris saknas på minst en materialrad');
-    if (project.billingModel === 'FIXED' && project.fixedPrice == null) warnings.push('Fast pris saknas');
-    else if (!['FIXED', 'HOURLY'].includes(project.billingModel)) warnings.push('Projekttyp saknas eller är ogiltig');
-    else if (revenue === 0) warnings.push('Pris eller debiterbart värde saknas');
 
     const byActivity = new Map<string, { activityId: string; activityName: string; activityCode: string; hours: number }>();
     const byUser = new Map<string, { userId: string; userName: string; hours: number; billableHours: number }>();

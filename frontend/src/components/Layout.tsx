@@ -12,7 +12,7 @@ import { authApi } from '../services/api';
 import { getFocusTrapAction } from '../utils/frontendGuards';
 
 type Role = 'ADMIN' | 'SUPERVISOR' | 'EMPLOYEE' | 'ACCOUNTANT';
-type NavigationGroup = 'time' | 'management' | 'register' | 'system';
+type NavigationGroup = 'projects' | 'time' | 'management' | 'register' | 'system';
 type NavigationItem = {
   to: string;
   icon: LucideIcon;
@@ -22,13 +22,14 @@ type NavigationItem = {
 };
 
 const navItems: NavigationItem[] = [
-  { to: '/', icon: Home, label: 'Översikt', roles: ['ADMIN', 'SUPERVISOR', 'EMPLOYEE'], group: 'time' },
+  { to: '/', icon: Home, label: 'Översikt', roles: ['EMPLOYEE'], group: 'time' },
+  { to: '/time-overview', icon: Home, label: 'Min tid', roles: ['ADMIN', 'SUPERVISOR'], group: 'time' },
   { to: '/time-entry', icon: Clock, label: 'Rapportera', roles: ['ADMIN', 'SUPERVISOR', 'EMPLOYEE'], group: 'time' },
   { to: '/week', icon: Calendar, label: 'Min vecka', roles: ['ADMIN', 'SUPERVISOR', 'EMPLOYEE'], group: 'time' },
   { to: '/team-week', icon: Users, label: 'Teamvecka', roles: ['ADMIN', 'SUPERVISOR'], group: 'management' },
   { to: '/approval', icon: CheckSquare, label: 'Attestera', roles: ['ADMIN', 'SUPERVISOR'], group: 'management' },
-  { to: '/projects', icon: FolderKanban, label: 'Projekt', roles: ['ADMIN', 'SUPERVISOR', 'EMPLOYEE'], group: 'management' },
-  { to: '/project-economy', icon: FileBarChart, label: 'Projektekonomi', roles: ['ADMIN', 'SUPERVISOR', 'ACCOUNTANT'], group: 'management' },
+  { to: '/projects', icon: FolderKanban, label: 'Projekt', roles: ['ADMIN', 'SUPERVISOR', 'EMPLOYEE'], group: 'projects' },
+  { to: '/project-economy', icon: FileBarChart, label: 'Ekonomi', roles: ['ADMIN', 'SUPERVISOR', 'ACCOUNTANT'], group: 'projects' },
   { to: '/reports', icon: FileBarChart, label: 'Rapporter', roles: ['ADMIN', 'SUPERVISOR', 'ACCOUNTANT'], group: 'management' },
   { to: '/customers', icon: Building2, label: 'Kunder', roles: ['ADMIN', 'SUPERVISOR'], group: 'register' },
   { to: '/materials', icon: Package, label: 'Material', roles: ['ADMIN', 'SUPERVISOR'], group: 'register' },
@@ -38,16 +39,17 @@ const navItems: NavigationItem[] = [
 ];
 
 const groupLabels: Record<NavigationGroup, string> = {
+  projects: 'Projekt',
   time: 'Min tid',
-  management: 'Ledning',
+  management: 'Tid och underlag',
   register: 'Register',
   system: 'System',
 };
 
 const mobileTabsByRole: Record<Role, NavigationItem['to'][]> = {
   EMPLOYEE: ['/', '/week', '/time-entry', '/projects', '/settings'],
-  SUPERVISOR: ['/', '/team-week', '/time-entry', '/approval', '/projects'],
-  ADMIN: ['/', '/team-week', '/time-entry', '/approval', '/projects'],
+  SUPERVISOR: ['/projects', '/team-week', '/time-entry', '/approval', '/project-economy'],
+  ADMIN: ['/projects', '/team-week', '/time-entry', '/approval', '/project-economy'],
   ACCOUNTANT: ['/project-economy', '/reports', '/settings'],
 };
 
@@ -171,7 +173,7 @@ export default function Layout() {
             </button>
             <BrandMark compact />
             <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-graphite-950">{user?.companyName || 'Arbetsyta'}</p>
+              <p className="truncate text-sm font-semibold text-graphite-950">{user?.companyName || 'Anderssons Isolering'}</p>
               {activeItem && <p className="truncate text-xs text-graphite-500">{activeItem.label}</p>}
             </div>
           </div>
@@ -226,7 +228,7 @@ export default function Layout() {
             <div className="flex min-w-0 items-center gap-3">
               <BrandMark compact onDark />
               <div className="min-w-0">
-                <p className="truncate font-semibold text-white">{user?.companyName || 'Arbetsyta'}</p>
+                <p className="truncate font-semibold text-white">{user?.companyName || 'Anderssons Isolering'}</p>
                 <p className="truncate text-xs text-white/60">Navigation</p>
               </div>
             </div>
@@ -259,7 +261,7 @@ function SidebarIdentity({ companyName, role }: { companyName?: string; role?: R
     <div className="border-b border-white/10 px-5 py-5">
       <div className="flex items-center gap-3">
         <BrandMark onDark />
-        <div className="min-w-0"><p className="truncate text-sm font-semibold text-white">{companyName || 'Arbetsyta'}</p><p className="truncate text-xs text-white/60">{role ? roleLabel[role] : 'Medarbetare'}</p></div>
+        <div className="min-w-0"><p className="truncate text-sm font-semibold text-white">{companyName || 'Anderssons Isolering'}</p><p className="truncate text-xs text-white/60">{role ? roleLabel[role] : 'Medarbetare'}</p></div>
       </div>
     </div>
   );
