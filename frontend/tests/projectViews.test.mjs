@@ -29,7 +29,7 @@ before(async () => {
 afterEach(() => { cleanup(); clients.forEach((c) => c.clear()); clients = []; requests = []; globalThis.fetch = originalFetch; });
 after(async () => { await vite?.close(); dom?.window.close(); });
 
-function setup({ role = 'ADMIN', handler, economy } = {}) {
+function setup({ role = 'ADMIN', handler, economy, initialPath = '/projects/p1' } = {}) {
   auth.useAuthStore.setState({ token: 'test-token', user: { id: 'u1', name: 'Test', role } });
   globalThis.fetch = async (url, options = {}) => {
     const path = new URL(url, 'http://localhost').pathname;
@@ -51,7 +51,7 @@ function setup({ role = 'ADMIN', handler, economy } = {}) {
   };
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 300_000, gcTime: Infinity }, mutations: { retry: false, gcTime: 0 } } });
   clients.push(client);
-  const view = render(React.createElement(QueryClientProvider, { client }, React.createElement(MemoryRouter, { initialEntries: [economy ? '/economy' : '/projects/p1'] }, React.createElement(Routes, null, React.createElement(Route, { path: economy ? '/economy' : '/projects/:id', element: React.createElement(economy ? Economy : Detail) })))));
+  const view = render(React.createElement(QueryClientProvider, { client }, React.createElement(MemoryRouter, { initialEntries: [economy ? '/economy' : initialPath] }, React.createElement(Routes, null, React.createElement(Route, { path: economy ? '/economy' : '/projects/:id', element: React.createElement(economy ? Economy : Detail) })))));
   return { client, view };
 }
 
@@ -83,9 +83,12 @@ test('project loads only its overview, then loads the selected tab and recovers 
 });
 
 test('employee cannot open economy or trigger project time requests through tabs', async () => {
-  const { view } = setup({ role: 'EMPLOYEE' });
+  const { view } = setup({ role: 'EMPLOYEE', initialPath: '/projects/p1?tab=purchases' });
   await view.findByRole('heading', { name: 'Testprojekt' });
   assert.equal(view.queryByRole('tab', { name: 'Ekonomi' }), null);
+  assert.equal(view.queryByRole('tab', { name: 'Inköp' }), null);
+  assert.equal(view.getByRole('tab', { name: 'Översikt' }).getAttribute('aria-selected'), 'true');
+  assert.equal(requests.some((request) => request.path.includes('supplier-invoices')), false);
   fireEvent.click(view.getByRole('tab', { name: 'Tid', exact: true }));
   await view.findByText('Projekttimmar är dolda');
   assert.equal(requests.some((r) => /time-entries|manager-summary/.test(r.path)), false);

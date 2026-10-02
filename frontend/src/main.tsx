@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { BrowserRouter } from 'react-router-dom';
+import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { RefreshCw, X } from 'lucide-react';
 import { MotionConfig } from 'framer-motion';
@@ -74,27 +74,29 @@ const queryClient = new QueryClient({
   },
 });
 
+// Keep the existing route tree; the data router supplies reliable navigation
+// blocking for unsaved invoice forms, including the browser's Back button.
+const router = createBrowserRouter([{ path: '*', element: <App /> }]);
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <MotionConfig reducedMotion="user">
-          <AppErrorBoundary>
-            <App />
-          </AppErrorBoundary>
-        </MotionConfig>
-        <AppUpdateNotice />
-        <Toaster
-          position="top-center"
-          toastOptions={{
-            duration: 3000,
-            style: {
-              background: '#1a1a1a',
-              color: '#fff',
-            },
-          }}
-        />
-      </BrowserRouter>
+      <MotionConfig reducedMotion="user">
+        <AppErrorBoundary>
+          <RouterProvider router={router} />
+        </AppErrorBoundary>
+      </MotionConfig>
+      <AppUpdateNotice />
+      <Toaster
+        position="top-center"
+        toastOptions={{
+          duration: 3000,
+          style: {
+            background: '#1a1a1a',
+            color: '#fff',
+          },
+        }}
+      />
     </QueryClientProvider>
   </React.StrictMode>
 );

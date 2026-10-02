@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, ArrowLeft, Bot, Check, CheckCircle2, Edit2, FileSpreadsheet, ListTodo, MessageSquareText, Plus, Search, Trash2, Upload, X } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -13,10 +13,12 @@ import { searchMaterialArticles } from '../utils/materialSearch';
 import { canModifyProjectMaterial, getProjectQueryAccess } from '../utils/frontendGuards';
 import { ProjectDialog } from '../components/ProjectDialog';
 import { refreshProjectQueries } from '../utils/projectQueries';
+const InvoiceList = lazy(() => import('./Purchases').then((module) => ({ default: module.InvoiceList })));
 
 const tabs = [
   { id: 'overview', label: 'Översikt' },
   { id: 'materials', label: 'Material' },
+  { id: 'purchases', label: 'Inköp' },
   { id: 'hours', label: 'Tid' },
   { id: 'summary', label: 'Ekonomi' },
   { id: 'notes', label: 'Dagbok' },
@@ -50,11 +52,12 @@ const emptyProjectUpdateForm = (): ProjectUpdateForm => ({
 
 export default function ProjectDetail() {
   const { id = '' } = useParams();
+  const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const { user } = useAuthStore();
   const isManager = user?.role === 'ADMIN' || user?.role === 'SUPERVISOR';
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState(isManager && searchParams.get('tab') === 'purchases' ? 'purchases' : 'overview');
   const [editingProject, setEditingProject] = useState(false);
   const [materialForm, setMaterialForm] = useState<MaterialForm>(emptyMaterialForm);
   const [editingMaterial, setEditingMaterial] = useState<ProjectMaterial | null>(null);
@@ -130,7 +133,7 @@ export default function ProjectDetail() {
       || projectSummary?.financialsVisibleToCurrentUser
   );
   const hoursOnly = Boolean(p?.hoursVisibleToCurrentUser && !canSeeMoney);
-  const visibleTabs = canSeeMoney ? tabs : tabs.filter((tab) => tab.id !== 'summary');
+  const visibleTabs = tabs.filter((tab) => (tab.id !== 'summary' || canSeeMoney) && (tab.id !== 'purchases' || isManager));
   const selectedMaterialArticle = activeMaterialArticles.find((article) => article.id === materialForm.articleId);
 
   const handleMaterialMutationError = (error: Error) => {
@@ -352,6 +355,7 @@ export default function ProjectDetail() {
       </div>
 
       <Tabs tabs={visibleTabs} active={activeTab} onChange={setActiveTab} label="Projektinnehåll">
+      {activeTab === 'purchases' && isManager && <Suspense fallback={<p role="status">Laddar inköp…</p>}><InvoiceList projectId={id} /></Suspense>}
 
       {(activeTab === 'overview' || activeTab === 'summary') && summaryLoading && <TaskSection><p role="status">Laddar sammanställning…</p></TaskSection>}
       {activeTab === 'overview' && !summaryLoading && !summaryFailed && (

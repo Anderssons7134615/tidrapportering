@@ -26,6 +26,17 @@ enum ProjectTaskStatus {
   DONE
 }
 
+enum SupplierInvoiceStatus {
+  DRAFT
+  CONFIRMED
+  VOID
+}
+
+enum SupplierInvoiceType {
+  INVOICE
+  CREDIT
+}
+
 model Company {
   id        String   @id @default(uuid())
   name      String
@@ -46,6 +57,7 @@ model Company {
   obsidianSyncEvents ObsidianSyncEvent[]
   projectUpdates     ProjectUpdate[]
   projectTasks       ProjectTask[]
+  supplierInvoices   SupplierInvoice[]
 }
 
 model User {
@@ -71,8 +83,11 @@ model User {
   projectUpdates    ProjectUpdate[]
   assignedProjectTasks ProjectTask[] @relation("ProjectTaskAssignee")
   createdProjectTasks  ProjectTask[] @relation("ProjectTaskCreator")
+  createdSupplierInvoices SupplierInvoice[] @relation("SupplierInvoiceCreator")
+  confirmedSupplierInvoices SupplierInvoice[] @relation("SupplierInvoiceReviewer")
 
   @@index([companyId, active])
+  @@unique([id, companyId])
 }
 
 model IntegrationAccessKey {
@@ -203,8 +218,81 @@ model Project {
   integrationAccess IntegrationProjectAccess[]
   integrationMaterialOperations IntegrationMaterialOperation[]
   integrationProjectCreateOperation IntegrationProjectCreateOperation?
+  supplierInvoiceAllocations SupplierInvoiceAllocation[]
 
   @@unique([companyId, code])
+  @@unique([id, companyId])
+}
+
+model SupplierInvoice {
+  id                String @id @default(uuid())
+  companyId         String
+  company           Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  status            SupplierInvoiceStatus @default(DRAFT)
+  documentType      SupplierInvoiceType @default(INVOICE)
+  revision          Int @default(1)
+  source            String @default("PDF")
+  supplierName      String?
+  supplierOrgNumber String?
+  supplierKey       String?
+  invoiceNumber     String?
+  numberKey         String?
+  issueDate         DateTime? @db.Date
+  dueDate           DateTime? @db.Date
+  currency          String @default("SEK")
+  netOre            Int?
+  vatOre            Int?
+  roundingOre       Int @default(0)
+  grossOre          Int?
+  note              String?
+  suggestions       Json?
+  parseWarnings     Json?
+  parserVersion     String?
+  statusReason      String?
+  createdByUserId   String
+  createdByUser     User @relation("SupplierInvoiceCreator", fields: [createdByUserId, companyId], references: [id, companyId], onDelete: Restrict)
+  confirmedByUserId String?
+  confirmedByUser   User? @relation("SupplierInvoiceReviewer", fields: [confirmedByUserId, companyId], references: [id, companyId], onDelete: Restrict)
+  confirmedAt       DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  document          SupplierInvoiceDocument?
+  allocations       SupplierInvoiceAllocation[]
+
+  @@unique([id, companyId])
+  @@unique([companyId, supplierKey, numberKey, documentType], map: "SupplierInvoice_identity_key")
+  @@index([companyId, status, createdAt])
+}
+
+model SupplierInvoiceDocument {
+  id           String @id @default(uuid())
+  companyId    String
+  invoiceId    String
+  invoice      SupplierInvoice @relation(fields: [invoiceId, companyId], references: [id, companyId], onDelete: Restrict)
+  originalName String
+  mimeType     String @default("application/pdf")
+  byteSize     Int
+  sha256       String
+  content      Bytes @db.ByteA
+  createdAt    DateTime @default(now())
+
+  @@unique([invoiceId, companyId])
+  @@unique([companyId, sha256])
+}
+
+model SupplierInvoiceAllocation {
+  id        String @id @default(uuid())
+  companyId String
+  invoiceId String
+  invoice   SupplierInvoice @relation(fields: [invoiceId, companyId], references: [id, companyId], onDelete: Restrict)
+  projectId String
+  project   Project @relation(fields: [projectId, companyId], references: [id, companyId], onDelete: Restrict)
+  netOre    Int
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@unique([invoiceId, projectId])
+  @@index([companyId, projectId])
 }
 
 model ProjectTask {

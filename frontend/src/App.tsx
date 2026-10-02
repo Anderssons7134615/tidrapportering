@@ -15,6 +15,8 @@ const Approval = lazy(() => import('./pages/Approval'));
 const Customers = lazy(() => import('./pages/Customers'));
 const Projects = lazy(() => import('./pages/Projects'));
 const ProjectEconomy = lazy(() => import('./pages/ProjectEconomy'));
+const Purchases = lazy(() => import('./pages/Purchases'));
+const PurchaseDetail = lazy(() => import('./pages/Purchases').then((module) => ({ default: module.PurchaseDetail })));
 const ProjectDetail = lazy(() => import('./pages/ProjectDetail'));
 const Activities = lazy(() => import('./pages/Activities'));
 const Materials = lazy(() => import('./pages/Materials'));
@@ -149,6 +151,8 @@ export default function App() {
           path="project-economy"
           element={<ReportRoute><PageLoader><ProjectEconomy /></PageLoader></ReportRoute>}
         />
+        <Route path="purchases" element={<AdminRoute><PageLoader><Purchases /></PageLoader></AdminRoute>} />
+        <Route path="purchases/:id" element={<AdminRoute><PageLoader><PurchaseDetail /></PageLoader></AdminRoute>} />
         <Route
           path="materials"
           element={

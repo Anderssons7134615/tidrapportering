@@ -1,4 +1,5 @@
 import { useAuthStore } from '../stores/authStore';
+import type { InvoiceDraft, InvoiceList, InvoiceStatus, SupplierInvoice } from '../types/supplierInvoice';
 import type {
   User,
   Customer,
@@ -32,6 +33,23 @@ import type {
 } from '../types';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
+
+export const supplierInvoicesApi = {
+  list: (params: { page?: number; search?: string; status?: InvoiceStatus; projectId?: string }) => {
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => { if (value !== undefined && value !== '') query.set(key, String(value)); });
+    return fetchApi<InvoiceList>(`/supplier-invoices?${query}`);
+  },
+  get: (id: string) => fetchApi<SupplierInvoice>(`/supplier-invoices/${encodeURIComponent(id)}`),
+  upload: (file: File) => {
+    const body = new FormData(); body.append('file', file);
+    return fetchApi<{ invoice: SupplierInvoice; duplicate: boolean }>('/supplier-invoices', { method: 'POST', body });
+  },
+  save: (id: string, draft: InvoiceDraft) => fetchApi<SupplierInvoice>(`/supplier-invoices/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(draft) }),
+  confirm: (id: string, revision: number) => fetchApi<SupplierInvoice>(`/supplier-invoices/${encodeURIComponent(id)}/confirm`, { method: 'POST', body: JSON.stringify({ revision, reviewedOriginal: true }) }),
+  changeStatus: (id: string, revision: number, action: 'reopen' | 'void', reason: string) => fetchApi<SupplierInvoice>(`/supplier-invoices/${encodeURIComponent(id)}/${action}`, { method: 'POST', body: JSON.stringify({ revision, reason }) }),
+  document: (id: string) => fetchBlob(`/supplier-invoices/${encodeURIComponent(id)}/document`),
+};
 
 async function fetchApi<T>(
   endpoint: string,

@@ -172,6 +172,16 @@ De öppna integrationsfrågorna hindrar inte en projektöversikt eller lokal UI-
 
 ## Källor i aktuell kod
 
+### Genomförandestatus 2026-10-02
+
+Steg 1 är levererat i `7e96493` på master. Railway rapporterar lyckad driftsättning; den publika appen visar **Anderssons Isolering** och API:s readiness-kontroll svarar. Projektöversikt, enhetlig ekonomi, rollstyrd startsida, sökfördröjning och behovsstyrd flikladdning är införda. Ingen uppmätt produktionsprestandavinst påstås.
+
+Steg 2 byggs i samma app på `codex/project-invoices`. Första leveransen är en avgränsad PDF-väg via **Inköp** och projektets **Inköp**-flik. Originalet lagras privat i databasen. Tolkningen ger endast förslag; användaren fyller i leverantörens organisationsnummer, kontrollerar datum/belopp och fördelar netto per projekt. Exakta heltalsören, krediter, avrundning, restbelopp, dubbletter, revisionskonflikter och rättelser hanteras. Endast bekräftade fördelningar visas som inköp, separat från materialåtgång och det befintliga projektresultatet.
+
+Denna version fördelar fakturans kontrollerade netto på projektnivå. Artikelrader, OCR, automatisk projektmatchning, matchning mot en ursprunglig kreditfaktura och Spiris-synk ingår inte ännu. Det är en insnävning av den långsiktiga modellen ovan. Ingen riktig Bevego-faktura finns som verifierad testkälla; den riktiga pilotavstämningen återstår. Därför är målet om färdig Bevego-import inte markerat klart.
+
+Lokala tester har passerat för företagsskydd, roller, pengar, statusövergångar, atomär audit, dubbletter och PDF-parserns timeout/felfall: 127 backendtester och 43 frontendtester, båda byggena och diffkontroll godkända. Alla migrationer har provats i en ny PGlite-databas. UI har provats med syntetisk data på dator/mobil och med 200 procent textstorlek. Oberoende fullstackgranskning är klar utan kvarvarande P0/P1; upptäckta fel i rättelse och skydd av osparade uppgifter är rättade och regressionstestade. Produktionsstart inväntar uttryckligt godkännande av den granskade migrationen enligt AGENTS.md; se `backend/prisma/migrations/20261002153000_supplier_invoices/REVIEW.md`.
+
 Referenserna nedan gäller commit `923c4af` och är utgångspunkter för implementation, inte en fullständig granskningsrapport.
 
 - Projektmodell och materialmodell: `backend/prisma/schema.prisma:179` respektive `:291`.

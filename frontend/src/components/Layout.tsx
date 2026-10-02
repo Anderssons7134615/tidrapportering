@@ -30,6 +30,7 @@ const navItems: NavigationItem[] = [
   { to: '/approval', icon: CheckSquare, label: 'Attestera', roles: ['ADMIN', 'SUPERVISOR'], group: 'management' },
   { to: '/projects', icon: FolderKanban, label: 'Projekt', roles: ['ADMIN', 'SUPERVISOR', 'EMPLOYEE'], group: 'projects' },
   { to: '/project-economy', icon: FileBarChart, label: 'Ekonomi', roles: ['ADMIN', 'SUPERVISOR', 'ACCOUNTANT'], group: 'projects' },
+  { to: '/purchases', icon: Package, label: 'Inköp', roles: ['ADMIN', 'SUPERVISOR'], group: 'projects' },
   { to: '/reports', icon: FileBarChart, label: 'Rapporter', roles: ['ADMIN', 'SUPERVISOR', 'ACCOUNTANT'], group: 'management' },
   { to: '/customers', icon: Building2, label: 'Kunder', roles: ['ADMIN', 'SUPERVISOR'], group: 'register' },
   { to: '/materials', icon: Package, label: 'Material', roles: ['ADMIN', 'SUPERVISOR'], group: 'register' },
