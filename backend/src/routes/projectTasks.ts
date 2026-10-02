@@ -127,7 +127,11 @@ export function createProjectTaskRoutes(db: typeof prisma = prisma): FastifyPlug
         customer: { select: { id: true, name: true } },
       },
     });
-    if (!projects.length) return { summary: { active: 0, overdue: 0, dueToday: 0, upcoming: 0 }, items: [] };
+    // Company-wide: an unallocated draft must remain visible even when no project matches.
+    const invoiceSummary = canReadEconomy
+      ? { invoiceDraftCount: await db.supplierInvoice.count({ where: { companyId, status: 'DRAFT' } }) }
+      : {};
+    if (!projects.length) return { summary: { active: 0, overdue: 0, dueToday: 0, upcoming: 0, ...invoiceSummary }, items: [] };
 
     const projectIds = projects.map((project) => project.id);
     const [tasks, timeActivity, materialActivity, updateActivity, economies] = await Promise.all([
@@ -209,6 +213,7 @@ export function createProjectTaskRoutes(db: typeof prisma = prisma): FastifyPlug
 
     return {
       summary: {
+        ...invoiceSummary,
         active: baseRows.length,
         overdue: baseRows.reduce((sum, row) => sum + row.overdueCount, 0),
         dueToday: baseRows.reduce((sum, row) => sum + row.dueTodayCount, 0),
@@ -301,11 +306,21 @@ export function createProjectTaskRoutes(db: typeof prisma = prisma): FastifyPlug
   fastify.get('/project-portfolio', { preHandler: [requireRoles(portfolioRoles)] }, async (request) => {
     const companyId = request.user.companyId;
     const projects = await db.project.findMany({ where: { companyId, active: true }, include: { customer: { select: { id: true, name: true, defaultRate: true } } }, orderBy: { code: 'asc' } });
-    const economies = await loadProjectEconomies(db, companyId, projects);
+    const canReadPurchases = managerRoles.includes(request.user.role as typeof managerRoles[number]);
+    const [economies, purchases] = await Promise.all([
+      loadProjectEconomies(db, companyId, projects),
+      canReadPurchases && projects.length ? db.supplierInvoiceAllocation.groupBy({
+        by: ['projectId'],
+        where: { companyId, projectId: { in: projects.map((project) => project.id) }, invoice: { companyId, status: 'CONFIRMED' } },
+        _sum: { netOre: true },
+      }) : Promise.resolve([]),
+    ]);
+    const purchaseByProject = new Map(purchases.map((item) => [item.projectId, item._sum.netOre ?? 0]));
     return projects.map((project) => ({
         project: { id: project.id, code: project.code, name: project.name, status: project.status, customer: project.customer ? { id: project.customer.id, name: project.customer.name } : null },
         billingModel: project.billingModel,
         ...economies.get(project.id)!,
+        ...(canReadPurchases ? { confirmedPurchaseNetOre: purchaseByProject.get(project.id) ?? 0 } : {}),
     }));
   });
   };

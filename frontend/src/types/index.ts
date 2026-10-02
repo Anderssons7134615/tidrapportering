@@ -140,7 +140,7 @@ export interface ProjectControlItem {
 }
 
 export interface ProjectControlResponse {
-  summary: { active: number; overdue: number; dueToday: number; upcoming: number };
+  summary: { active: number; overdue: number; dueToday: number; upcoming: number; invoiceDraftCount?: number };
   items: ProjectControlItem[];
 }
 
@@ -160,6 +160,7 @@ export interface ProjectEconomy {
 }
 
 export interface ProjectPortfolioItem extends ProjectEconomy {
+  confirmedPurchaseNetOre?: number;
   project: { id: string; code: string; name: string; status: Project['status']; customer?: { id: string; name: string } | null };
   billingModel: Project['billingModel'];
 }

@@ -107,8 +107,21 @@ test('saving project material refreshes every cached project economy', async () 
   await waitFor(() => keys.forEach((key) => assert.equal(client.getQueryState(key)?.isInvalidated, true, key.join('/'))));
 });
 
+test('confirmed purchases show signed ore separately for managers and stay hidden from accountants', async () => {
+  const economy = [{ project, reportedHours: 0, approvedHours: 0, unapprovedHours: 0, laborCost: 0, materialCost: 0, revenue: 0, result: 0, billingModel: 'HOURLY', warnings: [], confirmedPurchaseNetOre: -12345 }];
+  const { view } = setup({ economy });
+  const link = await view.findByRole('link', { name: /Bekräftade inköp, exkl. moms:/ });
+  assert.match(link.textContent, /123,45/);
+  assert.match(link.textContent, /[−-]/);
+  assert.equal(link.getAttribute('href'), '/projects/p1?tab=purchases');
+  cleanup();
+  const accountant = setup({ economy, role: 'ACCOUNTANT' });
+  await accountant.view.findByRole('article');
+  assert.equal(accountant.view.queryByText(/Bekräftade inköp/), null);
+});
+
 test('missing costs keep the portfolio result unknown and filters recompute the selection', async () => {
-  const base = { reportedHours: 8, approvedHours: 8, unapprovedHours: 0, laborCost: 100, materialCost: 100, revenue: 500, result: 300, billingModel: 'HOURLY', warnings: [] };
+  const base = { reportedHours: 8, approvedHours: 8, unapprovedHours: 0, laborCost: 100, materialCost: 100, revenue: 500, result: 300, billingModel: 'HOURLY', warnings: [], confirmedPurchaseNetOre: 0 };
   const { view } = setup({ economy: [{ ...base, project }, { ...base, project: { ...project, id: 'p2', code: '0043', name: 'Utan kostnad' }, laborCost: null, result: null, warnings: ['Timkostnad saknas'] }] });
   await view.findByText('2 projekt i urvalet');
   const incomplete = view.getByRole('article', { name: '0043 · Utan kostnad' });

@@ -15,6 +15,7 @@ process.env.DATABASE_URL = localUrl;
 const { PrismaClient } = await import('@prisma/client');
 const { createInvoiceService } = await import('./supplierInvoices.js');
 const { createSupplierInvoiceRoutes } = await import('../routes/supplierInvoices.js');
+const { createProjectTaskRoutes } = await import('../routes/projectTasks.js');
 
 function client() {
   return new PrismaClient({ datasources: { db: { url: `${localUrl}?connection_limit=8` } }, transactionOptions: { maxWait: 10_000, timeout: 20_000 } });
@@ -214,6 +215,7 @@ test('PostgreSQL/Fastify: original bytes, dates, scoped totals and corrections s
   });
   app.setErrorHandler((error: any, _, reply) => reply.status(error.statusCode || 500).send({ error: error.message }));
   await app.register(createSupplierInvoiceRoutes(ctx.db, ctx.service), { prefix: '/api/supplier-invoices' });
+  await app.register(createProjectTaskRoutes(ctx.db), { prefix: '/api' });
   t.after(() => app.close());
   const url = `/api/supplier-invoices/${invoice.id}`;
   const detail = await app.inject({ url });
@@ -230,11 +232,37 @@ test('PostgreSQL/Fastify: original bytes, dates, scoped totals and corrections s
     assert.equal((await app.inject({ url: url + suffix, headers: { 'x-test-role': 'EMPLOYEE' } })).statusCode, 403);
   }
   const listUrl = `/api/supplier-invoices?projectId=${ctx.projects[0].id}`;
+  const portfolio = async () => {
+    const response = await app.inject({ url: '/api/project-portfolio' });
+    assert.equal(response.statusCode, 200);
+    return response.json().find((row: any) => row.project.id === ctx.projects[0].id);
+  };
+  const draftCount = async () => (await app.inject({ url: '/api/project-control/projects?q=NoMatchingProject' })).json().summary.invoiceDraftCount;
+  assert.equal(await draftCount(), 1);
+  assert.equal((await portfolio()).confirmedPurchaseNetOre, 0);
   assert.equal((await app.inject({ url: listUrl })).json().confirmedProjectNetOre, 0);
   const confirmed = await app.inject({ method: 'POST', url: `${url}/confirm`, payload: { revision: invoice.revision, reviewedOriginal: true } });
   assert.equal(confirmed.statusCode, 200);
   assert.equal((await app.inject({ url: listUrl })).json().confirmedProjectNetOre, 6000);
+  assert.equal((await portfolio()).confirmedPurchaseNetOre, 6000);
+  assert.equal(await draftCount(), 0);
+  // A real signed credit must subtract from purchases, without changing reported material/result.
+  const uploadedCredit = await ctx.service.upload(ctx.actor, Buffer.from('%PDF-1.4 synthetic credit'), 'credit.pdf');
+  const credit = await ctx.service.save(ctx.actor, uploadedCredit.invoice.id, {
+    ...ctx.draft(uploadedCredit.invoice.revision), documentType: 'CREDIT', netOre: -10000, vatOre: -2500, grossOre: -12500,
+    allocations: [{ projectId: ctx.projects[0].id, netOre: -1500, note: null }],
+  });
+  await ctx.service.transition(ctx.actor, credit.id, credit.revision, 'confirm');
+  const withCredit = await portfolio();
+  assert.equal(withCredit.confirmedPurchaseNetOre, 4500);
+  assert.equal(withCredit.materialCost, 0);
+  assert.equal(withCredit.result, 0);
+  const accountant = (await app.inject({ url: '/api/project-portfolio', headers: { 'x-test-role': 'ACCOUNTANT' } })).json();
+  assert.ok(accountant.every((row: any) => !('confirmedPurchaseNetOre' in row)));
+  assert.deepEqual((await app.inject({ url: '/api/project-portfolio', headers: { 'x-test-company': randomUUID() } })).json(), []);
   const reopened = await app.inject({ method: 'POST', url: `${url}/reopen`, payload: { revision: confirmed.json().revision, reason: 'Check allocation' } });
   assert.equal(reopened.statusCode, 200);
-  assert.equal((await app.inject({ url: listUrl })).json().confirmedProjectNetOre, 0);
+  assert.equal((await app.inject({ url: listUrl })).json().confirmedProjectNetOre, -1500);
+  assert.equal((await portfolio()).confirmedPurchaseNetOre, -1500);
+  assert.equal(await draftCount(), 1);
 });

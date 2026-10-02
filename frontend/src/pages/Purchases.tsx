@@ -7,6 +7,7 @@ import { supplierInvoicesApi, projectsApi } from '../services/api';
 import { AppShell, Button, ConfirmDialog, Dialog, EmptyState, FormField, PageHeader, StatusBadge, TaskSection } from '../components/ui/design';
 import { QueryError } from '../components/ui/QueryError';
 import { formatDate } from '../utils/format';
+import { refreshProjectQueries } from '../utils/projectQueries';
 import { formToDraft, invoiceToForm, moneyInput, parseMoneyInput, type InvoiceForm } from '../utils/invoiceForm';
 import type { InvoiceStatus, SupplierInvoice } from '../types/supplierInvoice';
 
@@ -26,12 +27,21 @@ export function InvoiceList({ projectId }: { projectId?: string }) {
   const fileInput = useRef<HTMLInputElement>(null);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [status, setStatus] = useState<InvoiceStatus | ''>('');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [projectStatus, setProjectStatus] = useState<InvoiceStatus | ''>('');
+  const urlStatus = searchParams.get('status');
+  const status = projectId ? projectStatus : (urlStatus === 'DRAFT' || urlStatus === 'CONFIRMED' || urlStatus === 'VOID' ? urlStatus : '');
+  const setStatus = (next: InvoiceStatus | '') => {
+    if (projectId) setProjectStatus(next);
+    else setSearchParams((current) => { const params = new URLSearchParams(current); if (next) params.set('status', next); else params.delete('status'); return params; });
+    setPage(1);
+  };
   const [page, setPage] = useState(1);
+  useEffect(() => { setPage(1); }, [status]);
   useEffect(() => { const timer = setTimeout(() => { setDebouncedSearch(search); setPage(1); }, 250); return () => clearTimeout(timer); }, [search]);
   const query = useQuery({ queryKey: ['supplier-invoices', { projectId, status, page, search: debouncedSearch }], queryFn: () => supplierInvoicesApi.list({ projectId, status: status || undefined, page, search: debouncedSearch }) });
   const upload = useMutation({ mutationFn: supplierInvoicesApi.upload, onSuccess: async ({ invoice, duplicate }) => {
-    await client.invalidateQueries({ queryKey: ['supplier-invoices'] });
+    await Promise.all([client.invalidateQueries({ queryKey: ['supplier-invoices'] }), refreshProjectQueries(client)]);
     toast.success(duplicate ? 'Originalet finns redan. Den befintliga fakturan öppnas.' : 'Originalet är sparat. Kontrollera uppgifterna.');
     navigate(`/purchases/${invoice.id}${projectId ? `?project=${encodeURIComponent(projectId)}` : ''}`);
   }, onError: (error: Error) => toast.error(error.message) });
@@ -104,7 +114,7 @@ function InvoiceEditor({ invoice }: { invoice: SupplierInvoice }) {
   const update = <K extends keyof InvoiceForm>(key: K, value: InvoiceForm[K]) => { setForm((current) => ({ ...current, [key]: value })); setReviewed(false); setError(''); };
   const finished = async (row: SupplierInvoice) => {
     client.setQueryData(['supplier-invoice', row.id], row);
-    await client.invalidateQueries({ queryKey: ['supplier-invoices'] });
+    await Promise.all([client.invalidateQueries({ queryKey: ['supplier-invoices'] }), refreshProjectQueries(client)]);
     toast.success(row.status === 'CONFIRMED' ? 'Fakturan är bekräftad.' : row.status === 'VOID' ? 'Fakturan är makulerad.' : 'Utkastet är sparat.');
   };
   const mutation = useMutation({ mutationFn: async (task: 'save' | 'confirm' | 'reopen' | 'void') => {

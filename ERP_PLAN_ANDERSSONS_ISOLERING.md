@@ -1,6 +1,6 @@
 # Plan för Anderssons Isolering
 
-Datum: 2026-10-02. Status: projektöversikt och ekonomi driftsatta i `7e96493`; fakturadelen implementerad och verifierad lokalt till och med `dcedbb3`. Rick har godkänt migration/driftsättning och en aktuell kod- och databasbackup har återställningsprovats. Produktionsutfall och Bevego-pilot ska efterkontrolleras. Kartläggningens historiska utgångsläge var lokal `master`, commit `923c4af`. Aktuell leveransstatus finns även längre ned.
+Datum: 2026-10-02. Status: projektöversikt, ekonomi och fakturadel driftsatta till och med `f1bdd65`, efter godkänd migration och återställningsprovad kod- och databasbackup. Kompletteringen nedan gör utkast och bekräftade inköp synliga i projektöversikten respektive ekonomin. En riktig Bevego-PDF har lästs lokalt; automatisk fälttolkning är otillräcklig för det provade formatet och kräver manuell komplettering. Inloggad produktionspilot återstår. Kartläggningens historiska utgångsläge var `923c4af`.
 
 ## Rekommendation
 
@@ -25,11 +25,11 @@ Verifierat lokalt: backend 110 tester och bygge, frontend 37 tester och bygge, `
 
 Kvar i senare prestandaarbete: ekonomiläsningen använder två smala bulkfrågor men hämtar fortfarande historikrader till Node. Databassummering och mätning med stor representativ historik återstår. Ingen uppmätt förbättring av produktionssvarstiden påstås. Ingen schemaändring eller datamigration ingår i denna etapp.
 
-Den pågående fakturafasen är implementerad och verifierad lokalt: PDF-original, projektfördelning, dubblettskydd, krediter och granskning. Migrationsgodkännande och verifierad backup är nu klara; produktionsutfall och pilot med riktiga Bevego-original ska kontrolleras vid leverans. Lönedelen prioriteras inte i detta genomförande.
+Fakturafasen är driftsatt: PDF-original, projektfördelning, dubblettskydd, krediter och granskning. Migration, lyckade deployment-statusar, API-readiness och publicerade frontendfiler har efterkontrollerats. Inloggad produktionspilot återstår; inga verksamhetsuppgifter skrevs för att prova driften. Lönedelen prioriteras inte i detta genomförande.
 
 ## Utgångsläge vid kartläggningen
 
-Tabellen beskriver commit `923c4af` före genomförandet. Projektöversikt och gemensamma ekonomiregler har därefter driftsatts; fakturadelen är klar lokalt enligt statusen ovan.
+Tabellen beskriver commit `923c4af` före genomförandet. Projektöversikt, gemensamma ekonomiregler och fakturadelen har därefter driftsatts enligt statusen ovan.
 
 | Område | Verifierat i koden | Vad som behöver utvecklas |
 | --- | --- | --- |
@@ -178,15 +178,28 @@ De öppna integrationsfrågorna hindrar inte en projektöversikt eller lokal UI-
 
 Steg 1 är levererat i `7e96493` på master. Railway rapporterar lyckad driftsättning; den publika appen visar **Anderssons Isolering** och API:s readiness-kontroll svarar. Projektöversikt, enhetlig ekonomi, rollstyrd startsida, sökfördröjning och behovsstyrd flikladdning är införda. Ingen uppmätt produktionsprestandavinst påstås.
 
-Steg 2 byggs i samma app på `codex/project-invoices`. Första leveransen är en avgränsad PDF-väg via **Inköp** och projektets **Inköp**-flik. Originalet lagras privat i databasen. Tolkningen ger endast förslag; användaren fyller i leverantörens organisationsnummer, kontrollerar datum/belopp och fördelar netto per projekt. Exakta heltalsören, krediter, avrundning, restbelopp, dubbletter, revisionskonflikter och rättelser hanteras. Endast bekräftade fördelningar visas som inköp, separat från materialåtgång och det befintliga projektresultatet.
+Steg 2 är driftsatt i samma app via `master`, efter utveckling på `codex/project-invoices`. Första leveransen är en avgränsad PDF-väg via **Inköp** och projektets **Inköp**-flik. Originalet lagras privat i databasen. Tolkningen ger endast förslag; användaren fyller i leverantörens organisationsnummer, kontrollerar datum/belopp och fördelar netto per projekt. Exakta heltalsören, krediter, avrundning, restbelopp, dubbletter, revisionskonflikter och rättelser hanteras. Endast bekräftade fördelningar visas som inköp, separat från materialåtgång och det befintliga projektresultatet.
 
-Denna version fördelar fakturans kontrollerade netto på projektnivå. Artikelrader, OCR, automatisk projektmatchning, matchning mot en ursprunglig kreditfaktura och Spiris-synk ingår inte ännu. Det är en insnävning av den långsiktiga modellen ovan. Ingen riktig Bevego-faktura finns som verifierad testkälla; den riktiga pilotavstämningen återstår. Därför är målet om färdig Bevego-import inte markerat klart.
+Denna version fördelar fakturans kontrollerade netto på projektnivå. Artikelrader, OCR, automatisk projektmatchning, matchning mot en ursprunglig kreditfaktura och Spiris-synk ingår inte ännu. Det är en insnävning av den långsiktiga modellen ovan. En riktig Bevego-faktura har nu identifierats och provlästs lokalt enligt avsnittet nedan. Skarp pilotavstämning återstår och automatisk Bevego-import är inte markerad klar.
 
 Appkoden för steg 2 är committad som `1510be6`. Rick godkände migration och fortsatt driftsättning 2026-10-02, efter säkerhetskopia. Railway nekade volymsnapshot med `Not Authorized`, men en logisk `pg_dump` kunde tas genom befintlig SSH. Databasdump, Git-bundle och zip av produktionskoden finns i `OneDrive/Tidsapp-backups/2026-10-02-before-invoices-165943`. Databasen har återställts lokalt med matchande tabellräkningar och den godkända migrationen har provats på kopian utan ändrade verksamhetsrader. Bilageinventeringen visade noll lagrade bilagor. Kodkopian har återlästs och integritetskontrollerats. Ingen produktionsmigration kördes före dessa kontroller.
 
 Lokala tester har passerat för företagsskydd, roller, pengar, statusövergångar, atomär audit, dubbletter och PDF-parserns timeout/felfall: 127 backendtester och 43 frontendtester, båda byggena och diffkontroll godkända. Alla migrationer har provats i en ny PGlite-databas. UI har provats med syntetisk data på dator/mobil och med 200 procent textstorlek. Oberoende fullstackgranskning är klar utan kvarvarande P0/P1; upptäckta fel i rättelse och skydd av osparade uppgifter är rättade och regressionstestade. Ricks uttryckliga godkännande och den verifierade backupen är dokumenterade i `backend/prisma/migrations/20261002153000_supplier_invoices/REVIEW.md`; produktionsutfallet ska kontrolleras vid leverans.
 
-Utökad verifiering 2026-10-02: alla 15 migrationer passerar även i en ny lokal PostgreSQL 17.11-databas. Sju integrationstester med riktig Prisma provar samtidiga fakturauppladdningar/ändringar, atomär rollback vid loggfel samt originalhämtning, datum, behörigheter och inköpssummering. Produktionsstart och riktig Bevego-pilot återstår. Testinstruktion: `backend/scripts/INVOICE_POSTGRES_TESTS.md`.
+Utökad verifiering 2026-10-02: alla 15 migrationer passerar även i en ny lokal PostgreSQL 17.11-databas. Sju integrationstester med riktig Prisma provar samtidiga fakturauppladdningar/ändringar, atomär rollback vid loggfel samt originalhämtning, datum, behörigheter och inköpssummering. Produktionsstart är verifierad; inloggad Bevego-pilot återstår. Testinstruktion: `backend/scripts/INVOICE_POSTGRES_TESTS.md`.
+
+### Slutkomplettering: inköp i översikten
+
+- Projekt visar företagets antal fakturautkast med direktlänk till **Inköp → Att kontrollera**, även när ett projekturval är tomt. Ofördelade utkast tilldelas inte något påhittat projekt.
+- Projektekonomi visar **Bekräftade inköp, exkl. moms** per projekt. Endast bekräftade fördelningar räknas, krediter minskar summan, och beloppet ändrar inte materialåtgång eller beräknat resultat.
+- Uppgifterna och databasfrågorna är begränsade till ADMIN/SUPERVISOR. ACCOUNTANT och EMPLOYEE får inga nya fakturauppgifter. Inköpsändringar uppdaterar även projektvyerna.
+- Verifierat: 129 backendtester, 47 frontendtester, 7 PostgreSQL-tester, båda byggena och diffkontroll. Browserprov med syntetiska data: länkar, statusfilter, öresprecision, tangentbordsfokus och 44 px träffytor vid 1440/390 px samt 720 px med 200 % textstorlek. Ingen horisontell sidscroll i dessa prov. Fullstack- och UI-granskning är klara utan P0/P1. Kvarvarande P2: cacheuppdatering testas via spara/bekräfta, men inte separat via uppladdning/rättelse/makulering; kodvägarna är granskade och statusbyten delar samma funktion.
+
+### Bevego-prov och kvarvarande begränsning
+
+Den befintliga Rillion-samlingsfilen `2026-07-02_20-32-44_RillionOne.pdf` innehåller 410 sidor och är större än importens 10 MB-gräns. Originalet lämnades orört. Första fakturans gräns verifierades visuellt: sida 1(14), sida 14(14) och ett annat fakturanummer på nästa sida. En separat lokal kopia av dessa 14 sidor (590 639 byte) passerar den kompilerade PDF-workern och ger läsbar text.
+
+Fälttolkningen hittar leverantören men missar fakturanummer, datum och belopp i just detta format. Appens manuella komplettering och obligatoriska originalkontroll behövs därför. Ingen faktura laddades upp eller bekräftades i produktion. Nästa avgränsade arbete är att förbättra tolkningen mot detta verifierade format och därefter stämma av en riktig faktura i den inloggade appen. Detta startas inte i den här sessionens avslut.
 
 Referenserna nedan gäller commit `923c4af` och är utgångspunkter för implementation, inte en fullständig granskningsrapport.
 

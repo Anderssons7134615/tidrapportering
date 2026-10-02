@@ -28,7 +28,7 @@ before(async () => {
 afterEach(() => { cleanup(); clients.forEach((client) => client.clear()); clients = []; requests = []; globalThis.fetch = originalFetch; });
 after(async () => { await vite?.close(); dom?.window.close(); });
 
-function setup({ status = 'DRAFT', failedSave = false, projectList = false, failedList = false } = {}) {
+function setup({ status = 'DRAFT', failedSave = false, projectList = false, failedList = false, listPath } = {}) {
   let row = { ...invoice, status };
   auth.useAuthStore.setState({ token: 'test-token', user: { id: 'u1', name: 'Test', role: 'ADMIN' } });
   globalThis.fetch = async (url, options = {}) => {
@@ -39,6 +39,7 @@ function setup({ status = 'DRAFT', failedSave = false, projectList = false, fail
     if (path === '/api/supplier-invoices') return failedList ? Response.json({ error: 'Testfel' }, { status: 503 }) : Response.json({ items: [row], total: 1, page: 1, pageSize: 25, confirmedProjectNetOre: 10000 });
     if (path.endsWith('/confirm')) { row = { ...row, revision: row.revision + 1, status: 'CONFIRMED' }; return Response.json(row); }
     if (path.endsWith('/reopen')) { row = { ...row, revision: row.revision + 1, status: 'DRAFT' }; return Response.json(row); }
+    if (path.endsWith('/void')) { row = { ...row, revision: row.revision + 1, status: 'VOID' }; return Response.json(row); }
     if (path === '/api/supplier-invoices/i1') {
       if (method === 'PUT') {
         if (failedSave) return Response.json({ error: 'Fakturan har ändrats. Ladda om innan du fortsätter.' }, { status: 409 });
@@ -49,12 +50,16 @@ function setup({ status = 'DRAFT', failedSave = false, projectList = false, fail
     assert.fail(`Unexpected ${method} ${path}`);
   };
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 300000, gcTime: Infinity }, mutations: { retry: false, gcTime: 0 } } }); clients.push(client);
-  const router = createMemoryRouter([{ path: projectList ? '/projects/:id' : '/purchases/:id', element: projectList ? React.createElement(List, { projectId: 'p1' }) : React.createElement(Detail) }, { path: '/purchases', element: React.createElement('p', null, 'Tillbaka i listan') }], { initialEntries: ['/purchases', projectList ? '/projects/p1' : '/purchases/i1'], initialIndex: 1 });
+  const router = createMemoryRouter([{ path: projectList ? '/projects/:id' : '/purchases/:id', element: projectList ? React.createElement(List, { projectId: 'p1' }) : React.createElement(Detail) }, { path: '/purchases', element: listPath ? React.createElement(List) : React.createElement('p', null, 'Tillbaka i listan') }], { initialEntries: ['/purchases', listPath || (projectList ? '/projects/p1?tab=purchases' : '/purchases/i1')], initialIndex: 1 });
   const view = render(React.createElement(QueryClientProvider, { client }, React.createElement(RouterProvider, { router })));
   return { view, client, router };
 }
 test('fakturaformulär kräver sparade ändringar och aktiv originalkontroll före bekräftelse', async () => {
-  const { view } = setup();
+  const { view, client } = setup();
+  const keys = [['project-control'], ['project-portfolio'], ['project', 'p1']];
+  const resetCache = () => keys.forEach((key) => client.setQueryData(key, { old: true }));
+  const expectRefreshed = () => waitFor(() => keys.forEach((key) => assert.equal(client.getQueryState(key)?.isInvalidated, true)));
+  resetCache();
   await view.findByLabelText('Leverantör');
   assert.equal(view.getByRole('button', { name: 'Bekräfta faktura', exact: true }).disabled, true);
   fireEvent.click(view.getByRole('button', { name: 'Lägg till projekt' }));
@@ -65,6 +70,8 @@ test('fakturaformulär kräver sparade ändringar och aktiv originalkontroll fö
   fireEvent.click(view.getByRole('button', { name: 'Spara utkast' }));
   await waitFor(() => assert.equal(view.getByRole('checkbox').disabled, false));
   assert.equal(requests.find((request) => request.method === 'PUT').body.allocations[0].netOre, 10000);
+  await expectRefreshed();
+  resetCache();
   fireEvent.click(view.getByRole('checkbox'));
   fireEvent.click(view.getByRole('button', { name: 'Bekräfta faktura', exact: true }));
   const dialog = view.getByRole('dialog');
@@ -73,6 +80,30 @@ test('fakturaformulär kräver sparade ändringar och aktiv originalkontroll fö
   await view.findByRole('button', { name: 'Öppna för rättelse' });
   const confirm = requests.find((request) => request.path.endsWith('/confirm'));
   assert.deepEqual(confirm.body, { revision: 2, reviewedOriginal: true });
+  await expectRefreshed();
+});
+
+test('global invoice status follows the URL, filter changes and back navigation', async () => {
+  const { view, router } = setup({ listPath: '/purchases?status=DRAFT' });
+  await view.findByText('Testleverantör');
+  assert.equal(requests[0].query.get('status'), 'DRAFT');
+  assert.equal(view.getByLabelText('Visa').value, 'DRAFT');
+  fireEvent.change(view.getByLabelText('Visa'), { target: { value: 'CONFIRMED' } });
+  await waitFor(() => assert.ok(requests.some((request) => request.query.get('status') === 'CONFIRMED')));
+  assert.equal(router.state.location.search, '?status=CONFIRMED');
+  await act(async () => { await router.navigate(-1); });
+  assert.equal(view.getByLabelText('Visa').value, 'DRAFT');
+  await act(async () => { await router.navigate('/purchases?status=INVALID'); });
+  assert.equal(view.getByLabelText('Visa').value, '');
+  await waitFor(() => assert.ok(requests.some((request) => !request.query.has('status'))));
+});
+
+test('project invoice filter preserves the project tab URL', async () => {
+  const { view, router } = setup({ projectList: true });
+  await view.findByText('Testleverantör');
+  fireEvent.change(view.getByLabelText('Visa'), { target: { value: 'DRAFT' } });
+  await waitFor(() => assert.ok(requests.some((request) => request.query.get('status') === 'DRAFT' && request.query.get('projectId') === 'p1')));
+  assert.equal(router.state.location.search, '?tab=purchases');
 });
 test('konflikt behåller inmatningen och ingen bekräftelse skickas', async () => {
   const { view } = setup({ failedSave: true }); await view.findByLabelText('Leverantör');

@@ -44,7 +44,7 @@ function renderProjects({ extraProjects = [], tasks = [], failArchive = '', fail
     let data;
     if (path.endsWith('/project-control/projects')) {
       const items = records.filter((p) => p.active === (parsed.searchParams.get('active') !== 'false') && (!parsed.searchParams.get('q') || p.name.includes(parsed.searchParams.get('q')))).map(controlRow);
-      data = { items, summary: { active: items.length, overdue: 0, dueToday: 0, upcoming: 0 } };
+      data = { items, summary: { active: items.length, overdue: 0, dueToday: 0, upcoming: 0, invoiceDraftCount: 3 } };
     }
     else if (path.endsWith('/users')) data = [{ id: 'admin-1', name: 'Testadmin', role: 'ADMIN', active: true }];
     else if (path.endsWith('/customers')) data = [project.customer];
@@ -66,6 +66,19 @@ function renderProjects({ extraProjects = [], tasks = [], failArchive = '', fail
   const view = render(React.createElement(QueryClientProvider, { client }, React.createElement(MemoryRouter, null, React.createElement(Projects))));
   return { view, client };
 }
+
+test('invoice draft link is company-wide even with an empty project search and hidden from employees', async () => {
+  const { view } = renderProjects();
+  const link = await view.findByRole('link', { name: 'Inköp · 3 utkast i företaget' });
+  assert.equal(link.getAttribute('href'), '/purchases?status=DRAFT');
+  fireEvent.change(view.getByRole('searchbox'), { target: { value: 'Saknas' } });
+  await waitFor(() => assert.equal(Boolean(view.queryByRole('link', { name: /0042.*Testprojekt/ })), false));
+  assert.ok(view.getByRole('link', { name: 'Inköp · 3 utkast i företaget' }));
+  cleanup();
+  const employee = renderProjects({ role: 'EMPLOYEE' });
+  await employee.view.findByRole('link', { name: /0042.*Testprojekt/ });
+  assert.equal(employee.view.queryByRole('link', { name: /Inköp/ }), null);
+});
 
 async function openEditor(view) {
   await view.findByRole('link', { name: /0042.*Testprojekt/ });

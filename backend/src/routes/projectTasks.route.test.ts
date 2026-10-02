@@ -36,7 +36,7 @@ async function appWith(db: any) {
     if (error instanceof ZodError) return reply.status(400).send({ error: error.issues[0]?.message });
     return reply.status(500).send({ error: error instanceof Error ? error.message : 'Okänt testfel' });
   });
-  await app.register(createProjectTaskRoutes(db), { prefix: '/api' });
+  await app.register(createProjectTaskRoutes({ supplierInvoice: { count: async () => 0 }, ...db }), { prefix: '/api' });
   return app;
 }
 
@@ -186,7 +186,7 @@ test('deadline filter keeps overview counts stable and returns only matching tas
   const app = await appWith(db);
   const response = await app.inject({ method: 'GET', url: '/api/project-control/projects?deadline=OVERDUE', headers: { 'x-test-role': 'ADMIN' } });
   assert.equal(response.statusCode, 200);
-  assert.deepEqual(response.json().summary, { active: 2, overdue: 1, dueToday: 0, upcoming: 0 });
+  assert.deepEqual(response.json().summary, { active: 2, overdue: 1, dueToday: 0, upcoming: 0, invoiceDraftCount: 0 });
   assert.deepEqual(response.json().items.map((item: any) => ({ id: item.id, tasks: item.tasks.map((itemTask: any) => itemTask.id) })), [{ id: 'project-1', tasks: ['overdue'] }]);
   await app.close();
 });
@@ -204,6 +204,7 @@ test('portfolio separates reported from approved and calculates money from appro
   assert.equal(response.statusCode, 200);
   const [row] = response.json();
   assert.deepEqual({ reported: row.reportedHours, approved: row.approvedHours, unapproved: row.unapprovedHours, revenue: row.revenue, laborCost: row.laborCost, result: row.result }, { reported: 15, approved: 5, unapproved: 10, revenue: 500, laborCost: 250, result: 250 });
+  assert.equal('confirmedPurchaseNetOre' in row, false);
   await app.close();
 });
 
@@ -236,6 +237,47 @@ test('work queue includes scoped economy only for managers, never in employee JS
     const row = response.json().items[0];
     for (const field of ['economy', 'fixedPrice', 'budgetHours', 'billingModel', 'revenue', 'result', 'laborCost']) assert.equal(field in row, false, field);
     assert.equal(sourceWhere.length, 4, 'employee must not query monetary source records');
+  } finally { await app.close(); }
+});
+
+test('company invoice drafts remain visible with no matching projects, only to managers', async () => {
+  const calls: unknown[] = [];
+  const app = await appWith({ project: { findMany: async () => [] }, supplierInvoice: { count: async (args: unknown) => { calls.push(args); return 3; } } });
+  try {
+    for (const role of ['ADMIN', 'SUPERVISOR']) {
+      const response = await app.inject({ url: '/api/project-control/projects?q=missing&active=false', headers: { 'x-test-role': role } });
+      assert.equal(response.statusCode, 200);
+      assert.equal(response.json().summary.invoiceDraftCount, 3);
+      assert.deepEqual(response.json().items, []);
+    }
+    const employee = await app.inject({ url: '/api/project-control/projects', headers: { 'x-test-role': 'EMPLOYEE' } });
+    assert.equal(employee.statusCode, 200);
+    assert.equal('invoiceDraftCount' in employee.json().summary, false);
+    assert.deepEqual(calls, Array(2).fill({ where: { companyId: 'company-a', status: 'DRAFT' } }));
+  } finally { await app.close(); }
+});
+
+test('portfolio purchases are signed ore, company scoped and excluded from accountant data and results', async () => {
+  const calls: any[] = [];
+  const project = { id: 'p1', code: '42', name: 'Projekt', status: 'ONGOING', billingModel: 'HOURLY', customer: null };
+  const app = await appWith({
+    project: { findMany: async () => [project, { ...project, id: 'p2' }] },
+    timeEntry: { findMany: async () => [] }, projectMaterial: { findMany: async () => [] },
+    supplierInvoiceAllocation: { groupBy: async (args: any) => { calls.push(args); return [{ projectId: 'p1', _sum: { netOre: -12345 } }]; } },
+  });
+  try {
+    for (const role of ['ADMIN', 'SUPERVISOR']) {
+      const response = await app.inject({ url: '/api/project-portfolio', headers: { 'x-test-role': role } });
+      assert.equal(response.statusCode, 200);
+      assert.deepEqual(response.json().map((row: any) => row.confirmedPurchaseNetOre), [-12345, 0]);
+      assert.ok(response.json().every((row: any) => row.materialCost === 0 && row.result === 0));
+    }
+    assert.deepEqual(calls[0], { by: ['projectId'], where: { companyId: 'company-a', projectId: { in: ['p1', 'p2'] }, invoice: { companyId: 'company-a', status: 'CONFIRMED' } }, _sum: { netOre: true } });
+    const accountant = await app.inject({ url: '/api/project-portfolio', headers: { 'x-test-role': 'ACCOUNTANT' } });
+    assert.equal(accountant.statusCode, 200);
+    assert.ok(accountant.json().every((row: any) => !('confirmedPurchaseNetOre' in row)));
+    assert.equal((await app.inject({ url: '/api/project-portfolio', headers: { 'x-test-role': 'EMPLOYEE' } })).statusCode, 403);
+    assert.equal(calls.length, 2);
   } finally { await app.close(); }
 });
 
