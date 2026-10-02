@@ -184,6 +184,8 @@ Appkoden för steg 2 är lokalt committad som `1510be6`. Målmiljön är verifie
 
 Lokala tester har passerat för företagsskydd, roller, pengar, statusövergångar, atomär audit, dubbletter och PDF-parserns timeout/felfall: 127 backendtester och 43 frontendtester, båda byggena och diffkontroll godkända. Alla migrationer har provats i en ny PGlite-databas. UI har provats med syntetisk data på dator/mobil och med 200 procent textstorlek. Oberoende fullstackgranskning är klar utan kvarvarande P0/P1; upptäckta fel i rättelse och skydd av osparade uppgifter är rättade och regressionstestade. Produktionsstart inväntar uttryckligt godkännande av den granskade migrationen enligt AGENTS.md; se `backend/prisma/migrations/20261002153000_supplier_invoices/REVIEW.md`.
 
+Utökad verifiering 2026-10-02: alla 15 migrationer passerar även i en ny lokal PostgreSQL 17.11-databas. Sju integrationstester med riktig Prisma provar samtidiga fakturauppladdningar/ändringar, atomär rollback vid loggfel samt originalhämtning, datum, behörigheter och inköpssummering. Produktionsstart och riktig Bevego-pilot återstår. Testinstruktion: `backend/scripts/INVOICE_POSTGRES_TESTS.md`.
+
 Referenserna nedan gäller commit `923c4af` och är utgångspunkter för implementation, inte en fullständig granskningsrapport.
 
 - Projektmodell och materialmodell: `backend/prisma/schema.prisma:179` respektive `:291`.
