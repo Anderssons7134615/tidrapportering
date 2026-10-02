@@ -2,6 +2,14 @@
 
 Status 2026-10-02: implementerad, lokalt provad och oberoende fullstackgranskad utan kvarvarande P0/P1. Inte körd i produktion. Gren: `codex/project-invoices`, bas `7e96493`.
 
+Appkod är lokalt committad i `1510be6`. Push/driftsättning inväntar Ricks uttryckliga migrationsgodkännande och en aktuell verifierad backup.
+
+## Kontroll av målmiljö och backup 2026-10-02
+
+Read-only Railway CLI/API bekräftar projekt `worthy-eagerness`, miljö `production`, tjänster `tidrapportering-api` och `tidrapportering-db`. API-tjänsten kör `7e96493` med status SUCCESS. Databasen är PostgreSQL 17. Volymen är READY och använder cirka 123,4 MB av 500 MB. PDF-lagringen bör därför börja som en liten pilot; lagringsutrymme behöver följas innan historik laddas in.
+
+Railway listar endast `Pre-Security-Patch Backup`, skapad 2026-08-22 med utgång 2026-09-21, och inga backupscheman. Ingen aktuell backup kan därför verifieras. Försök att skapa en separat manuell säkerhetskopia inför migrationen nekades av Railway med `Not Authorized`. Ingen ny backup skapades och inget schema/driftläge ändrades. Rick behöver skapa en manuell backup eller ordna behörighet; agenten ska läsa tillbaka och verifiera den innan driftsättning. Hemligheter har inte lästs ut. En återställning har inte testats.
+
 ## Vad ändras?
 
 - Två enumtyper och tre nya tabeller: `SupplierInvoice`, `SupplierInvoiceDocument`, `SupplierInvoiceAllocation`.

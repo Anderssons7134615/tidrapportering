@@ -180,6 +180,8 @@ Steg 2 byggs i samma app på `codex/project-invoices`. Första leveransen är en
 
 Denna version fördelar fakturans kontrollerade netto på projektnivå. Artikelrader, OCR, automatisk projektmatchning, matchning mot en ursprunglig kreditfaktura och Spiris-synk ingår inte ännu. Det är en insnävning av den långsiktiga modellen ovan. Ingen riktig Bevego-faktura finns som verifierad testkälla; den riktiga pilotavstämningen återstår. Därför är målet om färdig Bevego-import inte markerat klart.
 
+Appkoden för steg 2 är lokalt committad som `1510be6`. Målmiljön är verifierad läsande i Railway. Där kunde ingen aktuell backup verifieras: den enda listade kopians utgångsdatum är 2026-09-21, backupschema saknas och skapande av en ny kopia nekades med `Not Authorized`. Godkännande av migrationen och aktuell backup inväntas före push/driftsättning; inget produktionsunderlag har ändrats i fakturafasen.
+
 Lokala tester har passerat för företagsskydd, roller, pengar, statusövergångar, atomär audit, dubbletter och PDF-parserns timeout/felfall: 127 backendtester och 43 frontendtester, båda byggena och diffkontroll godkända. Alla migrationer har provats i en ny PGlite-databas. UI har provats med syntetisk data på dator/mobil och med 200 procent textstorlek. Oberoende fullstackgranskning är klar utan kvarvarande P0/P1; upptäckta fel i rättelse och skydd av osparade uppgifter är rättade och regressionstestade. Produktionsstart inväntar uttryckligt godkännande av den granskade migrationen enligt AGENTS.md; se `backend/prisma/migrations/20261002153000_supplier_invoices/REVIEW.md`.
 
 Referenserna nedan gäller commit `923c4af` och är utgångspunkter för implementation, inte en fullständig granskningsrapport.
