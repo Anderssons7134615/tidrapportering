@@ -1,65 +1,14 @@
-import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
+import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  Home, Clock, Calendar, CheckSquare, Users, Building2, FolderKanban, Tags,
-  Package, FileBarChart, Settings, LogOut, Menu, X, WifiOff, Wifi, type LucideIcon,
-} from 'lucide-react';
+import { Building2, ChevronRight, LogOut, Menu, X, WifiOff, Wifi } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import { useOfflineStore } from '../stores/offlineStore';
 import { useSync } from '../hooks/useSync';
 import { authApi } from '../services/api';
 import { getFocusTrapAction } from '../utils/frontendGuards';
 
-type Role = 'ADMIN' | 'SUPERVISOR' | 'EMPLOYEE' | 'ACCOUNTANT';
-type NavigationGroup = 'projects' | 'time' | 'management' | 'register' | 'system';
-type NavigationItem = {
-  to: string;
-  icon: LucideIcon;
-  label: string;
-  roles: Role[];
-  group: NavigationGroup;
-};
-
-const navItems: NavigationItem[] = [
-  { to: '/', icon: Home, label: 'Översikt', roles: ['EMPLOYEE'], group: 'time' },
-  { to: '/time-overview', icon: Home, label: 'Min tid', roles: ['ADMIN', 'SUPERVISOR'], group: 'time' },
-  { to: '/time-entry', icon: Clock, label: 'Rapportera', roles: ['ADMIN', 'SUPERVISOR', 'EMPLOYEE'], group: 'time' },
-  { to: '/week', icon: Calendar, label: 'Min vecka', roles: ['ADMIN', 'SUPERVISOR', 'EMPLOYEE'], group: 'time' },
-  { to: '/team-week', icon: Users, label: 'Teamvecka', roles: ['ADMIN', 'SUPERVISOR'], group: 'management' },
-  { to: '/approval', icon: CheckSquare, label: 'Attestera', roles: ['ADMIN', 'SUPERVISOR'], group: 'management' },
-  { to: '/projects', icon: FolderKanban, label: 'Projekt', roles: ['ADMIN', 'SUPERVISOR', 'EMPLOYEE'], group: 'projects' },
-  { to: '/project-economy', icon: FileBarChart, label: 'Ekonomi', roles: ['ADMIN', 'SUPERVISOR', 'ACCOUNTANT'], group: 'projects' },
-  { to: '/purchases', icon: Package, label: 'Inköp', roles: ['ADMIN', 'SUPERVISOR'], group: 'projects' },
-  { to: '/reports', icon: FileBarChart, label: 'Rapporter', roles: ['ADMIN', 'SUPERVISOR', 'ACCOUNTANT'], group: 'management' },
-  { to: '/customers', icon: Building2, label: 'Kunder', roles: ['ADMIN', 'SUPERVISOR'], group: 'register' },
-  { to: '/materials', icon: Package, label: 'Material', roles: ['ADMIN', 'SUPERVISOR'], group: 'register' },
-  { to: '/activities', icon: Tags, label: 'Aktiviteter', roles: ['ADMIN'], group: 'register' },
-  { to: '/users', icon: Users, label: 'Användare', roles: ['ADMIN'], group: 'register' },
-  { to: '/settings', icon: Settings, label: 'Inställningar', roles: ['ADMIN', 'SUPERVISOR', 'EMPLOYEE', 'ACCOUNTANT'], group: 'system' },
-];
-
-const groupLabels: Record<NavigationGroup, string> = {
-  projects: 'Projekt',
-  time: 'Min tid',
-  management: 'Tid och underlag',
-  register: 'Register',
-  system: 'System',
-};
-
-const mobileTabsByRole: Record<Role, NavigationItem['to'][]> = {
-  EMPLOYEE: ['/', '/week', '/time-entry', '/projects', '/settings'],
-  SUPERVISOR: ['/projects', '/team-week', '/time-entry', '/approval', '/project-economy'],
-  ADMIN: ['/projects', '/team-week', '/time-entry', '/approval', '/project-economy'],
-  ACCOUNTANT: ['/project-economy', '/reports', '/settings'],
-};
-
-const roleLabel: Record<Role, string> = {
-  ADMIN: 'Administration',
-  SUPERVISOR: 'Arbetsledare',
-  ACCOUNTANT: 'Lön och ekonomi',
-  EMPLOYEE: 'Medarbetare',
-};
+import { activeNavigationPath, navigationFor, groupLabels, roleLabel, type NavigationItem, type NavigationGroup, type NavigationRole as Role } from '../utils/navigation';
 
 export default function Layout() {
   useSync();
@@ -74,7 +23,7 @@ export default function Layout() {
   const mobileMenuRef = useRef<HTMLElement>(null);
   const mobileHeaderRef = useRef<HTMLElement>(null);
   const syncWarningRef = useRef<HTMLDivElement>(null);
-  const mainContentRef = useRef<HTMLElement>(null);
+  const mainContentRef = useRef<HTMLDivElement>(null);
   const mobileBottomNavRef = useRef<HTMLElement>(null);
   const { data: currentUser } = useQuery({
     queryKey: ['auth', 'me'],
@@ -88,12 +37,9 @@ export default function Layout() {
   }, [currentUser, setUser]);
 
   const role = user?.role as Role | undefined;
-  const filteredNavItems = navItems.filter((item) => role && item.roles.includes(role));
-  const filteredBottomTabs = role
-    ? mobileTabsByRole[role].map((path) => filteredNavItems.find((item) => item.to === path)).filter((item): item is NavigationItem => Boolean(item))
-    : [];
-  const activeItem = filteredNavItems.find((item) => item.to !== '/' && location.pathname.startsWith(item.to))
-    || filteredNavItems.find((item) => location.pathname === item.to);
+  const { navigation: filteredNavItems, mobile: filteredBottomTabs } = navigationFor(role);
+  const activePath = activeNavigationPath(location.pathname, role);
+  const activeItem = filteredNavItems.find((item) => item.to === activePath);
   const pendingEntryCount = pendingEntries.filter((entry) => entry.ownerUserId === user?.id).length;
   const syncIssues = pendingEntries.filter((entry) => entry.ownerUserId === user?.id && entry.syncError);
   const legacySyncIssues = syncIssues.filter((entry) => entry.syncErrorCode === 'LEGACY_SYNC_REQUIRES_REVIEW');
@@ -117,6 +63,16 @@ export default function Layout() {
     navigate('/login');
   };
 
+  useEffect(() => { setMenuOpen(false); }, [location.key]);
+
+  useEffect(() => {
+    const desktop = window.matchMedia('(min-width: 1024px)');
+    const closeOnDesktop = () => { if (desktop.matches) setMenuOpen(false); };
+    closeOnDesktop();
+    desktop.addEventListener('change', closeOnDesktop);
+    return () => desktop.removeEventListener('change', closeOnDesktop);
+  }, []);
+
   useEffect(() => {
     const menu = mobileMenuRef.current;
     if (!menu) return;
@@ -128,6 +84,8 @@ export default function Layout() {
       return;
     }
 
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : menuButtonRef.current;
     menu.removeAttribute('inert');
     background.forEach((element) => element.setAttribute('inert', ''));
@@ -160,14 +118,19 @@ export default function Layout() {
       window.cancelAnimationFrame(focusFrame);
       document.removeEventListener('keydown', handleKeyDown);
       background.forEach((element) => element.removeAttribute('inert'));
-      previousFocus?.focus();
+      document.body.style.overflow = previousOverflow;
+      const focusTarget = window.matchMedia('(min-width: 1024px)').matches
+        ? mainContentRef.current?.querySelector('main')
+        : previousFocus;
+      if (focusTarget?.isConnected) focusTarget.focus({ preventScroll: true });
     };
   }, [menuOpen]);
 
   return (
     <div className="min-h-[100dvh] text-graphite-900">
+      <a href="#main-content" className="skip-link">Till innehållet</a>
       <header ref={mobileHeaderRef} className="mobile-header safe-top sticky top-0 z-50 border-b border-graphite-200/80 lg:hidden">
-        <div className="mx-auto flex h-16 max-w-[96rem] items-center justify-between px-4">
+        <div className="flex min-h-16 items-center justify-between gap-2 px-4 py-2">
           <div className="flex min-w-0 items-center gap-3">
             <button ref={menuButtonRef} onClick={() => setMenuOpen(!menuOpen)} className="icon-button" aria-label="Meny" aria-expanded={menuOpen} aria-controls="mobile-navigation">
               {menuOpen ? <X size={20} /> : <Menu size={20} />}
@@ -208,9 +171,9 @@ export default function Layout() {
       )}
 
       <div className="app-frame">
-        <aside className="app-sidebar sticky top-0 hidden h-[100dvh] w-72 shrink-0 flex-col border-r border-white/10 text-white lg:flex">
+        <aside className="app-sidebar sticky top-0 hidden h-[100dvh] w-64 shrink-0 flex-col lg:flex">
           <SidebarIdentity companyName={user?.companyName} role={role} />
-          <SidebarNavigation items={filteredNavItems} />
+          <SidebarNavigation activePath={activePath} items={filteredNavItems} />
           <SidebarFooter isOnline={isOnline} pendingEntryCount={pendingEntryCount} onLogout={handleLogout} />
         </aside>
 
@@ -223,33 +186,40 @@ export default function Layout() {
           aria-modal="true"
           aria-label="Huvudmeny"
           aria-hidden={!menuOpen}
-          className={`app-sidebar fixed left-0 top-0 z-50 flex h-full w-72 flex-col border-r border-white/10 text-white shadow-md transition-transform duration-200 lg:hidden ${menuOpen ? 'translate-x-0' : '-translate-x-full'}`}
+          className={`app-sidebar fixed left-0 top-0 z-50 flex h-[100dvh] w-[min(20rem,100%)] flex-col shadow-md transition-transform duration-200 motion-reduce:transition-none lg:hidden ${menuOpen ? 'translate-x-0' : '-translate-x-full'}`}
         >
-          <div className="flex items-center justify-between border-b border-white/10 px-4 py-4">
+          <div className="flex items-center justify-between border-b border-graphite-200 px-4 py-4">
             <div className="flex min-w-0 items-center gap-3">
-              <BrandMark compact onDark />
+              <BrandMark compact />
               <div className="min-w-0">
-                <p className="truncate font-semibold text-white">{user?.companyName || 'Anderssons Isolering'}</p>
-                <p className="truncate text-xs text-white/60">Navigation</p>
+                <p className="text-sm font-semibold text-graphite-950 [overflow-wrap:anywhere]">{user?.companyName || 'Anderssons Isolering'}</p>
+                <p className="mt-1 text-xs text-graphite-500">Navigation</p>
               </div>
             </div>
-            <button onClick={() => setMenuOpen(false)} className="icon-button-dark" aria-label="Stäng meny"><X size={20} /></button>
+            <button onClick={() => setMenuOpen(false)} className="icon-button" aria-label="Stäng meny"><X size={20} /></button>
           </div>
-          <SidebarNavigation items={filteredNavItems} onClick={() => setMenuOpen(false)} />
+          <SidebarNavigation activePath={activePath} items={filteredNavItems} onClick={() => setMenuOpen(false)} />
           <SidebarFooter isOnline={isOnline} pendingEntryCount={pendingEntryCount} onLogout={handleLogout} />
         </aside>
 
-        <main ref={mainContentRef} className="app-main">
-          <div className="route-stage">
-            <Outlet />
-          </div>
-        </main>
+        <div ref={mainContentRef} className="min-w-0 flex-1">
+          <header className="desktop-header">
+            <div className="flex min-w-0 items-center gap-2 text-sm text-graphite-500" aria-label="Du är här">
+              <span>{activeItem ? groupLabels[activeItem.group] : 'Anderssons Isolering'}</span>
+              {activeItem && <><ChevronRight size={14} aria-hidden="true" /><span className="font-semibold text-graphite-900">{activeItem.label}</span></>}
+            </div>
+            <TopStatus isOnline={isOnline} pendingEntries={pendingEntryCount} userName={user?.name} onLogout={handleLogout} />
+          </header>
+          <main id="main-content" tabIndex={-1} className="app-main">
+            <div className="route-stage"><Outlet /></div>
+          </main>
+        </div>
       </div>
 
       {filteredBottomTabs.length > 0 && (
-        <nav ref={mobileBottomNavRef} className="mobile-bottom-nav safe-bottom fixed bottom-0 left-0 right-0 z-40 border-t border-graphite-200/80 text-graphite-600 shadow-sm lg:hidden">
-          <div className={`mx-auto grid items-center gap-1 px-2 py-2 ${filteredBottomTabs.length <= 2 ? 'max-w-[14rem]' : filteredBottomTabs.length === 3 ? 'max-w-[21rem]' : 'max-w-md'}`} style={{ gridTemplateColumns: `repeat(${filteredBottomTabs.length}, minmax(0, 1fr))` }}>
-            {filteredBottomTabs.map((item) => <MobileNavLink key={item.to} item={item} />)}
+        <nav aria-label="Snabbnavigation" ref={mobileBottomNavRef} className="mobile-bottom-nav safe-bottom fixed bottom-0 left-0 right-0 z-40 border-t border-graphite-200 text-graphite-600 lg:hidden">
+          <div className={`mobile-nav-items ${filteredBottomTabs.length === 3 ? 'mobile-nav-three' : ''}`}>
+            {filteredBottomTabs.map((item) => <MobileNavLink key={item.to} item={item} active={item.to === activePath} />)}
           </div>
         </nav>
       )}
@@ -258,45 +228,36 @@ export default function Layout() {
 }
 
 function SidebarIdentity({ companyName, role }: { companyName?: string; role?: Role }) {
-  return (
-    <div className="border-b border-white/10 px-5 py-5">
-      <div className="flex items-center gap-3">
-        <BrandMark onDark />
-        <div className="min-w-0"><p className="truncate text-sm font-semibold text-white">{companyName || 'Anderssons Isolering'}</p><p className="truncate text-xs text-white/60">{role ? roleLabel[role] : 'Medarbetare'}</p></div>
-      </div>
-    </div>
-  );
+  return <div className="sidebar-identity"><BrandMark /><div className="min-w-0"><p className="text-sm font-bold leading-5 text-graphite-950 [overflow-wrap:anywhere]">{companyName || 'Anderssons Isolering'}</p><p className="mt-1 text-xs text-graphite-500">{role ? roleLabel[role] : 'Medarbetare'}</p></div></div>;
 }
 
-function SidebarNavigation({ items, onClick }: { items: NavigationItem[]; onClick?: () => void }) {
-  return (
-    <nav className="min-h-0 flex-1 overflow-y-auto px-3 py-4" aria-label="Huvudnavigation">
-      {(Object.keys(groupLabels) as NavigationGroup[]).map((group) => {
-        const groupItems = items.filter((item) => item.group === group);
-        if (!groupItems.length) return null;
-        return <div key={group} className="mb-5 last:mb-0"><p className="px-3 pb-2 text-xs font-bold text-white/65">{groupLabels[group]}</p><div className="space-y-1">{groupItems.map((item) => <SideNavLink key={item.to} item={item} onClick={onClick} />)}</div></div>;
-      })}
-    </nav>
-  );
+function SidebarNavigation({ items, activePath, onClick }: { items: NavigationItem[]; activePath?: string; onClick?: () => void }) {
+  return <nav className="min-h-0 flex-1 overflow-y-auto px-3 py-5" aria-label="Huvudnavigation">
+    {(Object.keys(groupLabels) as NavigationGroup[]).map((group) => {
+      const groupItems = items.filter((item) => item.group === group);
+      if (!groupItems.length) return null;
+      return <div key={group} className="mb-5 last:mb-0">
+        {group !== 'system' && <p className="mb-1 px-3 text-xs font-medium text-graphite-500">{groupLabels[group]}</p>}
+        <div className="space-y-0.5">{groupItems.map((item) => <Link key={item.to} to={item.to} onClick={onClick} aria-current={item.to === activePath ? 'page' : undefined} className={`side-nav-link ${item.to === activePath ? 'side-nav-active' : ''}`}><item.icon size={18} strokeWidth={1.7} aria-hidden="true" /><span>{item.label}</span></Link>)}</div>
+      </div>;
+    })}
+  </nav>;
 }
 
 function SidebarFooter({ isOnline, pendingEntryCount, onLogout }: { isOnline: boolean; pendingEntryCount: number; onLogout: () => void }) {
-  return <div className="border-t border-white/10 p-3"><div className="mb-2 flex items-center justify-between rounded-md border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-semibold text-white/70"><span className="inline-flex items-center gap-2">{isOnline ? <Wifi className="h-3.5 w-3.5 text-emerald-400" /> : <WifiOff className="h-3.5 w-3.5 text-amber-300" />}{isOnline ? 'Online' : 'Offline'}</span>{pendingEntryCount > 0 && <span className="text-amber-200">{pendingEntryCount} väntar</span>}</div><button onClick={onLogout} className="flex min-h-11 w-full items-center gap-3 rounded-md px-3 py-2.5 text-sm font-semibold text-white/60 transition hover:bg-rose-500/10 hover:text-rose-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300"><LogOut size={18} /><span>Logga ut</span></button></div>;
+  return <div className="border-t border-graphite-200 p-3"><div className="mb-1 flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-xs text-graphite-600"><span className="inline-flex items-center gap-2">{isOnline ? <Wifi size={14} aria-hidden="true" /> : <WifiOff size={14} aria-hidden="true" />}{isOnline ? 'Ansluten' : 'Offline'}</span>{pendingEntryCount > 0 && <span className="text-amber-800">{pendingEntryCount} väntar</span>}</div><button onClick={onLogout} className="side-nav-link w-full hover:text-rose-700"><LogOut size={18} aria-hidden="true" /><span>Logga ut</span></button></div>;
 }
 
-function SideNavLink({ item, onClick }: { item: NavigationItem; onClick?: () => void }) {
-  return <NavLink to={item.to} end={item.to === '/'} onClick={onClick} className={({ isActive }) => `flex min-h-11 items-center gap-3 rounded-md px-3 py-2.5 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300 ${isActive ? 'bg-white text-graphite-950' : 'text-white/65 hover:bg-white/[0.07] hover:text-white'}`}><item.icon size={18} strokeWidth={1.8} /><span>{item.label}</span></NavLink>;
+function MobileNavLink({ item, active }: { item: NavigationItem; active: boolean }) {
+  return <Link to={item.to} aria-current={active ? 'page' : undefined} className={`mobile-nav-link ${active ? 'mobile-nav-active' : ''}`}><item.icon size={21} strokeWidth={active ? 2 : 1.7} aria-hidden="true" /><span>{item.label}</span></Link>;
 }
 
-function MobileNavLink({ item }: { item: NavigationItem }) {
-  const primary = item.to === '/time-entry';
-  return <NavLink to={item.to} end={item.to === '/'} className={({ isActive }) => primary ? `flex min-h-[58px] flex-col items-center justify-center rounded-[0.7rem] px-2 py-2 text-xs font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2 ${isActive ? 'bg-primary-700 text-white' : 'bg-primary-600 text-white hover:bg-primary-700'}` : `flex min-h-[56px] flex-col items-center justify-center rounded-[0.7rem] px-1.5 py-2 text-xs font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2 ${isActive ? 'bg-primary-50 text-primary-800' : 'text-graphite-500 hover:bg-graphite-50 hover:text-graphite-950'}`}><item.icon size={primary ? 22 : 20} strokeWidth={1.8} /><span className="mt-0.5">{item.label}</span></NavLink>;
-}
-
-function BrandMark({ compact = false, onDark = false }: { compact?: boolean; onDark?: boolean }) {
-  return <div aria-hidden="true" className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md ${onDark ? 'bg-white text-primary-800' : 'bg-primary-700 text-white'}`}><Building2 size={compact ? 17 : 18} strokeWidth={1.8} /></div>;
+function BrandMark({ compact = false }: { compact?: boolean }) {
+  return <div aria-hidden="true" className="brand-mark"><Building2 size={compact ? 19 : 22} strokeWidth={1.7} /></div>;
 }
 
 function TopStatus({ isOnline, pendingEntries, userName, onLogout }: { isOnline: boolean; pendingEntries: number; userName?: string; onLogout: () => void }) {
-  return <div className="top-status flex items-center gap-2 sm:gap-3"><div className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs font-semibold ${isOnline ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>{isOnline ? <Wifi size={14} /> : <WifiOff size={14} />}<span className="hidden sm:inline">{isOnline ? 'Online' : 'Offline'}</span>{pendingEntries > 0 && <span className="rounded-full bg-amber-200 px-1.5 py-0.5 text-xs font-semibold text-amber-900">{pendingEntries}</span>}</div><span className="hidden max-w-32 truncate text-sm font-medium text-graphite-700 sm:block">{userName}</span><button onClick={onLogout} className="icon-button" title="Logga ut" aria-label="Logga ut"><LogOut size={18} /></button></div>;
+  return <div className="top-status flex shrink-0 items-center gap-2 sm:gap-4"><span className={`inline-flex items-center gap-1.5 text-xs font-medium ${isOnline ? 'text-graphite-500' : 'text-amber-800'}`} role="status" aria-label={`${isOnline ? 'Ansluten' : 'Offline'}${pendingEntries ? `, ${pendingEntries} rader väntar på synkning` : ''}`}>
+    {isOnline ? <Wifi size={15} aria-hidden="true" /> : <WifiOff size={15} aria-hidden="true" />}<span className="hidden md:inline">{isOnline ? 'Ansluten' : 'Offline'}</span>{pendingEntries > 0 && <span className="font-semibold text-amber-800">{pendingEntries}</span>}
+  </span><span className="hidden max-w-40 truncate text-sm font-medium text-graphite-800 lg:block">{userName}</span><button onClick={onLogout} className="icon-button" title="Logga ut" aria-label="Logga ut"><LogOut size={18} aria-hidden="true" /></button></div>;
 }

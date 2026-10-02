@@ -229,7 +229,7 @@ export default function Projects() {
               description={attentionOnly ? 'Välj Aktiva för att se alla projekt i urvalet.' : !search && !hasFilters ? archived ? 'Arkiverade projekt visas här.' : 'Det finns inga aktiva projekt att visa.' : 'Justera sökningen eller filtren.'}
             />
           ) : (
-            <div className="border-t border-graphite-200 bg-white">
+            <div className="project-list">
               {visibleProjects.map((project) => (
                 <ProjectControlRow
                   key={project.id}
@@ -296,26 +296,34 @@ function ProjectControlRow({ project, open, isManager, showDone, onToggle, onAdd
   };
 
   return (
-    <article className={`border-b border-graphite-200 ${rowTone}`}>
-      <div className="flex min-h-16 items-center gap-2 px-2 py-2 sm:px-3">
+    <article className={`border-b border-graphite-200 last:border-b-0 ${rowTone}`}>
+      <div className={`project-row ${isManager ? 'project-row-selectable' : ''}`}>
         {isManager && <label className="flex min-h-11 min-w-11 cursor-pointer items-center justify-center"><input type="checkbox" aria-label={`Markera ${project.code} · ${project.name}`} checked={selected} disabled={disabled} onChange={onSelect} /></label>}
-        <div className="min-w-0 flex-1">
-          <Link to={`/projects/${project.id}`} className="flex min-h-11 min-w-0 items-center font-semibold text-graphite-950 hover:text-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400">
+        <div className={`project-row-content ${isManager ? 'project-row-manager' : ''}`}>
+          <div className="min-w-0">
+          <Link to={`/projects/${project.id}`} className="flex min-h-11 min-w-0 items-center font-semibold text-graphite-950 hover:text-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-600">
             <span className="[overflow-wrap:anywhere]">{project.code} · {project.name}</span>
           </Link>
           <p className="text-xs leading-5 text-graphite-600 [overflow-wrap:anywhere]">{project.customer?.name || 'Intern'}{project.site ? ` · ${project.site}` : ''} · {project.status === 'PLANNED' ? 'Planerad' : project.status === 'COMPLETED' ? 'Avslutad' : 'Pågående'}{!project.active ? ' · Arkiverad' : ''}</p>
-          {attentionLabel && project.active && <span className={`text-xs font-semibold ${attentionTone}`}>{attentionLabel}</span>}
-          {project.nextTask && <p className="mt-1 text-sm text-graphite-700 [overflow-wrap:anywhere]">{project.nextTask.title} · {project.nextTask.assignee.name} · {formatTaskDate(project.nextTask.dueDate)}</p>}
-          {isManager && project.economy && <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-graphite-600">
+          </div>
+          <div className="min-w-0 xl:pt-3">
+            <p className="mb-1 text-xs font-medium text-graphite-500">Nästa uppgift</p>
+            {project.nextTask ? <><p className="text-sm font-medium text-graphite-800 [overflow-wrap:anywhere]">{project.nextTask.title}</p><p className="mt-1 text-xs text-graphite-600">{project.nextTask.assignee.name} · {formatTaskDate(project.nextTask.dueDate)}</p></> : <p className="text-sm text-graphite-500">Ingen uppgift i urvalet</p>}
+            {attentionLabel && project.active && <span className={`mt-1 inline-block text-xs font-semibold ${attentionTone}`}>{attentionLabel}</span>}
+          </div>
+          {isManager && project.economy && <div className="flex min-w-0 flex-col gap-1 text-xs text-graphite-600 xl:pt-3">
+            <p className="font-medium text-graphite-500">Timmar och underlag</p>
             <span>{formatHours(project.economy.reportedHours)} rapporterat{project.economy.budgetHours != null ? ` / ${formatHours(project.economy.budgetHours)} budget` : ' · Ingen timbudget'}</span>
             {project.economy.unapprovedHours > 0 && <span className="text-amber-800">{formatHours(project.economy.unapprovedHours)} ej attesterat</span>}
             {(project.economy.budgetUsagePercent ?? 0) >= 100 && <span className="font-semibold text-rose-700">Timbudget nådd</span>}
             {project.economy.warnings.length > 0 && <span className="text-amber-800">{project.economy.warnings[0]}</span>}
           </div>}
         </div>
-        {isManager && <button type="button" className="btn-secondary min-w-11 shrink-0 px-3" disabled={disabled || loadingEditor} onClick={onEditProject} aria-label={`Redigera ${project.code} · ${project.name}`}><Edit2 className="h-4 w-4" aria-hidden="true" /><span className="hidden sm:inline">Redigera</span></button>}
+        <div className="project-row-actions">
+        {isManager && <button type="button" className="icon-button" disabled={disabled || loadingEditor} onClick={onEditProject} aria-label={`Redigera ${project.code} · ${project.name}`}><Edit2 className="h-4 w-4" aria-hidden="true" /></button>}
         {isManager && !project.active && <button type="button" className="btn-secondary min-w-11 shrink-0 px-3" aria-label={`Återställ ${project.code} · ${project.name}`} disabled={disabled} onClick={onInactivateProject}><RotateCcw className="h-4 w-4" aria-hidden="true" /><span className="hidden sm:inline">Återställ</span></button>}
         {canExpand && <button type="button" className="icon-button shrink-0 border-0" onClick={onToggle} disabled={disabled} aria-expanded={open} aria-controls={`project-tasks-${project.id}`} aria-label={`${open ? 'Dölj' : 'Visa'} uppgifter för ${project.name}`}><ChevronDown aria-hidden="true" className={`h-5 w-5 transition ${open ? 'rotate-180' : ''}`} /></button>}
+        </div>
       </div>
       {open && canExpand && (
         <div id={`project-tasks-${project.id}`} className="mx-3 mb-3 rounded-lg border border-graphite-200 bg-white px-3">

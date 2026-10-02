@@ -52,8 +52,8 @@ export default function ProjectEconomy() {
           </div>
           <p className="mb-4 max-w-3xl text-sm text-graphite-600">Beloppen är exklusive moms. Fastpris visar avtalat pris minus hittills registrerade kostnader. Återstående arbete ingår inte. Fakturerat och betalt belopp saknas ännu.</p>
           {!rows.length ? <EmptyState title="Inga projekt matchar sökningen" /> : (
-            <div className="divide-y divide-graphite-200 border-y border-graphite-200 bg-white">
-              {rows.map((item) => <article key={item.project.id} className="px-3 py-4" aria-label={`${item.project.code} · ${item.project.name}`}>
+            <div className="data-list">
+              {rows.map((item) => <article key={item.project.id} className="px-4 py-5 sm:px-6" aria-label={`${item.project.code} · ${item.project.name}`}>
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div className="min-w-0">
                     {user?.role === 'ACCOUNTANT' ? <h2 className="font-semibold text-graphite-950">{item.project.code} · {item.project.name}</h2> : <Link className="inline-flex min-h-11 items-center font-semibold text-graphite-950 hover:text-primary-700 [overflow-wrap:anywhere]" to={`/projects/${item.project.id}`}>{item.project.code} · {item.project.name}</Link>}

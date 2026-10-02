@@ -14,7 +14,7 @@ export default defineConfig({
         description: 'Projekt, tid och ekonomi för Anderssons Isolering',
         lang: 'sv',
         theme_color: '#185c56',
-        background_color: '#eef2f1',
+        background_color: '#f4f6f8',
         display: 'standalone',
         orientation: 'portrait',
         scope: '/',
@@ -44,7 +44,7 @@ export default defineConfig({
         skipWaiting: true,
         clientsClaim: true,
         importScripts: ['/push-sw.js'],
-        globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/api\./i,

@@ -41,12 +41,12 @@ export default function Login() {
   };
 
   return (
-    <main className="flex min-h-[100dvh] items-center justify-center bg-graphite-50 px-4 py-8">
-      <section className="w-full max-w-md rounded-lg border border-graphite-200 bg-white p-6 sm:p-8" aria-label="Inloggning">
+    <main className="login-shell">
+      <section className="login-form-surface max-w-md" aria-label="Inloggning">
           <div>
             <div className="mb-6">
-              <Building2 className="mb-4 h-7 w-7 text-primary-700" aria-hidden="true" />
-              <h1 className="text-2xl font-semibold text-graphite-950">Anderssons Isolering</h1>
+              <div className="brand-mark mb-5"><Building2 className="h-6 w-6" aria-hidden="true" /></div>
+              <h1 className="page-title">Anderssons Isolering</h1>
               <p className="mt-2 text-sm text-graphite-600">Logga in för att se dina projekt och rapportera tid.</p>
             </div>
 
