@@ -1,6 +1,6 @@
 # Plan för Anderssons Isolering
 
-Datum: 2026-10-02. Status: implementation påbörjad enligt Ricks efterföljande uppdrag. Utgångsläge: lokal `master`, commit `923c4af`. Kartläggningen avser denna checkout, inte en verifiering av vad som körs i produktion.
+Datum: 2026-10-02. Status: projektöversikt och ekonomi driftsatta i `7e96493`; fakturadelen implementerad och verifierad lokalt till och med `dcedbb3`, men migrationsgodkännande, aktuell backup och Bevego-pilot återstår. Kartläggningens historiska utgångsläge var lokal `master`, commit `923c4af`. Aktuell leveransstatus finns även längre ned.
 
 ## Rekommendation
 
@@ -25,9 +25,11 @@ Verifierat lokalt: backend 110 tester och bygge, frontend 37 tester och bygge, `
 
 Kvar i senare prestandaarbete: ekonomiläsningen använder två smala bulkfrågor men hämtar fortfarande historikrader till Node. Databassummering och mätning med stor representativ historik återstår. Ingen uppmätt förbättring av produktionssvarstiden påstås. Ingen schemaändring eller datamigration ingår i denna etapp.
 
-Nästa fas är PDF-fakturor och projektfördelning med eget originalunderlag, dubblettskydd, krediter och granskning. Den funktionen är ännu inte levererad. Lönedelen prioriteras inte i detta genomförande.
+Den pågående fakturafasen är implementerad och verifierad lokalt: PDF-original, projektfördelning, dubblettskydd, krediter och granskning. Den är ännu inte driftsatt; migrationsgodkännande, aktuell backup och pilot med riktiga Bevego-original återstår. Lönedelen prioriteras inte i detta genomförande.
 
-## Det som redan finns
+## Utgångsläge vid kartläggningen
+
+Tabellen beskriver commit `923c4af` före genomförandet. Projektöversikt och gemensamma ekonomiregler har därefter driftsatts; fakturadelen är klar lokalt enligt statusen ovan.
 
 | Område | Verifierat i koden | Vad som behöver utvecklas |
 | --- | --- | --- |
@@ -158,7 +160,7 @@ Schemaändringar ska vara tillägg som fungerar med befintliga data. För varje 
 
 Varje kodleverans följer AGENTS.md: relevanta regressionstester, backendens tester/bygge, frontendbygge och lokal UI-kontroll för berörda flöden, UI-polish och läsande fullstackgranskning av slutdiffen. Lägg särskild vikt vid företagsisolering, negativa rolltester, återförsök, svenska periodgränser och ekonomisk avstämning. Därefter fokuserad commit/push enligt projektets normala leveransregler.
 
-Baslinje för denna plan: backend `npm test` godkänd, 102 tester; frontend `npm test` godkänd, 31 tester. Frontend gav befintliga varningar om kommande React Router-beteende. `git diff --check` har körts utan anmärkning. Byggen, inloggad UI-provning, verklig löneimport och produktionsprestanda har inte verifierats i denna planfas. Godkända tester betyder därför inte att produktionen eller den föreslagna ERP-funktionaliteten är verifierad.
+Historisk baslinje före implementationen: backend `npm test` godkänd, 102 tester; frontend `npm test` godkänd, 31 tester. Frontend gav befintliga varningar om kommande React Router-beteende. `git diff --check` kördes utan anmärkning. Byggen och UI-provning ingick inte då. Aktuellt efter implementationen: 127 backendtester, 43 frontendtester, båda byggena samt sju separata PostgreSQL-integrationstester är godkända; lokalt browserprov är genomfört enligt leveransstatusen nedan. Verklig löneimport och produktionsprestanda har inte verifierats. Lokala tester bevisar inte att fakturadelen fungerar i produktion.
 
 ## Öppna beslut inför respektive steg
 

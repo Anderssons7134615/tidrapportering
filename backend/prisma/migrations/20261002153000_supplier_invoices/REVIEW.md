@@ -2,7 +2,7 @@
 
 Status 2026-10-02: implementerad, lokalt provad och oberoende fullstackgranskad utan kvarvarande P0/P1. Inte körd i produktion. Gren: `codex/project-invoices`, bas `7e96493`.
 
-Appkod är lokalt committad i `1510be6`. Push/driftsättning inväntar Ricks uttryckliga migrationsgodkännande och en aktuell verifierad backup.
+Appkod är lokalt committad i `1510be6`, kompletterad med PostgreSQL-integrationstester i `dcedbb3`. Push/driftsättning inväntar Ricks uttryckliga migrationsgodkännande och en aktuell verifierad backup.
 
 ## Kontroll av målmiljö och backup 2026-10-02
 
@@ -38,7 +38,7 @@ Frontend använder den befintliga React Router-versionens `RouterProvider` runt 
 
 ## Före produktionsstart
 
-1. Slutför läsande fullstackgranskning och åtgärda blockerande fynd. Båda byggena, backendtester, frontendtester och diffkontroll ska vara gröna.
+1. Granskning och kontroller är klara för nuvarande kod, inklusive testleveransen `dcedbb3`, utan kvarvarande P0/P1. Om koden ändras före driftsättning ska berörda kontroller och läsande fullstackgranskning köras på den nya slutdiffen; båda byggena, backendtester, frontendtester och diffkontroll ska fortsatt vara gröna.
 2. Rick godkänner denna granskade migration uttryckligen enligt AGENTS.md. Push till master startar den konfigurerade Railway-migreringen och får därför inte ske före detta godkännande.
 3. Verifiera målmiljö och en aktuell återställningsbar databasbackup, inklusive lagringsutrymme. Läs inte ut hemligheter. Om backup eller målmiljö inte kan verifieras ska driftsättning vänta.
 4. Använd endast `prisma migrate deploy` genom befintligt leveransflöde. Ingen reset, db push, seed eller migrate dev i produktion.
