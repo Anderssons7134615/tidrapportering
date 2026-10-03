@@ -72,6 +72,12 @@ export default function ProjectDetail() {
     queryFn: () => projectsApi.get(id),
     enabled: !!id,
   });
+  const returnCustomerId = searchParams.get('customerId');
+  const returnToCustomer = Boolean(project?.customer && returnCustomerId === project.customer.id && !searchParams.has('internal'));
+  const returnToInternal = Boolean(project && !project.customer && searchParams.get('internal') === '1' && !searchParams.has('customerId'));
+  const returnParams = new URLSearchParams(returnToCustomer ? { customerId: returnCustomerId! } : returnToInternal ? { internal: '1' } : {});
+  if (searchParams.get('archived') === '1') returnParams.set('archived', '1');
+  const returnPath = `/projects${returnParams.size ? `?${returnParams}` : ''}`;
 
   const { data: summary, isLoading: summaryLoading, isError: summaryFailed, refetch: refetchSummary } = useQuery({
     queryKey: ['project', id, 'summary'],
@@ -318,7 +324,7 @@ export default function ProjectDetail() {
 
   return (
     <AppShell>
-      <Link to="/projects" className="btn-secondary inline-flex w-fit"><ArrowLeft className="h-4 w-4" /> Tillbaka</Link>
+      <Link to={returnPath} className="btn-secondary inline-flex w-fit"><ArrowLeft className="h-4 w-4" aria-hidden="true" /> {returnToCustomer || returnToInternal ? 'Tillbaka till kundens projekt' : 'Tillbaka'}</Link>
       <PageHeader
         title={p.name}
         description={`${p.code} · ${p.customer?.name || 'Intern'}${p.site ? ` · ${p.site}` : ''}${metrics?.lastActivityAt ? ` · Senaste aktivitet ${formatDate(metrics.lastActivityAt)}` : ''}`}

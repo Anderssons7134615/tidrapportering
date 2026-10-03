@@ -94,6 +94,24 @@ test('employee cannot open economy or trigger project time requests through tabs
   assert.equal(requests.some((r) => /time-entries|manager-summary/.test(r.path)), false);
 });
 
+test('project return context is validated against its actual customer', async () => {
+  for (const [initialPath, customer, expected] of [
+    ['/projects/p1?customerId=c1&tab=purchases', { id: 'c1', name: 'Kund' }, '/projects?customerId=c1'],
+    ['/projects/p1?customerId=wrong', { id: 'c1', name: 'Kund' }, '/projects'],
+    ['/projects/p1?internal=1', null, '/projects?internal=1'],
+    ['/projects/p1?customerId=c1&archived=1', { id: 'c1', name: 'Kund' }, '/projects?customerId=c1&archived=1'],
+    ['/projects/p1?internal=1&archived=1', null, '/projects?internal=1&archived=1'],
+    ['/projects/p1?archived=1', null, '/projects?archived=1'],
+    ['/projects/p1?internal=1&customerId=c1', { id: 'c1', name: 'Kund' }, '/projects'],
+    ['/projects/p1?internal=1', { id: 'c1', name: 'Kund' }, '/projects'],
+  ]) {
+    const { view } = setup({ role: 'EMPLOYEE', initialPath, handler: async (path) => path === '/api/projects/p1' ? { ...project, customer, financialsVisibleToCurrentUser: false, hoursVisibleToCurrentUser: false } : undefined });
+    await view.findByRole('heading', { name: 'Testprojekt' });
+    assert.equal(view.getByRole('link', { name: /Tillbaka/ }).getAttribute('href'), expected);
+    cleanup();
+  }
+});
+
 test('saving project material refreshes every cached project economy', async () => {
   const { view, client } = setup();
   const keys = [['project-portfolio'], ['project-control', 'other-filter'], ['project', 'other-project'], ['dashboard']];

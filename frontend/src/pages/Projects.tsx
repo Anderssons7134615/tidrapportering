@@ -1,7 +1,7 @@
-import { useEffect, useState, type FormEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Archive, ChevronDown, ChevronRight, Edit2, Plus, RotateCcw, Search, SlidersHorizontal } from 'lucide-react';
+import { Archive, ArrowLeft, ChevronDown, ChevronRight, Edit2, Plus, RotateCcw, Search, SlidersHorizontal } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { projectTasksApi, projectsApi, usersApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
@@ -36,10 +36,32 @@ function needsAttention(project: ProjectControlItem) {
 }
 
 export default function Projects() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const archived = searchParams.get('archived') === '1';
+  const setArchived = (value: boolean) => setSearchParams((current) => {
+    const next = new URLSearchParams(current);
+    if (value) next.set('archived', '1'); else next.delete('archived');
+    return next;
+  }, { replace: true });
+  const directoryPath = archived ? '/projects?archived=1' : '/projects';
+  const customerId = searchParams.get('customerId');
+  const customerView = searchParams.has('customerId') || searchParams.has('internal');
+  const validCustomer = Boolean(customerId) && !searchParams.has('internal');
+  const internalView = searchParams.get('internal') === '1' && !searchParams.has('customerId');
+  const scopeKey = !customerView ? 'directory' : validCustomer ? `customer:${customerId}` : internalView ? 'internal' : 'invalid';
+  const currentScope = useRef(scopeKey);
+  currentScope.current = scopeKey;
+  const [customerIdentity, setCustomerIdentity] = useState<{ key: string; name: string } | null>(null);
+  const inCustomerScope = (project: ProjectControlItem | Project) => !customerView || (validCustomer ? project.customer?.id === customerId : internalView && !project.customer);
+  const customerPath = (id?: string) => {
+    const params = new URLSearchParams(id ? { customerId: id } : { internal: '1' });
+    if (archived) params.set('archived', '1');
+    return `/projects?${params}`;
+  };
+  const projectPath = (id: string) => `/projects/${id}${customerView ? customerPath(validCustomer ? customerId! : undefined).slice('/projects'.length) : archived ? '?archived=1' : ''}`;
   const { user } = useAuthStore();
   const isManager = user?.role === 'ADMIN' || user?.role === 'SUPERVISOR';
   const queryClient = useQueryClient();
-  const [archived, setArchived] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [confirmProjects, setConfirmProjects] = useState<ProjectControlItem[]>([]);
   const [batchError, setBatchError] = useState('');
@@ -62,9 +84,16 @@ export default function Projects() {
     placeholderData: keepPreviousData,
   });
   const { data: users } = useQuery({ queryKey: ['users', 'project-tasks'], queryFn: usersApi.list, enabled: isManager });
-  const loadProjectMutation = useMutation({ mutationFn: projectsApi.get, onSuccess: (project) => setProjectDialog({ project }), onError: (error: Error) => toast.error(error.message) });
+  const loadProjectMutation = useMutation({ mutationFn: async (id: string) => {
+    const requestedScope = scopeKey;
+    return { project: await projectsApi.get(id), requestedScope };
+  }, onSuccess: ({ project, requestedScope }) => {
+    if (requestedScope === currentScope.current) setProjectDialog({ project });
+  }, onError: (error: Error) => toast.error(error.message) });
   const changeArchive = useMutation({
     mutationFn: async (items: ProjectControlItem[]) => {
+      const requestedScope = scopeKey;
+      const restoring = archived;
       const failed: Array<{ project: ProjectControlItem; message: string }> = [];
       for (const project of items) {
         try {
@@ -74,21 +103,45 @@ export default function Projects() {
           failed.push({ project, message: error instanceof Error ? error.message : 'Kunde inte spara' });
         }
       }
-      return { failed, succeeded: items.length - failed.length };
+      return { failed, succeeded: items.length - failed.length, requestedScope, restoring };
     },
-    onSuccess: ({ failed, succeeded }) => {
-      setConfirmProjects([]);
-      setSelected(new Set(failed.map((item) => item.project.id)));
-      setBatchError(failed.map(({ project, message }) => `${project.code} · ${project.name}: ${message}`).join(' · '));
-      if (succeeded) toast.success(`${succeeded} projekt ${archived ? 'återställdes' : 'arkiverades'}`);
+    onSuccess: ({ failed, succeeded, requestedScope, restoring }) => {
+      if (requestedScope === currentScope.current) {
+        setConfirmProjects([]);
+        setSelected(new Set(failed.map((item) => item.project.id)));
+        setBatchError(failed.map(({ project, message }) => `${project.code} · ${project.name}: ${message}`).join(' · '));
+      }
+      if (succeeded) toast.success(`${succeeded} projekt ${restoring ? 'återställdes' : 'arkiverades'}`);
       void refreshProjectQueries(queryClient);
     },
   });
   useEffect(() => {
     setSelected(new Set());
     setBatchError('');
-  }, [archived, search, projectStatus, deadline, assigneeId, taskStatus, attentionOnly]);
-  const visibleProjects = (data?.items || []).filter((project) => !attentionOnly || needsAttention(project));
+  }, [archived, search, projectStatus, deadline, assigneeId, taskStatus, attentionOnly, scopeKey]);
+  useEffect(() => {
+    setConfirmProjects([]);
+    setTaskDialog(null);
+    setProjectDialog(null);
+    setExpanded(new Set());
+    setManaging(false);
+  }, [scopeKey]);
+  const scopedProjects = (data?.items || []).filter(inCustomerScope);
+  const foundCustomerName = scopedProjects[0]?.customer?.name || (internalView ? 'Intern' : null);
+  useEffect(() => {
+    setCustomerIdentity((current) => foundCustomerName && customerView
+      ? { key: scopeKey, name: foundCustomerName }
+      : current?.key === scopeKey ? current : null);
+  }, [scopeKey, foundCustomerName, customerView]);
+  const customerName = foundCustomerName || (customerIdentity?.key === scopeKey ? customerIdentity.name : null);
+  const visibleProjects = scopedProjects.filter((project) => !attentionOnly || needsAttention(project));
+  const customerGroups = new Map<string, { name: string; path: string; projects: ProjectControlItem[] }>();
+  for (const project of visibleProjects) {
+    const key = project.customer ? `customer:${project.customer.id}` : 'internal';
+    const group = customerGroups.get(key) || { name: project.customer?.name || 'Intern', path: customerPath(project.customer?.id), projects: [] };
+    group.projects.push(project);
+    customerGroups.set(key, group);
+  }
   const selectedProjects = visibleProjects.filter((project) => selected.has(project.id));
   const allSelected = Boolean(visibleProjects.length) && selectedProjects.length === visibleProjects.length;
   const listUpdating = isFetching || search !== searchTerm;
@@ -99,6 +152,7 @@ export default function Projects() {
   });
   const activeFilterCount = [projectStatus, deadline, taskStatus, assigneeId, archived, attentionOnly].filter(Boolean).length;
   const hasFilters = [projectStatus, deadline, taskStatus, assigneeId].some(Boolean);
+  const countLabel = (count: number) => `${count} ${search || hasFilters || attentionOnly ? 'projekt i urvalet' : archived ? count === 1 ? 'arkiverat projekt' : 'arkiverade projekt' : count === 1 ? 'aktivt projekt' : 'aktiva projekt'}`;
   const activeFilterLabels = [
     archived ? 'Arkiverade' : null,
     attentionOnly ? 'Behöver åtgärd' : null,
@@ -129,14 +183,15 @@ export default function Projects() {
 
   return (
     <AppShell>
+      {customerView && <Link to={directoryPath} className="btn-secondary inline-flex w-fit"><ArrowLeft className="h-4 w-4" aria-hidden="true" />Tillbaka till kunder</Link>}
       <PageHeader
-        title="Projekt"
-        description={managing ? isManager ? 'Uppgifter, underlag och hantering av projekten.' : 'Dina öppna uppgifter visas först.' : 'Välj ett projekt för att öppna detaljerna.'}
+        title={customerView ? customerName || 'Kundens projekt' : 'Projekt'}
+        description={customerView ? `${countLabel(visibleProjects.length)}. Välj ett projekt för att öppna detaljerna.` : managing ? isManager ? 'Uppgifter, underlag och hantering av projekten.' : 'Dina öppna uppgifter visas först.' : 'Välj en kund för att se deras projekt.'}
         action={(
           <div className="flex flex-wrap gap-2">
             {isManager && <button type="button" className="btn-primary" onClick={() => setProjectDialog({})}>Nytt projekt</button>}
             <button type="button" className="btn-secondary" aria-pressed={managing} onClick={() => setManaging((current) => !current)}>{isManager ? 'Hantera' : 'Uppgifter'}</button>
-            {isManager && managing && <button type="button" className="btn-secondary" onClick={() => setTaskDialog({})} disabled={archived || !data?.items.length}>
+            {isManager && managing && <button type="button" className="btn-secondary" onClick={() => setTaskDialog({})} disabled={archived || !scopedProjects.length}>
               <Plus className="h-4 w-4" aria-hidden="true" />Ny uppgift
             </button>}
           </div>
@@ -157,7 +212,7 @@ export default function Projects() {
         <QueryError title="Projektkontrollen kunde inte hämtas" description="Kontrollera anslutningen och försök igen." onRetry={() => void refetch()} />
       ) : (
         <>
-          {managing && !archived && <div className="mb-3 grid grid-cols-4 items-stretch gap-x-2 border-y border-graphite-200 text-xs text-graphite-600 sm:text-sm" aria-label="Projektstatus">
+          {managing && !archived && !customerView && <div className="mb-3 grid grid-cols-4 items-stretch gap-x-2 border-y border-graphite-200 text-xs text-graphite-600 sm:text-sm" aria-label="Projektstatus">
             <button type="button" className={`min-h-11 min-w-0 border-b-2 px-0.5 font-semibold ${!deadline ? 'border-primary-600 text-graphite-950' : 'border-transparent hover:text-graphite-950'}`} aria-pressed={!deadline} onClick={() => setDeadline('')}>
               {data?.summary.active ?? 0} projekt
             </button>
@@ -172,6 +227,12 @@ export default function Projects() {
             </button>
           </div>}
 
+          {customerView && Boolean(visibleProjects.length) && <dl className="mb-4 flex flex-wrap gap-x-8 gap-y-3 border-y border-graphite-200 py-4" aria-label="Kundens projektstatus i urvalet">
+            {Object.entries(projectStatusLabels).map(([status, label]) => <div key={status}>
+              <dt className="text-sm text-graphite-600">{label}</dt>
+              <dd className="mt-1 text-lg font-semibold text-graphite-950">{visibleProjects.filter((project) => project.status === status).length}</dd>
+            </div>)}
+          </dl>}
           <div className="mb-3 flex gap-2 border-b border-graphite-200 pb-3">
             <label className="relative min-w-0 flex-1">
               <span className="sr-only">Sök projekt</span>
@@ -211,7 +272,7 @@ export default function Projects() {
             </div>
           )}
 
-          {isManager && managing && Boolean(data?.items.length) && <div className="sticky top-0 z-10 mb-2 flex min-h-14 flex-wrap items-center gap-2 border-y border-graphite-200 bg-white px-2 py-1">
+          {isManager && managing && Boolean(scopedProjects.length) && <div className="sticky top-0 z-10 mb-2 flex min-h-14 flex-wrap items-center gap-2 border-y border-graphite-200 bg-white px-2 py-1">
             <label className="flex min-h-11 cursor-pointer items-center gap-2 px-2 text-sm">
               <input type="checkbox" checked={allSelected} ref={(element) => { if (element) element.indeterminate = selectedProjects.length > 0 && !allSelected; }} disabled={listUpdating || changeArchive.isPending} onChange={() => setSelected(allSelected ? new Set() : new Set(visibleProjects.map((project) => project.id)))} />
               Markera alla visade
@@ -234,14 +295,21 @@ export default function Projects() {
             </div>
           ) : !visibleProjects.length ? (
             <EmptyState
-              title={attentionOnly ? 'Inga projekt behöver åtgärd i detta urval' : !search && !hasFilters ? archived ? 'Inga arkiverade projekt' : 'Inga aktiva projekt' : 'Inga projekt matchar'}
-              description={attentionOnly ? 'Välj Rensa för att visa aktiva projekt utan filter.' : !search && !hasFilters ? archived ? 'Arkiverade projekt visas här.' : 'Det finns inga aktiva projekt att visa.' : 'Justera sökningen eller filtren.'}
+              title={customerView && !customerName ? 'Kunden finns inte i aktuellt urval' : attentionOnly ? 'Inga projekt behöver åtgärd i detta urval' : !search && !hasFilters ? archived ? 'Inga arkiverade projekt' : 'Inga aktiva projekt' : 'Inga projekt matchar'}
+              description={customerView && !customerName ? 'Justera sökningen eller filtren, eller gå tillbaka till kunder.' : attentionOnly ? 'Välj Rensa för att visa aktiva projekt utan filter.' : !search && !hasFilters ? archived ? 'Arkiverade projekt visas här.' : 'Det finns inga aktiva projekt att visa.' : 'Justera sökningen eller filtren.'}
             />
           ) : (
             <div className="project-list">
-              {visibleProjects.map((project) => managing ? (
+              {!managing && !customerView ? [...customerGroups.entries()].map(([key, group]) => <Link key={key} to={group.path} className="project-directory-row">
+                <span className="min-w-0">
+                  <span className="block font-semibold text-graphite-950 [overflow-wrap:anywhere]">{group.name}</span>
+                  <span className="mt-1 block text-sm text-graphite-600">{countLabel(group.projects.length)}</span>
+                </span>
+                <ChevronRight className="h-5 w-5 shrink-0 text-graphite-400" aria-hidden="true" />
+              </Link>) : visibleProjects.map((project) => managing ? (
                 <ProjectControlRow
                   key={project.id}
+                  detailPath={projectPath(project.id)}
                   project={project}
                   open={expanded.has(project.id)}
                   isManager={isManager}
@@ -257,10 +325,10 @@ export default function Projects() {
                   onInactivateProject={() => setConfirmProjects([project])}
                 />
               ) : (
-                <Link key={project.id} to={`/projects/${project.id}`} className="project-directory-row">
+                <Link key={project.id} to={projectPath(project.id)} className="project-directory-row">
                   <span className="min-w-0">
-                    <span className="block font-semibold text-graphite-950 [overflow-wrap:anywhere]">{project.customer?.name || 'Intern'}</span>
-                    <span className="mt-1 block text-sm text-graphite-600 [overflow-wrap:anywhere]">{project.name}<span className="ml-2 text-xs text-graphite-500">{project.code}</span></span>
+                    <span className="block font-semibold text-graphite-950 [overflow-wrap:anywhere]">{project.name}</span>
+                    <span className="mt-1 block text-sm text-graphite-600">{project.code} · {project.status === 'PLANNED' ? 'Planerad' : project.status === 'COMPLETED' ? 'Avslutad' : 'Pågående'}</span>
                   </span>
                   <ChevronRight className="h-5 w-5 shrink-0 text-graphite-400" aria-hidden="true" />
                 </Link>
@@ -270,14 +338,14 @@ export default function Projects() {
         </>
       )}
 
-      {taskDialog && <TaskDialog context={taskDialog} projects={(data?.items || []).filter((project) => project.active)} users={(users || []) as User[]} isManager={isManager} onClose={() => setTaskDialog(null)} onSaved={() => { setTaskDialog(null); refetch(); }} />}
+      {taskDialog && <TaskDialog context={taskDialog} projects={scopedProjects.filter((project) => project.active)} users={(users || []) as User[]} isManager={isManager} onClose={() => setTaskDialog(null)} onSaved={() => { setTaskDialog(null); refetch(); }} />}
       {projectDialog && <ProjectDialog project={projectDialog.project} onClose={() => setProjectDialog(null)} onSaved={() => { setProjectDialog(null); refetch(); }} />}
       <ConfirmDialog open={confirmProjects.length > 0} onClose={() => { if (!changeArchive.isPending) setConfirmProjects([]); }} onConfirm={() => changeArchive.mutate(confirmProjects)} title={`${archived ? 'Återställ' : 'Arkivera'} ${confirmProjects.length} projekt?`} description={confirmProjects.map((project) => `${project.code} · ${project.name}`).join(', ')} consequence={archived ? 'Projekten blir valbara för tid och material igen. Tidigare projektstatus behålls.' : 'Projekten flyttas till Arkiverade och blir inte längre valbara för ny tid eller nytt material. Timmar, material och historik finns kvar. Du kan återställa dem senare.'} confirmLabel={archived ? 'Återställ projekt' : 'Arkivera projekt'} confirmVariant="primary" isLoading={changeArchive.isPending} />
     </AppShell>
   );
 }
 
-function ProjectControlRow({ project, open, isManager, showDone, onToggle, onAddTask, onEditTask, onEditProject, onInactivateProject, selected, disabled, loadingEditor, onSelect }: { selected: boolean; disabled: boolean; loadingEditor: boolean; onSelect: () => void; project: ProjectControlItem; open: boolean; isManager: boolean; showDone: boolean; onToggle: () => void; onAddTask: () => void; onEditTask: (task: ProjectTask) => void; onEditProject: () => void; onInactivateProject: () => void }) {
+function ProjectControlRow({ detailPath, project, open, isManager, showDone, onToggle, onAddTask, onEditTask, onEditProject, onInactivateProject, selected, disabled, loadingEditor, onSelect }: { detailPath: string; selected: boolean; disabled: boolean; loadingEditor: boolean; onSelect: () => void; project: ProjectControlItem; open: boolean; isManager: boolean; showDone: boolean; onToggle: () => void; onAddTask: () => void; onEditTask: (task: ProjectTask) => void; onEditProject: () => void; onInactivateProject: () => void }) {
   const queryClient = useQueryClient();
   const statusMutation = useMutation({
     mutationFn: ({ task, status }: { task: ProjectTask; status: ProjectTaskStatus }) => projectTasksApi.updateStatus(task.id, { status }),
@@ -318,7 +386,7 @@ function ProjectControlRow({ project, open, isManager, showDone, onToggle, onAdd
         {isManager && <label className="flex min-h-11 min-w-11 cursor-pointer items-center justify-center"><input type="checkbox" aria-label={`Markera ${project.code} · ${project.name}`} checked={selected} disabled={disabled} onChange={onSelect} /></label>}
         <div className={`project-row-content ${isManager ? 'project-row-manager' : ''}`}>
           <div className="min-w-0">
-          <Link to={`/projects/${project.id}`} className="flex min-h-11 min-w-0 items-center font-semibold text-graphite-950 hover:text-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-600">
+          <Link to={detailPath} className="flex min-h-11 min-w-0 items-center font-semibold text-graphite-950 hover:text-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-600">
             <span className="[overflow-wrap:anywhere]">{project.code} · {project.name}</span>
           </Link>
           <p className="text-xs leading-5 text-graphite-600 [overflow-wrap:anywhere]">{project.customer?.name || 'Intern'}{project.site ? ` · ${project.site}` : ''} · {project.status === 'PLANNED' ? 'Planerad' : project.status === 'COMPLETED' ? 'Avslutad' : 'Pågående'}{!project.active ? ' · Arkiverad' : ''}</p>

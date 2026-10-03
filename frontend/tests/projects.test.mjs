@@ -5,13 +5,14 @@ import { JSDOM } from 'jsdom';
 import React from 'react';
 import { createServer } from 'vite';
 
-let dom, vite, Projects, api, auth, cleanup, fireEvent, render, waitFor, within, QueryClient, QueryClientProvider, MemoryRouter, useLocation;
+let dom, vite, Projects, api, auth, cleanup, fireEvent, render, waitFor, within, act, QueryClient, QueryClientProvider, MemoryRouter, useLocation, useNavigate;
+let navigate;
 let requests = [];
 let clients = [];
 const originalFetch = globalThis.fetch;
 const project = { id: 'project-1', code: '0042', name: 'Testprojekt', customerId: 'customer-1', customer: { id: 'customer-1', name: 'Testkund' }, site: 'Gammal plats', notes: 'Gammal anteckning', budgetHours: 80, billingModel: 'HOURLY', status: 'ONGOING', active: true };
 let savedProject;
-function CurrentPath() { return React.createElement('output', { 'data-testid': 'current-path' }, useLocation().pathname); }
+function CurrentPath() { const location = useLocation(); navigate = useNavigate(); return React.createElement('output', { 'data-testid': 'current-path' }, location.pathname + location.search); }
 const controlRow = (p) => ({ ...p, tasks: p.tasks || [], nextTask: null, overdueCount: 0, dueTodayCount: 0, upcomingCount: 0, waitingCount: 0, lastActivityAt: null });
 
 before(async () => {
@@ -20,9 +21,9 @@ before(async () => {
   Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator });
   dom.window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
   dom.window.HTMLDialogElement.prototype.close = function () { this.open = false; };
-  ({ cleanup, fireEvent, render, waitFor, within } = await import('@testing-library/react'));
+  ({ cleanup, fireEvent, render, waitFor, within, act } = await import('@testing-library/react'));
   ({ QueryClient, QueryClientProvider } = await import('@tanstack/react-query'));
-  ({ MemoryRouter, useLocation } = await import('react-router-dom'));
+  ({ MemoryRouter, useLocation, useNavigate } = await import('react-router-dom'));
   vite = await createServer({ root: fileURLToPath(new URL('..', import.meta.url)), server: { middlewareMode: true }, appType: 'custom', logLevel: 'silent' });
   ({ default: Projects } = await vite.ssrLoadModule('/src/pages/Projects.tsx'));
   api = await vite.ssrLoadModule('/src/services/api.ts');
@@ -32,7 +33,7 @@ before(async () => {
 afterEach(() => { cleanup(); clients.forEach((client) => client.clear()); clients = []; requests = []; globalThis.fetch = originalFetch; });
 after(async () => { await vite?.close(); dom?.window.close(); });
 
-function renderProjects({ extraProjects = [], tasks = [], failArchive = '', failSave = false, role = 'ADMIN' } = {}) {
+function renderProjects({ extraProjects = [], tasks = [], failArchive = '', failSave = false, role = 'ADMIN', archiveResponse, initialPath = '/projects' } = {}) {
   savedProject = { ...project, tasks };
   let records = [savedProject, ...extraProjects.map((p) => ({ ...project, ...p }))];
   auth.useAuthStore.setState({ token: 'test-token', user: { id: 'admin-1', name: 'Testadmin', role } });
@@ -44,13 +45,14 @@ function renderProjects({ extraProjects = [], tasks = [], failArchive = '', fail
     requests.push({ path, method, body });
     let data;
     if (path.endsWith('/project-control/projects')) {
-      const items = records.filter((p) => p.active === (parsed.searchParams.get('active') !== 'false') && (!parsed.searchParams.get('q') || p.name.includes(parsed.searchParams.get('q')))).map(controlRow);
+      const items = records.filter((p) => p.active === (parsed.searchParams.get('active') !== 'false') && (!parsed.searchParams.get('q') || [p.name, p.customer?.name, p.site].some((value) => value?.toLowerCase().includes(parsed.searchParams.get('q').toLowerCase()))) && (!parsed.searchParams.get('projectStatus') || p.status === parsed.searchParams.get('projectStatus'))).map(controlRow);
       data = { items, summary: { active: items.length, overdue: 0, dueToday: 0, upcoming: 0, invoiceDraftCount: 3 } };
     }
     else if (path.endsWith('/users')) data = [{ id: 'admin-1', name: 'Testadmin', role: 'ADMIN', active: true }];
     else if (path.endsWith('/customers')) data = [project.customer];
     else if (/\/projects\/project-\d+(\/restore)?$/.test(path)) {
       const id = path.match(/project-\d+/)[0];
+      if (method === 'DELETE' && archiveResponse) { const response = await archiveResponse(); if (response instanceof Response) return response; }
       if ((method === 'DELETE' && id === failArchive) || (method === 'PUT' && failSave)) return new Response(JSON.stringify({ error: 'Tillfälligt serverfel, försök igen' }), { status: 503 });
       const record = records.find((p) => p.id === id);
       if (method === 'PUT') Object.assign(record, body);
@@ -64,33 +66,128 @@ function renderProjects({ extraProjects = [], tasks = [], failArchive = '', fail
   };
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 300_000, gcTime: Infinity }, mutations: { retry: false, gcTime: 0 } } });
   clients.push(client);
-  const view = render(React.createElement(QueryClientProvider, { client }, React.createElement(MemoryRouter, null, React.createElement(Projects), React.createElement(CurrentPath))));
+  const view = render(React.createElement(QueryClientProvider, { client }, React.createElement(MemoryRouter, { initialEntries: [initialPath] }, React.createElement(Projects), React.createElement(CurrentPath))));
   return { view, client };
 }
 
-test('standard list is customer first, links to detail and hides summaries and management controls', async () => {
+test('customer appears once, opens its overview then a project with return context', async () => {
   const economy = { reportedHours: 12, unapprovedHours: 4, budgetHours: 10, budgetUsagePercent: 120, warnings: ['Inköpspris saknas på material'] };
-  const { view } = renderProjects({ extraProjects: [{ id: 'project-2', name: 'Stort projekt', economy, tasks: [{ title: 'Hemlig detalj i listan' }] }] });
-  const row = await view.findByRole('link', { name: /Testkund.*Testprojekt.*0042/ });
-  assert.equal(row.getAttribute('href'), '/projects/project-1');
-  assert.equal(row.firstElementChild.children[0].textContent, 'Testkund');
-  assert.match(row.firstElementChild.children[1].textContent, /^Testprojekt/);
-  assert.equal(row.querySelector('button,input'), null);
-  assert.equal(view.queryAllByRole('checkbox').length, 0);
+  const { view } = renderProjects({ extraProjects: [{ id: 'project-2', name: 'Stort projekt', status: 'PLANNED', economy, tasks: [{ title: 'Hemlig detalj i listan' }] }] });
+  const customer = await view.findByRole('link', { name: 'Testkund 2 aktiva projekt' });
+  assert.equal(view.getAllByText('Testkund').length, 1);
+  assert.equal(customer.getAttribute('href'), '/projects?customerId=customer-1');
+  assert.equal(view.queryByText('Testprojekt'), null);
   assert.equal(view.queryByText('Inköpspris saknas på material'), null);
   assert.equal(view.queryByText('Nästa uppgift'), null);
   assert.equal(view.queryByText('Timmar och underlag'), null);
-  assert.equal(view.container.querySelector('[aria-label="Projektstatus"]'), null);
+  assert.equal(view.queryAllByRole('checkbox').length, 0);
   assert.equal(view.queryByRole('button', { name: 'Ny uppgift' }), null);
-  assert.equal(view.queryByRole('button', { name: /Redigera|Arkivera valda/ }), null);
+  fireEvent.click(customer);
+  await view.findByRole('heading', { name: 'Testkund' });
+  const stats = view.container.querySelector('[aria-label="Kundens projektstatus i urvalet"]');
+  assert.match(stats.textContent, /Planerade1Pågående1Avslutade0/);
+  const row = view.getByRole('link', { name: 'Testprojekt 0042 · Pågående' });
+  assert.equal(row.getAttribute('href'), '/projects/project-1?customerId=customer-1');
+  assert.equal(row.querySelector('button,input'), null);
   fireEvent.click(row);
-  await waitFor(() => assert.equal(view.getByTestId('current-path').textContent, '/projects/project-1'));
+  await waitFor(() => assert.equal(view.getByTestId('current-path').textContent, '/projects/project-1?customerId=customer-1'));
+});
+
+test('customer IDs remain separate despite identical names and Intern is a separate group', async () => {
+  const { view } = renderProjects({ extraProjects: [
+    { id: 'project-2', name: 'Andra kunden', customer: { id: 'customer-2', name: 'Testkund' } },
+    { id: 'project-3', name: 'Internt jobb', customer: null },
+  ] });
+  await view.findByRole('link', { name: 'Intern 1 aktivt projekt' });
+  assert.equal(view.getAllByRole('link', { name: 'Testkund 1 aktivt projekt' }).length, 2);
+  fireEvent.click(view.getByRole('link', { name: 'Intern 1 aktivt projekt' }));
+  await view.findByRole('heading', { name: 'Intern' });
+  assert.equal(view.getByRole('link', { name: /Internt jobb/ }).getAttribute('href'), '/projects/project-3?internal=1');
+  assert.equal(view.queryByRole('link', { name: /Testprojekt/ }), null);
+});
+
+test('customer counts follow filters, identity survives an empty search and management stays scoped', async () => {
+  const { view } = renderProjects({ initialPath: '/projects?customerId=customer-1', extraProjects: [
+    { id: 'project-2', name: 'Planerat arbete', status: 'PLANNED' },
+    { id: 'project-3', name: 'Annans projekt', customer: { id: 'customer-2', name: 'Annan kund' } },
+  ] });
+  await view.findByRole('heading', { name: 'Testkund' });
+  assert.ok(view.getByText('2 aktiva projekt. Välj ett projekt för att öppna detaljerna.'));
+  fireEvent.click(view.getByRole('button', { name: 'Filter', exact: true }));
+  fireEvent.change(view.getByRole('combobox', { name: 'Filtrera på projektstatus' }), { target: { value: 'PLANNED' } });
+  await view.findByText('1 projekt i urvalet. Välj ett projekt för att öppna detaljerna.');
+  assert.match(view.container.querySelector('[aria-label="Kundens projektstatus i urvalet"]').textContent, /Planerade1Pågående0Avslutade0/);
+  fireEvent.change(view.getByRole('searchbox'), { target: { value: 'Saknas' } });
+  await view.findByText('Inga projekt matchar');
+  assert.ok(view.getByRole('heading', { name: 'Testkund' }));
+  fireEvent.change(view.getByRole('searchbox'), { target: { value: '' } });
+  fireEvent.click(view.getByRole('button', { name: 'Rensa', exact: true }));
+  await view.findByText('2 aktiva projekt. Välj ett projekt för att öppna detaljerna.');
+  await openTools(view);
+  assert.equal(view.queryByRole('link', { name: /Annans projekt/ }), null);
+  assert.equal(view.getByRole('link', { name: /0042.*Testprojekt/ }).getAttribute('href'), '/projects/project-1?customerId=customer-1');
+  fireEvent.click(view.getByRole('button', { name: 'Ny uppgift' }));
+  const dialog = within(await view.findByRole('dialog', { name: 'Ny uppgift' }));
+  assert.equal(dialog.queryByRole('option', { name: /Annans projekt/ }), null);
+  fireEvent.click(dialog.getByRole('button', { name: 'Avbryt' }));
+  fireEvent.click(view.getByRole('checkbox', { name: 'Markera alla visade' }));
+  fireEvent.click(view.getByRole('button', { name: 'Arkivera valda' }));
+  await view.findByRole('dialog', { name: 'Arkivera 2 projekt?' });
+  await act(async () => navigate('/projects?customerId=customer-2'));
+  await view.findByRole('heading', { name: 'Annan kund' });
+  assert.equal(view.queryByRole('dialog'), null);
+  await openTools(view);
+  assert.ok(view.getByText('0 valda'));
+  assert.equal(requests.some((r) => r.method === 'DELETE'), false);
+});
+
+test('late archive failure cannot restore a previous customer error or selection', async () => {
+  let release;
+  const { view, client } = renderProjects({ initialPath: '/projects?customerId=customer-1', archiveResponse: () => new Promise((resolve) => { release = resolve; }), extraProjects: [{ id: 'project-2', name: 'Annans projekt', customer: { id: 'customer-2', name: 'Annan kund' } }] });
+  await view.findByRole('heading', { name: 'Testkund' });
+  await openTools(view);
+  fireEvent.click(view.getByRole('checkbox', { name: 'Markera alla visade' }));
+  fireEvent.click(view.getByRole('button', { name: 'Arkivera valda' }));
+  fireEvent.click(within(view.getByRole('dialog')).getByRole('button', { name: 'Arkivera projekt', exact: true }));
+  await waitFor(() => assert.ok(release));
+  await act(async () => navigate('/projects?customerId=customer-2'));
+  await view.findByRole('heading', { name: 'Annan kund' });
+  await act(async () => release(Response.json({ error: 'Sent fel från tidigare kund' }, { status: 503 })));
+  await waitFor(() => assert.ok(client.getMutationCache().getAll().some((mutation) => mutation.state.status === 'success')));
+  assert.equal(view.queryByRole('alert'), null);
+  await openTools(view);
+  assert.ok(view.getByText('0 valda'));
+  assert.equal(view.queryByText(/Sent fel/), null);
+});
+
+test('archive customer and project links preserve archive state through return navigation', async () => {
+  const { view } = renderProjects({ initialPath: '/projects?archived=1', extraProjects: [{ id: 'project-2', name: 'Arkivprojekt', active: false }] });
+  const customer = await view.findByRole('link', { name: 'Testkund 1 arkiverat projekt' });
+  assert.equal(customer.getAttribute('href'), '/projects?customerId=customer-1&archived=1');
+  fireEvent.click(customer);
+  await view.findByRole('heading', { name: 'Testkund' });
+  assert.equal(view.getByRole('link', { name: /Arkivprojekt/ }).getAttribute('href'), '/projects/project-2?customerId=customer-1&archived=1');
+  assert.equal(view.getByRole('link', { name: 'Tillbaka till kunder' }).getAttribute('href'), '/projects?archived=1');
+  fireEvent.click(view.getByRole('button', { name: 'Rensa', exact: true }));
+  await view.findByRole('link', { name: /Testprojekt/ });
+  assert.equal(view.getByTestId('current-path').textContent, '/projects?customerId=customer-1');
+});
+
+test('unknown and conflicting customer selectors never reveal the company project list', async () => {
+  for (const initialPath of ['/projects?customerId=unknown', '/projects?customerId=customer-1&internal=1', '/projects?customerId=&internal=1', '/projects?internal=2']) {
+    const { view } = renderProjects({ initialPath });
+    await view.findByText('Kunden finns inte i aktuellt urval');
+    assert.equal(view.queryByRole('link', { name: /Testprojekt/ }), null);
+    await openTools(view);
+    assert.equal(view.queryAllByRole('checkbox').length, 0);
+    cleanup();
+  }
 });
 
 test('projects without a customer use Intern and the employee opens only permitted task tools', async () => {
   const task = { id: 'task-1', title: 'Min uppgift', assigneeId: 'admin-1', assignee: { id: 'admin-1', name: 'Testadmin' }, status: 'TODO', priority: 'NORMAL', dueDate: '2026-10-03' };
   const { view } = renderProjects({ role: 'EMPLOYEE', tasks: [task], extraProjects: [{ id: 'project-2', name: 'Internt arbete', customer: null }] });
-  await view.findByRole('link', { name: /Intern.*Internt arbete/ });
+  await view.findByRole('link', { name: 'Intern 1 aktivt projekt' });
   assert.equal(view.queryByRole('button', { name: 'Hantera' }), null);
   assert.equal(view.queryByRole('button', { name: 'Nytt projekt' }), null);
   await openTools(view);
@@ -103,6 +200,7 @@ test('projects without a customer use Intern and the employee opens only permitt
   await waitFor(() => assert.ok(requests.some((r) => r.path === '/api/project-tasks/task-1/status' && r.method === 'PATCH')));
   assert.deepEqual(requests.find((r) => r.path === '/api/project-tasks/task-1/status').body, { status: 'IN_PROGRESS' });
   assert.equal(requests.some((r) => r.path === '/api/project-tasks/task-1'), false);
+  assert.equal(requests.some((r) => r.path.includes('/customers')), false);
 });
 
 test('empty attention filter offers the visible reset action in compact mode', async () => {
@@ -114,14 +212,14 @@ test('empty attention filter offers the visible reset action in compact mode', a
   assert.ok(view.getByText('Välj Rensa för att visa aktiva projekt utan filter.'));
   assert.equal(view.queryByRole('button', { name: 'Aktiva', exact: true }), null);
   fireEvent.click(view.getByRole('button', { name: 'Rensa', exact: true }));
-  await view.findByRole('link', { name: /Testkund.*Testprojekt/ });
+  await view.findByRole('link', { name: /Testkund.*1 (aktivt projekt|projekt i urvalet)/ });
 });
 
 test('switching view preserves search and archive filters remain visible and can be cleared', async () => {
   const { view } = renderProjects({ extraProjects: [{ id: 'project-2', name: 'Arkivprojekt', active: false }] });
   await view.findByRole('button', { name: 'Hantera' });
   fireEvent.change(view.getByRole('searchbox'), { target: { value: 'Test' } });
-  await view.findByRole('link', { name: /Testkund.*Testprojekt/ });
+  await view.findByRole('link', { name: /Testkund.*1 (aktivt projekt|projekt i urvalet)/ });
   await openTools(view);
   assert.equal(view.getByRole('searchbox').value, 'Test');
   fireEvent.click(view.getByRole('button', { name: 'Hantera' }));
@@ -129,10 +227,10 @@ test('switching view preserves search and archive filters remain visible and can
   fireEvent.change(view.getByRole('searchbox'), { target: { value: '' } });
   fireEvent.click(view.getByRole('button', { name: 'Filter', exact: true }));
   fireEvent.change(view.getByRole('combobox', { name: 'Visa aktiva eller arkiverade projekt' }), { target: { value: 'archived' } });
-  await view.findByRole('link', { name: /Testkund.*Arkivprojekt/ });
+  await view.findByRole('link', { name: 'Testkund 1 arkiverat projekt' });
   assert.match(view.container.textContent, /Visar:.*Arkiverade/);
   fireEvent.click(view.getByRole('button', { name: 'Rensa', exact: true }));
-  await view.findByRole('link', { name: /Testkund.*Testprojekt/ });
+  await view.findByRole('link', { name: /Testkund.*1 (aktivt projekt|projekt i urvalet)/ });
   assert.equal(view.queryByRole('link', { name: /Arkivprojekt/ }), null);
 });
 
