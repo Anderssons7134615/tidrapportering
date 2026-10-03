@@ -149,7 +149,7 @@ Paletten är återhållen: grafit bär informationen, rena ytor skapar lugn och 
 
 På dator från 1024px finns en vit sidomeny på 16rem och en fast sammanhangsrad med aktuell arbetsyta. Innehållet har en gemensam maxbredd på 88rem och konsekvent luft mellan rubrik, filter och data. Vit yta och tunna avdelare håller ihop formulär och listor.
 
-På mindre skärmar används menyknapp och rollanpassad bottennavigation. Projektens urval och åtgärder ligger ovanför innehållet så att långa projektnamn får hela radbredden. Sidrubrik och huvudhandling ska kunna bryta till separata rader vid 200 procent textstorlek.
+På mindre skärmar används menyknapp och rollanpassad bottennavigation. Projektlistan visar kundnamn överst och projektnamn under i kompakta länkrader. Detaljer öppnas genom att välja projektet. Sidrubrik och huvudhandling ska kunna bryta till separata rader vid 200 procent textstorlek.
 
 **The Reflow Rule.** När utrymmet minskar ska innehåll staplas och text brytas; viktiga länkar får aldrig döljas för att få plats.
 
@@ -209,7 +209,9 @@ Mobilmenyn isolerar bakgrunden, håller tangentbordsfokus inom menyn och stängs
 
 ### Data Rows
 
-Projekt visar projektidentitet, nästa uppgift samt timmar och underlag i tre kolumner på bred skärm. Under 1024px staplas innehållet under radens urval och åtgärder. Sekundära kommandon har egna namngivna knappar och minst 44px träffyta. Listor i Inköp och Projektekonomi delar samma yta och avdelare.
+Projektlistans standardvy visar kundnamn och därefter projektnamn med projektnummer som sekundär identifiering. Hela raden är en länk till projektets detaljvy. Statistik, ekonomi och uppgiftsutdrag ska inte göra standardraden högre.
+
+Arbetsledaren öppnar Hantera för befintlig uppgiftshantering, bulkval och arkivering. Medarbetaren öppnar Uppgifter för sina tillåtna uppgiftsåtgärder. Avancerade projektrader visar projektidentitet, nästa uppgift samt timmar och underlag i kolumner på bred skärm och staplat på mobil. Sekundära kommandon har namngivna knappar och minst 44px träffyta. Listor i Inköp och Projektekonomi delar samma yta och avdelare.
 
 ### Review Step
 

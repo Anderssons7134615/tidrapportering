@@ -51,6 +51,7 @@ export default function Projects() {
   const [assigneeId, setAssigneeId] = useState('');
   const [taskStatus, setTaskStatus] = useState('');
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [managing, setManaging] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [taskDialog, setTaskDialog] = useState<{ project?: ProjectControlItem; task?: ProjectTask } | null>(null);
   const [projectDialog, setProjectDialog] = useState<{ project?: Project } | null>(null);
@@ -96,9 +97,11 @@ export default function Projects() {
     if (next.has(id)) next.delete(id); else next.add(id);
     return next;
   });
-  const activeFilterCount = [projectStatus, deadline, taskStatus, assigneeId].filter(Boolean).length;
-  const hasFilters = activeFilterCount > 0;
+  const activeFilterCount = [projectStatus, deadline, taskStatus, assigneeId, archived, attentionOnly].filter(Boolean).length;
+  const hasFilters = [projectStatus, deadline, taskStatus, assigneeId].some(Boolean);
   const activeFilterLabels = [
+    archived ? 'Arkiverade' : null,
+    attentionOnly ? 'Behöver åtgärd' : null,
     projectStatus ? projectStatusLabels[projectStatus] : null,
     deadline ? deadlineLabels[deadline] : null,
     taskStatus ? taskStatusLabels[taskStatus as ProjectTaskStatus] : null,
@@ -106,8 +109,10 @@ export default function Projects() {
   ].filter(Boolean);
 
   const clearFilters = () => {
-    setProjectStatus('');
+    setArchived(false);
+    setAttentionOnly(false);
     setDeadline('');
+    setProjectStatus('');
     setTaskStatus('');
     setAssigneeId('');
   };
@@ -126,23 +131,24 @@ export default function Projects() {
     <AppShell>
       <PageHeader
         title="Projekt"
-        description={isManager ? 'Nästa uppgift, timmar och det som behöver följas upp.' : 'Alla aktiva projekt visas. Dina öppna uppgifter visas först.'}
-        action={isManager ? (
+        description={managing ? isManager ? 'Uppgifter, underlag och hantering av projekten.' : 'Dina öppna uppgifter visas först.' : 'Välj ett projekt för att öppna detaljerna.'}
+        action={(
           <div className="flex flex-wrap gap-2">
-            <button type="button" className="btn-primary" onClick={() => setProjectDialog({})}>Nytt projekt</button>
-            <button type="button" className="btn-secondary" onClick={() => setTaskDialog({})} disabled={archived || !data?.items.length}>
+            {isManager && <button type="button" className="btn-primary" onClick={() => setProjectDialog({})}>Nytt projekt</button>}
+            <button type="button" className="btn-secondary" aria-pressed={managing} onClick={() => setManaging((current) => !current)}>{isManager ? 'Hantera' : 'Uppgifter'}</button>
+            {isManager && managing && <button type="button" className="btn-secondary" onClick={() => setTaskDialog({})} disabled={archived || !data?.items.length}>
               <Plus className="h-4 w-4" aria-hidden="true" />Ny uppgift
-            </button>
+            </button>}
           </div>
-        ) : undefined}
+        )}
       />
 
-      {isManager && <div className="flex flex-wrap gap-2 border-b border-graphite-200" aria-label="Projektvy">
+      {isManager && managing && <div className="flex flex-wrap gap-2 border-b border-graphite-200" aria-label="Projektvy">
         <button type="button" className={`min-h-11 px-3 text-sm font-semibold border-b-2 ${!archived && !attentionOnly ? 'border-primary-600 text-primary-700' : 'border-transparent text-graphite-600'}`} aria-pressed={!archived && !attentionOnly} disabled={changeArchive.isPending} onClick={() => { setArchived(false); setAttentionOnly(false); clearFilters(); }}>Aktiva</button>
         {!archived && <button type="button" className={`min-h-11 px-3 text-sm font-semibold border-b-2 ${attentionOnly ? 'border-primary-600 text-primary-700' : 'border-transparent text-graphite-600'}`} aria-pressed={attentionOnly} onClick={() => setAttentionOnly(!attentionOnly)}>Behöver åtgärd</button>}
         <Link to="/project-economy" className="flex min-h-11 items-center px-3 text-sm font-semibold text-graphite-600 hover:text-primary-700">Ekonomi</Link>
         <Link to="/purchases?status=DRAFT" className="flex min-h-11 items-center px-3 text-sm font-semibold text-graphite-600 hover:text-primary-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500">Inköp{!isError && data?.summary.invoiceDraftCount != null ? ` · ${data.summary.invoiceDraftCount} utkast i företaget` : ''}</Link>
-        <button type="button" className={`min-h-11 px-3 text-sm font-semibold border-b-2 ${archived ? 'border-primary-600 text-primary-700' : 'border-transparent text-graphite-600'}`} aria-pressed={archived} disabled={changeArchive.isPending} onClick={() => { setArchived(true); setAttentionOnly(false); clearFilters(); }}>Arkiverade</button>
+        <button type="button" className={`min-h-11 px-3 text-sm font-semibold border-b-2 ${archived ? 'border-primary-600 text-primary-700' : 'border-transparent text-graphite-600'}`} aria-pressed={archived} disabled={changeArchive.isPending} onClick={() => { clearFilters(); setArchived(true); }}>Arkiverade</button>
       </div>}
       {archived && <p className="text-sm text-graphite-600">Historiken finns kvar. Återställ ett projekt när arbetet ska fortsätta.</p>}
       {batchError && <p role="alert" className="text-sm text-rose-700">Några projekt kunde inte ändras och är fortfarande markerade. {batchError}</p>}
@@ -151,7 +157,7 @@ export default function Projects() {
         <QueryError title="Projektkontrollen kunde inte hämtas" description="Kontrollera anslutningen och försök igen." onRetry={() => void refetch()} />
       ) : (
         <>
-          {!archived && <div className="mb-3 grid grid-cols-4 items-stretch gap-x-2 border-y border-graphite-200 text-xs text-graphite-600 sm:text-sm" aria-label="Projektstatus">
+          {managing && !archived && <div className="mb-3 grid grid-cols-4 items-stretch gap-x-2 border-y border-graphite-200 text-xs text-graphite-600 sm:text-sm" aria-label="Projektstatus">
             <button type="button" className={`min-h-11 min-w-0 border-b-2 px-0.5 font-semibold ${!deadline ? 'border-primary-600 text-graphite-950' : 'border-transparent hover:text-graphite-950'}`} aria-pressed={!deadline} onClick={() => setDeadline('')}>
               {data?.summary.active ?? 0} projekt
             </button>
@@ -180,6 +186,9 @@ export default function Projects() {
 
           {filtersOpen && (
             <div id="project-filters" className="mb-3 grid grid-cols-1 gap-3 border-b border-graphite-200 pb-4 sm:grid-cols-2 xl:grid-cols-4">
+              {isManager && <select className="input" aria-label="Visa aktiva eller arkiverade projekt" value={archived ? 'archived' : 'active'} disabled={changeArchive.isPending} onChange={(event) => { clearFilters(); setArchived(event.target.value === 'archived'); }}>
+                <option value="active">Aktiva projekt</option><option value="archived">Arkiverade projekt</option>
+              </select>}
               <select className="input" aria-label="Filtrera på projektstatus" value={projectStatus} onChange={(event) => setProjectStatus(event.target.value)}>
                 <option value="">Alla projektstatusar</option><option value="PLANNED">Planerade</option><option value="ONGOING">Pågående</option><option value="COMPLETED">Avslutade</option>
               </select>
@@ -191,18 +200,18 @@ export default function Projects() {
                   <option value="">Alla ansvariga</option>{users?.filter((item) => item.active && item.role !== 'ACCOUNTANT').map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
                 </select>
               ) : <div className="flex min-h-11 items-center text-sm text-graphite-600">Dina öppna uppgifter visas först</div>}
-              <button type="button" className="min-h-11 justify-self-start px-1 text-sm font-semibold text-primary-700 disabled:text-graphite-400" onClick={clearFilters} disabled={!hasFilters}>Rensa filter</button>
+              <button type="button" className="min-h-11 justify-self-start px-1 text-sm font-semibold text-primary-700 disabled:text-graphite-400" onClick={clearFilters} disabled={activeFilterCount === 0}>Rensa filter</button>
             </div>
           )}
 
-          {hasFilters && (
+          {activeFilterCount > 0 && (
             <div className="mb-3 flex min-h-11 flex-wrap items-center justify-between gap-2 border-b border-graphite-200 pb-2 text-sm text-graphite-600">
               <span>Visar: <strong className="font-semibold text-graphite-950">{activeFilterLabels.join(' · ')}</strong></span>
               <button type="button" className="min-h-11 px-2 font-semibold text-primary-700" onClick={clearFilters}>Rensa</button>
             </div>
           )}
 
-          {isManager && Boolean(data?.items.length) && <div className="sticky top-0 z-10 mb-2 flex min-h-14 flex-wrap items-center gap-2 border-y border-graphite-200 bg-white px-2 py-1">
+          {isManager && managing && Boolean(data?.items.length) && <div className="sticky top-0 z-10 mb-2 flex min-h-14 flex-wrap items-center gap-2 border-y border-graphite-200 bg-white px-2 py-1">
             <label className="flex min-h-11 cursor-pointer items-center gap-2 px-2 text-sm">
               <input type="checkbox" checked={allSelected} ref={(element) => { if (element) element.indeterminate = selectedProjects.length > 0 && !allSelected; }} disabled={listUpdating || changeArchive.isPending} onChange={() => setSelected(allSelected ? new Set() : new Set(visibleProjects.map((project) => project.id)))} />
               Markera alla visade
@@ -226,11 +235,11 @@ export default function Projects() {
           ) : !visibleProjects.length ? (
             <EmptyState
               title={attentionOnly ? 'Inga projekt behöver åtgärd i detta urval' : !search && !hasFilters ? archived ? 'Inga arkiverade projekt' : 'Inga aktiva projekt' : 'Inga projekt matchar'}
-              description={attentionOnly ? 'Välj Aktiva för att se alla projekt i urvalet.' : !search && !hasFilters ? archived ? 'Arkiverade projekt visas här.' : 'Det finns inga aktiva projekt att visa.' : 'Justera sökningen eller filtren.'}
+              description={attentionOnly ? 'Välj Rensa för att visa aktiva projekt utan filter.' : !search && !hasFilters ? archived ? 'Arkiverade projekt visas här.' : 'Det finns inga aktiva projekt att visa.' : 'Justera sökningen eller filtren.'}
             />
           ) : (
             <div className="project-list">
-              {visibleProjects.map((project) => (
+              {visibleProjects.map((project) => managing ? (
                 <ProjectControlRow
                   key={project.id}
                   project={project}
@@ -247,6 +256,14 @@ export default function Projects() {
                   onSelect={() => toggleSelected(project.id)}
                   onInactivateProject={() => setConfirmProjects([project])}
                 />
+              ) : (
+                <Link key={project.id} to={`/projects/${project.id}`} className="project-directory-row">
+                  <span className="min-w-0">
+                    <span className="block font-semibold text-graphite-950 [overflow-wrap:anywhere]">{project.customer?.name || 'Intern'}</span>
+                    <span className="mt-1 block text-sm text-graphite-600 [overflow-wrap:anywhere]">{project.name}<span className="ml-2 text-xs text-graphite-500">{project.code}</span></span>
+                  </span>
+                  <ChevronRight className="h-5 w-5 shrink-0 text-graphite-400" aria-hidden="true" />
+                </Link>
               ))}
             </div>
           )}
