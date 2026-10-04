@@ -2,7 +2,7 @@ import { Worker } from 'node:worker_threads';
 import { parseDateOnly } from './dateOnly.js';
 import { INVOICE_MAX_BYTES, InvoiceError, parseInvoiceMoney } from './supplierInvoiceRules.js';
 
-export const INVOICE_PARSER_VERSION = 'pdfjs-6.3.289/labels-1';
+export const INVOICE_PARSER_VERSION = 'pdfjs-6.3.289/labels-2';
 let activeWorkers = 0;
 
 export async function extractInvoicePdf(bytes: Buffer, timeoutMs = 10_000): Promise<{ text: string; pages: number }> {
@@ -82,6 +82,52 @@ export function suggestInvoiceFields(text: string) {
     roundingOre: documentType === 'CREDIT' && printedGross != null && printedGross > 0 ? -printedRounding : printedRounding,
     grossOre: signed(printedGross),
   };
+  if (fields.supplierName === 'Bevego') {
+    // PDF text order puts all four summary labels before their values. Match
+    // the complete table, never an order subtotal or the bank's currency.
+    const flat = lines.join(' ').replace(/\s+/g, ' ');
+    const unique = (values: string[]) => [...new Set(values)].length === 1 ? values[0] : null;
+    const number = unique([...flat.matchAll(/\b(?:Faktura|Kreditfaktura)\s+(\d{2,20})(?=\s|$)/gi)].map((match) => match[1]));
+    if (number) fields.invoiceNumber = number;
+    else if (/\b(?:Faktura|Kreditfaktura)\s+\d/i.test(flat)) fields.invoiceNumber = null;
+    const bevegoDate = (label: string) => {
+      const values = [...flat.matchAll(new RegExp(`${label}\\s+(\\d{2}-\\d{2}-\\d{2})(?=\\s|$)`, 'gi'))].map((match) => match[1]);
+      const value = unique(values);
+      // This supplier format uses YY-MM-DD; only suggest dates in 2000–2099.
+      return value ? date(`20${value}`) : null;
+    };
+    fields.issueDate = bevegoDate('Fakt\\.datum') ?? fields.issueDate;
+    const dueDates = lines.flatMap((line, index) => /\bFF-datum\s*$/i.test(line)
+      ? [...(lines[index + 1] || '').matchAll(/\b(\d{2}-\d{2}-\d{2})\b/g)].map((match) => match[1]) : []);
+    const due = unique(dueDates);
+    if (dueDates.length) fields.dueDate = due ? date(`20${due}`) : null;
+    const amountToken = '(-?\\d[\\d.]*,\\d{2})';
+    const table = new RegExp(`Summa före moms Summa moms Öresutjämning Fakt\\.belopp\\s+${amountToken}\\s+${amountToken}\\s+${amountToken}\\s+(SEK|EUR|USD|NOK|DKK|GBP)\\s+${amountToken}(?=\\s|$)`, 'gi');
+    const tables = [...flat.matchAll(table)].map((match) => match.slice(1).join('|'));
+    const summary = unique(tables);
+    if (summary) {
+      const [net, vat, rounding, currency, gross] = summary.split('|');
+      const printed = parseInvoiceMoney(gross);
+      fields.netOre = signed(parseInvoiceMoney(net));
+      fields.vatOre = signed(parseInvoiceMoney(vat));
+      fields.grossOre = signed(printed);
+      fields.roundingOre = (parseInvoiceMoney(rounding) ?? 0) * (documentType === 'CREDIT' && printed != null && printed > 0 ? -1 : 1);
+      fields.currency = currency.toUpperCase() === 'SEK' ? 'SEK' : null;
+    } else if (tables.length > 1) {
+      fields.netOre = fields.vatOre = fields.grossOre = null;
+      warnings.push('Flera olika fakturatotaler hittades. Kontrollera att originalet innehåller en enda faktura.');
+    }
+  }
+  const uncertain = [
+    !fields.invoiceNumber && 'fakturanummer', !fields.issueDate && 'fakturadatum',
+    !fields.dueDate && 'förfallodatum', fields.netOre == null && 'netto',
+    fields.vatOre == null && 'moms', fields.grossOre == null && 'totalbelopp',
+  ].filter(Boolean);
+  if (uncertain.length) warnings.push(`Saknas eller är osäkert: ${uncertain.join(', ')}. Kontrollera originalet.`);
+  if (fields.netOre != null && fields.vatOre != null && fields.grossOre != null
+    && fields.netOre + fields.vatOre + fields.roundingOre !== fields.grossOre) {
+    warnings.push('Osäkra belopp: netto, moms och avrundning stämmer inte med totalbeloppet. Kontrollera samtliga belopp mot originalet.');
+  }
   if (!text.trim()) warnings.push('PDF:en saknar läsbar text. Fyll i uppgifterna från originalet.');
   if (!fields.invoiceNumber || fields.netOre == null || fields.grossOre == null) warnings.push('Alla fakturauppgifter kunde inte hittas. Fyll i det som saknas.');
   if (fields.currency !== 'SEK') warnings.push('Valutan behöver kontrolleras. Endast SEK kan bekräftas.');

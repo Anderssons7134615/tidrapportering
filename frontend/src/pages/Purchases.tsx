@@ -10,6 +10,7 @@ import { formatDate } from '../utils/format';
 import { refreshProjectQueries } from '../utils/projectQueries';
 import { formToDraft, invoiceToForm, moneyInput, parseMoneyInput, type InvoiceForm } from '../utils/invoiceForm';
 import type { InvoiceStatus, SupplierInvoice } from '../types/supplierInvoice';
+import { InvoiceOriginal } from '../components/InvoiceOriginal';
 
 const labels: Record<InvoiceStatus, string> = { DRAFT: 'Att kontrollera', CONFIRMED: 'Bekräftad', VOID: 'Makulerad' };
 const money = (ore: number | null) => ore == null ? '—' : new Intl.NumberFormat('sv-SE', { style: 'currency', currency: 'SEK', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(ore / 100);
@@ -136,6 +137,9 @@ function InvoiceEditor({ invoice }: { invoice: SupplierInvoice }) {
     <PageHeader title={invoice.invoiceNumber ? `Faktura ${invoice.invoiceNumber}` : 'Kontrollera fakturan'} action={<Button variant="secondary" isLoading={downloading} onClick={() => void download()}><Download size={17} aria-hidden="true" />Hämta original</Button>} />
     <div className="flex flex-wrap items-center gap-3"><InvoiceBadge status={invoice.status} /><span className="text-sm break-all">{invoice.document?.originalName}</span></div>
     {invoice.statusReason && <p className="text-sm">Orsak: {invoice.statusReason}</p>}
+    <div className="grid min-w-0 gap-4 xl:grid-cols-2">
+    <InvoiceOriginal invoiceId={invoice.id} />
+    <div className="min-w-0 space-y-4">
     {error && <div ref={errorRef} tabIndex={-1} role="alert" className="rounded-lg border border-rose-300 bg-rose-50 p-4"><p>{error}</p><button type="button" className="text-link mt-2 min-h-11" onClick={() => dirty ? setDiscardAction('refresh') : void client.invalidateQueries({ queryKey: ['supplier-invoice', invoice.id] })}>Hämta senaste sparade version</button></div>}
     {editable && <TaskSection title="Kontrollera mot originalet">
       <p className="text-sm text-graphite-600">Beloppen ska vara i SEK. Förslag från PDF:en behöver alltid kontrolleras. Bekräftelse här bokför eller betalar inte fakturan.</p>
@@ -152,7 +156,7 @@ function InvoiceEditor({ invoice }: { invoice: SupplierInvoice }) {
     </TaskSection>}
     <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); mutation.mutate('save'); }}>
       <fieldset disabled={!editable || mutation.isPending} className="min-w-0 space-y-4">
-        <TaskSection title="Fakturauppgifter"><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <TaskSection title="Fakturauppgifter"><div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,15rem),1fr))] gap-4">
           {textField('supplierName', 'Leverantör')}{textField('supplierOrgNumber', 'Organisationsnummer / VAT-nummer')}{textField('invoiceNumber', 'Fakturanummer')}
           <FormField label="Typ" controlId="invoice-type"><select id="invoice-type" className="input" value={form.documentType} onChange={(event) => update('documentType', event.target.value as 'INVOICE' | 'CREDIT')}><option value="INVOICE">Faktura</option><option value="CREDIT">Kreditfaktura</option></select></FormField>
           {textField('issueDate', 'Fakturadatum', 'date')}{textField('dueDate', 'Förfallodatum', 'date')}
@@ -161,7 +165,7 @@ function InvoiceEditor({ invoice }: { invoice: SupplierInvoice }) {
         <TaskSection title="Fördela på projekt">
           <p className="mb-4 text-sm text-graphite-600">Fördela nettobeloppet, exklusive moms. Samma faktura kan höra till flera projekt.</p>
           {projects.isError && <QueryError title="Projektlistan kunde inte hämtas" onRetry={() => void projects.refetch()} />}
-          <div className="space-y-4">{form.allocations.map((row, index) => <div key={index} className="grid items-end gap-3 border-b border-graphite-200 pb-4 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_2fr_auto]">
+          <div className="space-y-4">{form.allocations.map((row, index) => <div key={index} className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,15rem),1fr))] items-end gap-3 border-b border-graphite-200 pb-4">
             <FormField label="Projekt" controlId={`allocation-project-${index}`}><select id={`allocation-project-${index}`} className="input" value={row.projectId} onChange={(event) => update('allocations', form.allocations.map((item, i) => i === index ? { ...item, projectId: event.target.value } : item))}>
               <option value="">Välj projekt</option>
               {(projects.data || []).map((project) => <option key={project.id} value={project.id}>{project.code} · {project.name}</option>)}
@@ -183,6 +187,7 @@ function InvoiceEditor({ invoice }: { invoice: SupplierInvoice }) {
       </TaskSection>}
     </form>
     {invoice.status !== 'VOID' && <div className="flex flex-wrap gap-3">{invoice.status === 'CONFIRMED' && <Button variant="secondary" disabled={mutation.isPending} onClick={() => { setReason(''); setAction('reopen'); }}>Öppna för rättelse</Button>}<Button variant="secondary" disabled={mutation.isPending} disabledReason={dirty ? 'Spara eller ångra ändringarna före makulering.' : null} onClick={() => { setReason(''); setAction('void'); }}>Makulera</Button></div>}
+    </div></div>
     <ConfirmDialog open={blocker.state === 'blocked'} onClose={() => blocker.reset?.()} onConfirm={() => blocker.proceed?.()} title="Lämna osparade ändringar?" confirmLabel="Lämna utan att spara" consequence="Dina osparade fakturauppgifter och projektfördelningar försvinner. Det sparade originalet och utkastet finns kvar." />
     <ConfirmDialog open={!!discardAction} onClose={() => setDiscardAction(null)} onConfirm={() => {
       setForm(invoiceToForm(invoice)); setReviewed(false); setError('');

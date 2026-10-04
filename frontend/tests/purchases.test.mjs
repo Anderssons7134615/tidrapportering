@@ -28,13 +28,17 @@ before(async () => {
 afterEach(() => { cleanup(); clients.forEach((client) => client.clear()); clients = []; requests = []; globalThis.fetch = originalFetch; });
 after(async () => { await vite?.close(); dom?.window.close(); });
 
-function setup({ status = 'DRAFT', failedSave = false, projectList = false, failedList = false, listPath } = {}) {
+function setup({ status = 'DRAFT', failedSave = false, projectList = false, failedList = false, failedOriginal = false, listPath } = {}) {
   let row = { ...invoice, status };
   auth.useAuthStore.setState({ token: 'test-token', user: { id: 'u1', name: 'Test', role: 'ADMIN' } });
   globalThis.fetch = async (url, options = {}) => {
     const parsed = new URL(url, 'http://localhost'); const path = parsed.pathname; const method = options.method || 'GET';
     const body = options.body ? JSON.parse(options.body) : undefined;
     requests.push({ path, query: parsed.searchParams, method, body });
+    if (path.endsWith('/document')) {
+      assert.equal(options.headers.Authorization, 'Bearer test-token');
+      return failedOriginal ? Response.json({ error: 'Nekad' }, { status: 403 }) : new Response('%PDF-test', { headers: { 'Content-Type': 'application/pdf' } });
+    }
     if (path === '/api/projects') return Response.json([{ id: 'p1', name: 'Testprojekt', code: '0042', active: true }]);
     if (path === '/api/supplier-invoices') return failedList ? Response.json({ error: 'Testfel' }, { status: 503 }) : Response.json({ items: [row], total: 1, page: 1, pageSize: 25, confirmedProjectNetOre: 10000 });
     if (path.endsWith('/confirm')) { row = { ...row, revision: row.revision + 1, status: 'CONFIRMED' }; return Response.json(row); }
@@ -54,6 +58,39 @@ function setup({ status = 'DRAFT', failedSave = false, projectList = false, fail
   const view = render(React.createElement(QueryClientProvider, { client }, React.createElement(RouterProvider, { router })));
   return { view, client, router };
 }
+
+test('originalet hämtas med autentisering och blob-URL släpps när panelen stängs', async () => {
+  const originalCreate = URL.createObjectURL, originalRevoke = URL.revokeObjectURL;
+  const revoked = [];
+  URL.createObjectURL = () => 'blob:test-original';
+  URL.revokeObjectURL = (url) => revoked.push(url);
+  try {
+    const { view } = setup();
+    await view.findByRole('button', { name: 'Visa original' });
+    assert.equal(requests.some((request) => request.path.endsWith('/document')), false);
+    fireEvent.click(view.getByRole('button', { name: 'Visa original' }));
+    const link = await view.findByRole('link', { name: 'Öppna original i ny flik' });
+    assert.equal(link.getAttribute('href'), 'blob:test-original');
+    assert.equal(view.getByTitle('Fakturans PDF-original').getAttribute('src'), 'blob:test-original');
+    fireEvent.click(view.getByRole('button', { name: 'Stäng originalvisning' }));
+    await waitFor(() => assert.deepEqual(revoked, ['blob:test-original']));
+    assert.equal(view.queryByTitle('Fakturans PDF-original'), null);
+  } finally { URL.createObjectURL = originalCreate; URL.revokeObjectURL = originalRevoke; }
+});
+
+test('nekad originalåtkomst visar fel utan länk eller förhandsvisning', async () => {
+  const { view } = setup({ failedOriginal: true });
+  fireEvent.click(await view.findByRole('button', { name: 'Visa original' }));
+  assert.match((await view.findByRole('alert')).textContent, /Originalet kunde inte hämtas/);
+  assert.equal(view.queryByTitle('Fakturans PDF-original'), null);
+  assert.equal(view.queryByRole('link', { name: 'Öppna original i ny flik' }), null);
+  fireEvent.click(view.getByRole('button', { name: 'Försök igen' }));
+  await waitFor(() => assert.equal(requests.filter((request) => request.path.endsWith('/document')).length, 2));
+  await view.findByRole('alert');
+  fireEvent.click(view.getByRole('button', { name: 'Stäng originalvisning' }));
+  assert.equal(view.queryByRole('alert'), null);
+  assert.equal(view.queryByRole('button', { name: 'Försök igen' }), null);
+});
 test('fakturaformulär kräver sparade ändringar och aktiv originalkontroll före bekräftelse', async () => {
   const { view, client } = setup();
   const keys = [['project-control'], ['project-portfolio'], ['project', 'p1']];
