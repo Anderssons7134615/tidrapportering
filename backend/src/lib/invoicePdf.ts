@@ -1,8 +1,9 @@
 import { Worker } from 'node:worker_threads';
 import { parseDateOnly } from './dateOnly.js';
 import { INVOICE_MAX_BYTES, InvoiceError, parseInvoiceMoney } from './supplierInvoiceRules.js';
+import { suggestBevegoOrders } from './invoiceOrders.js';
 
-export const INVOICE_PARSER_VERSION = 'pdfjs-6.3.289/labels-2';
+export const INVOICE_PARSER_VERSION = 'pdfjs-6.3.289/orders-1';
 let activeWorkers = 0;
 
 export async function extractInvoicePdf(bytes: Buffer, timeoutMs = 10_000): Promise<{ text: string; pages: number }> {
@@ -101,9 +102,10 @@ export function suggestInvoiceFields(text: string) {
       ? [...(lines[index + 1] || '').matchAll(/\b(\d{2}-\d{2}-\d{2})\b/g)].map((match) => match[1]) : []);
     const due = unique(dueDates);
     if (dueDates.length) fields.dueDate = due ? date(`20${due}`) : null;
-    const amountToken = '(-?\\d[\\d.]*,\\d{2})';
+    const amountToken = '(-?\\d[\\d.]*,\\d{2}-?)';
     const table = new RegExp(`Summa före moms Summa moms Öresutjämning Fakt\\.belopp\\s+${amountToken}\\s+${amountToken}\\s+${amountToken}\\s+(SEK|EUR|USD|NOK|DKK|GBP)\\s+${amountToken}(?=\\s|$)`, 'gi');
-    const tables = [...flat.matchAll(table)].map((match) => match.slice(1).join('|'));
+    const interleaved = new RegExp(`Summa före moms\\s+${amountToken}\\s+Summa moms\\s+${amountToken}\\s+Öresutjämning\\s+${amountToken}\\s+Fakt\\.belopp\\s+(SEK|EUR|USD|NOK|DKK|GBP)\\s+${amountToken}(?=\\s|$)`, 'gi');
+    const tables = [...flat.matchAll(table), ...flat.matchAll(interleaved)].map((match) => match.slice(1).join('|'));
     const summary = unique(tables);
     if (summary) {
       const [net, vat, rounding, currency, gross] = summary.split('|');
@@ -132,5 +134,7 @@ export function suggestInvoiceFields(text: string) {
   if (!fields.invoiceNumber || fields.netOre == null || fields.grossOre == null) warnings.push('Alla fakturauppgifter kunde inte hittas. Fyll i det som saknas.');
   if (fields.currency !== 'SEK') warnings.push('Valutan behöver kontrolleras. Endast SEK kan bekräftas.');
   warnings.push('Uppgifterna är förslag. Kontrollera alltid nummer, datum och belopp mot originalet.');
-  return { fields, warnings };
+  const orderResult = suggestBevegoOrders(text, fields);
+  warnings.push(...orderResult.warnings);
+  return { fields: { ...fields, orders: orderResult.orders }, warnings };
 }

@@ -8,7 +8,7 @@ import { AppShell, Button, ConfirmDialog, Dialog, EmptyState, FormField, PageHea
 import { QueryError } from '../components/ui/QueryError';
 import { formatDate } from '../utils/format';
 import { refreshProjectQueries } from '../utils/projectQueries';
-import { formToDraft, invoiceToForm, moneyInput, parseMoneyInput, type InvoiceForm } from '../utils/invoiceForm';
+import { allocateOrders, suggestOrderProjects, fillInvoiceSuggestions, formToDraft, invoiceToForm, moneyInput, parseMoneyInput, type InvoiceForm } from '../utils/invoiceForm';
 import type { InvoiceStatus, SupplierInvoice } from '../types/supplierInvoice';
 import { InvoiceOriginal } from '../components/InvoiceOriginal';
 
@@ -94,6 +94,8 @@ function InvoiceEditor({ invoice }: { invoice: SupplierInvoice }) {
   const [searchParams] = useSearchParams();
   const projectId = searchParams.get('project');
   const errorRef = useRef<HTMLDivElement>(null);
+  const orderSectionRef = useRef<HTMLDivElement>(null);
+  const focusOrders = () => requestAnimationFrame(() => orderSectionRef.current?.focus());
   const [form, setForm] = useState<InvoiceForm>(() => invoiceToForm(invoice));
   const [reviewed, setReviewed] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -102,6 +104,7 @@ function InvoiceEditor({ invoice }: { invoice: SupplierInvoice }) {
   const [reason, setReason] = useState('');
   const [error, setError] = useState('');
   const [downloading, setDownloading] = useState(false);
+  const orders = invoice.suggestions?.orders || [];
   const editable = invoice.status === 'DRAFT';
   const dirty = JSON.stringify(form) !== JSON.stringify(invoiceToForm(invoice));
   const blocker = useBlocker(dirty);
@@ -118,8 +121,9 @@ function InvoiceEditor({ invoice }: { invoice: SupplierInvoice }) {
     await Promise.all([client.invalidateQueries({ queryKey: ['supplier-invoices'] }), refreshProjectQueries(client)]);
     toast.success(row.status === 'CONFIRMED' ? 'Fakturan är bekräftad.' : row.status === 'VOID' ? 'Fakturan är makulerad.' : 'Utkastet är sparat.');
   };
-  const mutation = useMutation({ mutationFn: async (task: 'save' | 'confirm' | 'reopen' | 'void') => {
+  const mutation = useMutation({ mutationFn: async (task: 'save' | 'confirm' | 'reopen' | 'void' | 'reparse') => {
     setError('');
+    if (task === 'reparse') return supplierInvoicesApi.reparse(invoice.id, invoice.revision);
     if (task === 'save') return supplierInvoicesApi.save(invoice.id, formToDraft(form, invoice.revision));
     if (task === 'confirm') return supplierInvoicesApi.confirm(invoice.id, invoice.revision);
     return supplierInvoicesApi.changeStatus(invoice.id, invoice.revision, task, reason);
@@ -144,13 +148,10 @@ function InvoiceEditor({ invoice }: { invoice: SupplierInvoice }) {
     {editable && <TaskSection title="Kontrollera mot originalet">
       <p className="text-sm text-graphite-600">Beloppen ska vara i SEK. Förslag från PDF:en behöver alltid kontrolleras. Bekräftelse här bokför eller betalar inte fakturan.</p>
       {!!invoice.parseWarnings?.length && <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">{invoice.parseWarnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>}
-      {Object.values(invoice.suggestions || {}).some((value) => value != null) && <Button variant="secondary" className="mt-3" onClick={() => {
-        const suggested = invoice.suggestions;
-        setForm((current) => ({ ...current, supplierName: current.supplierName || suggested.supplierName || null, invoiceNumber: current.invoiceNumber || suggested.invoiceNumber || null,
-          issueDate: current.issueDate || suggested.issueDate || null, dueDate: current.dueDate || suggested.dueDate || null,
-          documentType: !current.net && !current.gross ? suggested.documentType || current.documentType : current.documentType,
-          net: current.net || moneyInput(suggested.netOre), vat: current.vat || moneyInput(suggested.vatOre), gross: current.gross || moneyInput(suggested.grossOre),
-          rounding: !current.net && !current.gross ? moneyInput(suggested.roundingOre ?? 0) : current.rounding }));
+      {!form.orderAssignments && <Button type="button" variant="secondary" className="mt-3" disabled={dirty || mutation.isPending} isLoading={mutation.isPending && mutation.variables === 'reparse'} onClick={() => mutation.mutate('reparse')}>Läs originalet igen</Button>}
+      {mutation.isPending && mutation.variables === 'reparse' && <p role="status" className="mt-2 text-sm">Läser originalet och kontrollerar orderdelarna…</p>}
+      {Object.values(invoice.suggestions || {}).some((value) => value != null) && <Button variant="secondary" className="mt-3" disabled={mutation.isPending} onClick={() => {
+        setForm((current) => fillInvoiceSuggestions(current, invoice.suggestions));
         setReviewed(false);
       }}>Fyll tomma fält med läsförslag</Button>}
     </TaskSection>}
@@ -165,6 +166,37 @@ function InvoiceEditor({ invoice }: { invoice: SupplierInvoice }) {
         <TaskSection title="Fördela på projekt">
           <p className="mb-4 text-sm text-graphite-600">Fördela nettobeloppet, exklusive moms. Samma faktura kan höra till flera projekt.</p>
           {projects.isError && <QueryError title="Projektlistan kunde inte hämtas" onRetry={() => void projects.refetch()} />}
+          {orders.length > 0 && <div ref={orderSectionRef} tabIndex={-1} className="mb-4 space-y-3">
+            <h3 className="font-semibold">Orderdelar från originalet</h3>
+            <p className="text-sm text-graphite-600">Projekt föreslås från ert ordernummer. Kontrollera förslagen. Lager och okända order lämnas ofördelade tills du väljer projekt.</p>
+            {editable && !form.orderAssignments && <Button type="button" variant="secondary" disabled={projects.isPending || projects.isError || form.allocations.length > 0} onClick={() => {
+              const assignments = suggestOrderProjects(orders, projects.data || []);
+              setForm((current) => ({ ...fillInvoiceSuggestions(current, invoice.suggestions), orderAssignments: assignments, allocations: allocateOrders(orders, assignments) }));
+              setReviewed(false); setError(''); focusOrders();
+            }}>Föreslå projekt per order</Button>}
+            {editable && !form.orderAssignments && form.allocations.length > 0 && <p className="text-sm">Ta bort de manuella fördelningsraderna först om du vill fördela per order.</p>}
+            {orders.map((order) => {
+              const assignment = form.orderAssignments?.find((row) => row.orderNumber === order.orderNumber);
+              const selected = assignment?.projectId || '';
+              return <div key={order.orderNumber} className="space-y-2 border-b border-graphite-200 pb-4">
+                <p className="break-words font-semibold">Order {order.orderNumber} · {money(order.netOre)}</p>
+                <p className="break-words text-sm">Ert ordernummer: {order.customerReference || 'Saknas'} · Sida {order.pages.join(', ')}</p>
+                {form.orderAssignments && <FormField label={`Projekt för order ${order.orderNumber}`} controlId={`order-${order.orderNumber}`}><select id={`order-${order.orderNumber}`} className="input" value={selected} onChange={(event) => {
+                  const assignments = form.orderAssignments!.map((row) => row.orderNumber === order.orderNumber ? { ...row, projectId: event.target.value || null } : row);
+                  setForm((current) => ({ ...current, orderAssignments: assignments, allocations: allocateOrders(orders, assignments) }));
+                  setReviewed(false); setError('');
+                }}>
+                  <option value="">Ofördelad – välj projekt</option>
+                  {(projects.data || []).map((project) => <option key={project.id} value={project.id}>{project.code} · {project.name}</option>)}
+                  {selected && !(projects.data || []).some((project) => project.id === selected) && <option value={selected}>{invoice.allocations.find((row) => row.projectId === selected)?.project.name || selected}</option>}
+                </select></FormField>}
+                {form.orderAssignments && !selected && <p className="text-sm font-medium">Behöver kontrolleras · {order.customerReference === 'LAGER' ? 'Lager' : 'Inget projekt valt'}</p>}
+              </div>;
+            })}
+            {editable && form.orderAssignments && <Button type="button" variant="secondary" onClick={() => { update('orderAssignments', null); focusOrders(); }}>Byt till manuell fördelning</Button>}
+            {form.orderAssignments && <p className="text-sm">Orderbeloppen summeras per projekt nedan. Dina projektval sparas med utkastet.</p>}
+          </div>}
+          <fieldset disabled={!!form.orderAssignments} className="min-w-0">
           <div className="space-y-4">{form.allocations.map((row, index) => <div key={index} className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,15rem),1fr))] items-end gap-3 border-b border-graphite-200 pb-4">
             <FormField label="Projekt" controlId={`allocation-project-${index}`}><select id={`allocation-project-${index}`} className="input" value={row.projectId} onChange={(event) => update('allocations', form.allocations.map((item, i) => i === index ? { ...item, projectId: event.target.value } : item))}>
               <option value="">Välj projekt</option>
@@ -176,6 +208,7 @@ function InvoiceEditor({ invoice }: { invoice: SupplierInvoice }) {
             {editable && <Button type="button" variant="secondary" onClick={() => update('allocations', form.allocations.filter((_, i) => i !== index))} aria-label={`Ta bort fördelningsrad ${index + 1}`}>Ta bort</Button>}
           </div>)}</div>
           {editable && <Button type="button" variant="secondary" className="mt-4" onClick={() => update('allocations', [...form.allocations, { projectId: projectId && projects.data?.some((project) => project.id === projectId) && !form.allocations.some((row) => row.projectId === projectId) ? projectId : '', amount: remainder ? moneyInput(remainder) : '', note: '' }])}><Plus size={17} aria-hidden="true" />Lägg till projekt</Button>}
+          </fieldset>
           {!form.allocations.length && <p className="mt-3 text-sm">Inget projekt valt.</p>}
           <p className="mt-4 font-semibold tabular-nums">{remainder == null ? 'Ange nettobelopp för att se vad som återstår.' : `${money(remainder)} kvar att fördela`}</p>
         </TaskSection>

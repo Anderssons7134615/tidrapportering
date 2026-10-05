@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from './prisma.js';
 import { extractInvoicePdf, INVOICE_PARSER_VERSION, suggestInvoiceFields } from './invoicePdf.js';
 import { InvoiceDraft, InvoiceError, INVOICE_MAX_BYTES, invoiceIdentity, validateInvoiceAmounts, validateInvoiceConfirmation } from './supplierInvoiceRules.js';
+import { InvoiceOrder, OrderAssignment, validateOrderAssignments } from './invoiceOrders.js';
 
 // Bytes are deliberately excluded from every ordinary invoice response.
 export const invoiceSelect = {
@@ -25,7 +26,12 @@ export function invoiceDto(row: Record) {
 function auditValue(row: Record | null) {
   if (!row) return null;
   const { suggestions, parseWarnings, ...value } = row;
-  return JSON.stringify(value);
+  return JSON.stringify({ ...value, orderAssignments: orderData(row).orderAssignments, orders: orderData(row).orders });
+}
+function orderData(row: Record) {
+  return (row.suggestions && typeof row.suggestions === 'object' && !Array.isArray(row.suggestions) ? row.suggestions : {}) as {
+    orders?: InvoiceOrder[]; orderAssignments?: OrderAssignment[] | null;
+  };
 }
 async function audit(tx: Tx, user: Actor, action: string, id: string, oldRow: Record | null, newRow: Record) {
   await tx.auditLog.create({ data: { userId: user.id, entityType: 'SupplierInvoice', entityId: id, action,
@@ -87,8 +93,12 @@ export function createInvoiceService(db: typeof prisma = prisma, extract = extra
         return await db.$transaction(async (tx) => {
           const old = await read(tx, user.companyId, id);
           if (old.status !== 'DRAFT') throw new InvoiceError('Öppna fakturan för rättelse innan den ändras.', 409);
-          const { revision, allocations, ...header } = draft;
-          await claim(tx, user, old, revision, { ...header, ...invoiceIdentity(header.supplierName, header.supplierOrgNumber, header.invoiceNumber) });
+          const { revision, allocations, orderAssignments, ...header } = draft;
+          const savedSuggestions = orderData(old);
+          const assignments = orderAssignments === undefined ? savedSuggestions.orderAssignments : orderAssignments;
+          if (assignments) validateOrderAssignments(savedSuggestions.orders || [], assignments, allocations, draft.netOre);
+          await claim(tx, user, old, revision, { ...header, ...invoiceIdentity(header.supplierName, header.supplierOrgNumber, header.invoiceNumber),
+            ...(orderAssignments !== undefined ? { suggestions: { ...savedSuggestions, orderAssignments } as Prisma.InputJsonValue } : {}) });
           const ids = allocations.map((row) => row.projectId);
           const projects = await tx.project.findMany({ where: { id: { in: ids }, companyId: user.companyId }, select: { id: true, active: true } });
           if (projects.length !== ids.length) throw new InvoiceError('Ett projekt i fördelningen hittades inte.');
@@ -103,11 +113,27 @@ export function createInvoiceService(db: typeof prisma = prisma, extract = extra
         });
       } catch (error) { return duplicateError(error); }
     },
+    async reparse(user: Actor, id: string, revision: number) {
+      const old = await read(db, user.companyId, id);
+      if (old.status !== 'DRAFT' || old.revision !== revision) throw new InvoiceError('Läsning kräver ett aktuellt utkast.', 409);
+      if (orderData(old).orderAssignments) throw new InvoiceError('Byt till manuell fördelning och spara innan originalet läses om.');
+      const document = await db.supplierInvoiceDocument.findFirst({ where: { invoiceId: id, companyId: user.companyId }, select: { content: true } });
+      if (!document) throw new InvoiceError('Originalet hittades inte.', 404);
+      const parsed = suggestInvoiceFields((await extract(Buffer.from(document.content))).text);
+      return db.$transaction(async (tx) => {
+        await claim(tx, user, old, revision, { suggestions: parsed.fields, parseWarnings: parsed.warnings, parserVersion: INVOICE_PARSER_VERSION });
+        const row = await read(tx, user.companyId, id);
+        await audit(tx, user, 'REPARSE', id, old, row);
+        return invoiceDto(row);
+      });
+    },
     async transition(user: Actor, id: string, revision: number, action: 'confirm' | 'reopen' | 'void', reason?: string) {
       return db.$transaction(async (tx) => {
         const old = await read(tx, user.companyId, id);
         if (old.status === 'VOID' || (action === 'confirm' && old.status !== 'DRAFT') || (action === 'reopen' && old.status !== 'CONFIRMED')) throw new InvoiceError('Fakturans status har ändrats. Ladda om och försök igen.', 409);
         if (action === 'confirm') {
+          const saved = orderData(old);
+          if (saved.orderAssignments) validateOrderAssignments(saved.orders || [], saved.orderAssignments, old.allocations, old.netOre);
           validateInvoiceConfirmation({ ...old, currency: 'SEK' });
           if (!old.document) throw new InvoiceError('Originalet saknas. Fakturan kan inte bekräftas.');
         } else if (!reason?.trim()) throw new InvoiceError('Ange varför fakturan ska rättas eller makuleras.');

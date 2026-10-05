@@ -138,3 +138,47 @@ test('makulering frigör aktiv identitet för ett korrekt ersättningsoriginal o
     assert.equal(ctx.documents().length, 2); assert.equal(ctx.audits().filter((audit) => audit.action === 'VOID').length, 1);
   } finally { await ctx.app.close(); }
 });
+
+test('orderprojekt sparas spårbart och kontrolleras mot serverns orderbelopp och företag', async () => {
+  const ctx = await setup();
+  try {
+    ctx.records()[0].suggestions = { orders: [
+      { orderNumber: '880001', customerReference: '0042', pages: [1], netOre: 6000 },
+      { orderNumber: '880002', customerReference: 'LAGER', pages: [2], netOre: 4000 },
+    ] };
+    const assignments = [{ orderNumber: '880001', projectId: 'pa' }, { orderNumber: '880002', projectId: null }];
+    const request = (payload: object) => ctx.app.inject({ method: 'PUT', url: '/api/supplier-invoices/ia', payload });
+    assert.equal((await request({ ...draft, orderAssignments: assignments, allocations: [{ projectId: 'pa', netOre: 5000, note: null }] })).statusCode, 400);
+    assert.equal((await request({ ...draft, orderAssignments: assignments.map((row) => ({ ...row, projectId: 'pb' })), allocations: [{ projectId: 'pb', netOre: 10000, note: null }] })).statusCode, 400);
+    assert.equal(ctx.records()[0].revision, 1);
+    const saved = await request({ ...draft, orderAssignments: assignments });
+    assert.equal(saved.statusCode, 200, saved.body);
+    assert.deepEqual(saved.json().suggestions.orderAssignments, assignments);
+    assert.deepEqual(JSON.parse(ctx.audits()[0].newValue).orderAssignments, assignments);
+    assert.equal((await request({ ...draft, revision: 2, allocations: [] })).statusCode, 400, 'older client cannot silently change active order allocation');
+    assert.equal((await request({ ...draft, revision: 2, orderAssignments: null })).statusCode, 200);
+  } finally { await ctx.app.close(); }
+});
+
+test('ny läsning skyddar roll, företag, revision och original samt behåller manuella fält', async () => {
+  const ctx = await setup();
+  try {
+    const call = (revision: number, role = 'ADMIN') => ctx.app.inject({ method: 'POST', url: '/api/supplier-invoices/ia/reparse', headers: { 'x-test-role': role }, payload: { revision } });
+    assert.equal((await call(1, 'EMPLOYEE')).statusCode, 403);
+    assert.equal((await call(2)).statusCode, 409);
+    const result = await call(1);
+    assert.equal(result.statusCode, 200, result.body);
+    assert.equal(result.json().invoiceNumber, draft.invoiceNumber);
+    assert.deepEqual(result.json().allocations, ctx.records()[0].allocations);
+    assert.equal(ctx.documents().length, 1);
+    assert.equal(ctx.audits()[0].action, 'REPARSE');
+    assert.equal((await call(1)).statusCode, 409);
+    ctx.records()[0].suggestions.orderAssignments = [];
+    assert.equal((await call(2)).statusCode, 400);
+    ctx.records()[0].suggestions.orderAssignments = null;
+    ctx.records()[0].status = 'CONFIRMED';
+    assert.equal((await call(2)).statusCode, 409);
+    ctx.records()[0].companyId = 'b';
+    assert.equal((await call(2)).statusCode, 404);
+  } finally { await ctx.app.close(); }
+});

@@ -2,12 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { invoiceDraftSchema, invoiceIdentity, parseInvoiceMoney, validateInvoiceAmounts, validateInvoiceConfirmation } from './supplierInvoiceRules.js';
 import { extractInvoicePdf, suggestInvoiceFields } from './invoicePdf.js';
+import { validateOrderAssignments } from './invoiceOrders.js';
 
 export const validDraft = () => invoiceDraftSchema.parse({ revision: 1, supplierName: 'Testleverantör', supplierOrgNumber: '556000-0000', invoiceNumber: 'TEST-1', documentType: 'INVOICE', issueDate: '2026-10-02', dueDate: null, currency: 'SEK', netOre: 10000, vatOre: 2500, roundingOre: 0, grossOre: 12500, note: null, allocations: [{ projectId: 'p1', netOre: 6000, note: null }] });
 
 test('öresbelopp är exakta och oklar notation eller för stora belopp avvisas', () => {
   assert.equal(parseInvoiceMoney('1 234,56 kr'), 123456);
   assert.equal(parseInvoiceMoney('−0,01'), -1);
+  assert.equal(parseInvoiceMoney('0,14-'), -14);
+  assert.equal(parseInvoiceMoney('-0,14-'), null);
   assert.equal(parseInvoiceMoney('1.234,56 SEK'), 123456);
   for (const value of ['NaN', '1e5', '0.001', '20 000 000,01', '1,2,3']) assert.equal(parseInvoiceMoney(value), null);
 });
@@ -106,4 +109,46 @@ test('syntetisk Bevego-PDF passerar worker och ger kontrollerade förslag', asyn
   assert.equal(fields.grossOre, 125000);
   assert.equal(fields.netOre, 100001);
   assert.equal(fields.currency, 'SEK');
+});
+
+// Synthetic multi-page collection invoice; no customer data from the real PDF.
+const orderPage = (id: string, reference: string | null, total?: string) => `BEVEGO\nFaktura 990009\nFakt.datum 26-10-01 Ordernummer ${id}\n${reference === null ? '' : `Ert ordernummer\n${reference}\nGodsmärke\n`}\n${total ? `Ordertotal................ ${total}` : ''}`;
+const collectionText = [orderPage('880001', '0042 TEST', '10,01'), orderPage('880002', '', undefined), orderPage('880002', null, '20,00'), orderPage('880003', 'LAGER', '30,00')].join('\f') + `\nSumma före moms\n60,01\nSumma moms\n15,00\nÖresutjämning\n0,01-\nFakt.belopp\nSEK 75,00\nOrdernummer Er referens Ert ordernr. Order total\n880001 TEST 0042 TEST 10,01\n880002 TEST 20,00\n880003 TEST LAGER 30,00`;
+
+test('sammanställning bevarar order över sidgräns och saknad referens, med efterställt minus', () => {
+  const { fields } = suggestInvoiceFields(collectionText);
+  assert.deepEqual([fields.netOre, fields.vatOre, fields.roundingOre, fields.grossOre], [6001, 1500, -1, 7500]);
+  assert.deepEqual(fields.orders, [
+    { orderNumber: '880001', customerReference: '0042 TEST', pages: [1], netOre: 1001 },
+    { orderNumber: '880002', customerReference: null, pages: [2, 3], netOre: 2000 },
+    { orderNumber: '880003', customerReference: 'LAGER', pages: [4], netOre: 3000 },
+  ]);
+  const credit = suggestInvoiceFields(collectionText.replaceAll('Faktura ', 'Kreditfaktura ')).fields;
+  assert.equal(credit.roundingOre, 1);
+  assert.deepEqual(credit.orders.map((row) => row.netOre), [-1001, -2000, -3000]);
+  const blank = suggestInvoiceFields(collectionText.replace('\f', '\f\f')).fields;
+  assert.deepEqual(blank.orders.map((order) => order.pages), [[1], [3, 4], [5]]);
+});
+
+test('orderförslag avvisas vid saknad/dubbel order, olika referens, valuta eller beloppskonflikt', () => {
+  for (const text of [
+    collectionText.replace('880002 TEST 20,00', '880002 TEST 20,01'),
+    collectionText + '\n880003 TEST LAGER 30,00',
+    collectionText.replace('880003 TEST LAGER 30,00', ''),
+    collectionText.replace('SEK 75,00', 'EUR 75,00'),
+    collectionText.replace('SEK 75,00', 'SEK 75,01'),
+    collectionText.replace('Faktura 990009', 'Faktura 990008'),
+    collectionText.replace('20,00\f', '20,00\nOrdertotal.... 20,00\f'),
+    collectionText.replace('Ert ordernummer\n\nGodsmärke', 'Ert ordernummer\n0042\nGodsmärke').replace('Ordernummer 880002\n\n', 'Ordernummer 880002\nErt ordernummer\n0043\nGodsmärke\n'),
+  ]) assert.equal(suggestInvoiceFields(text).fields.orders.length, 0, text);
+});
+
+test('orderfördelning kräver samtliga order exakt en gång och samma öressummor per projekt', () => {
+  const orders = suggestInvoiceFields(collectionText).fields.orders;
+  const choices = orders.map((row, index) => ({ orderNumber: row.orderNumber, projectId: index === 2 ? null : 'pa' }));
+  assert.doesNotThrow(() => validateOrderAssignments(orders, choices, [{ projectId: 'pa', netOre: 3001 }], 6001));
+  assert.throws(() => validateOrderAssignments(orders, [choices[0], choices[0], choices[2]], [], 6001));
+  assert.throws(() => validateOrderAssignments(orders, choices, [{ projectId: 'pa', netOre: 3000 }], 6001));
+  assert.throws(() => validateOrderAssignments(orders, choices, [{ projectId: 'pa', netOre: 3001 }], 6000));
+  assert.throws(() => validateOrderAssignments(orders, choices.map((row) => ({ ...row, orderNumber: 'unknown' })), [], 6001));
 });

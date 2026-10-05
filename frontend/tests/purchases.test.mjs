@@ -17,6 +17,7 @@ before(async () => {
   dom.window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
   dom.window.HTMLDialogElement.prototype.close = function () { this.open = false; };
   dom.window.HTMLElement.prototype.scrollIntoView = function () {};
+  globalThis.requestAnimationFrame = (callback) => setTimeout(callback, 0);
   ({ cleanup, fireEvent, render, waitFor, within, act } = await import('@testing-library/react'));
   ({ QueryClient, QueryClientProvider } = await import('@tanstack/react-query'));
   ({ createMemoryRouter, RouterProvider } = await import('react-router-dom'));
@@ -28,8 +29,8 @@ before(async () => {
 afterEach(() => { cleanup(); clients.forEach((client) => client.clear()); clients = []; requests = []; globalThis.fetch = originalFetch; });
 after(async () => { await vite?.close(); dom?.window.close(); });
 
-function setup({ status = 'DRAFT', failedSave = false, projectList = false, failedList = false, failedOriginal = false, listPath } = {}) {
-  let row = { ...invoice, status };
+function setup({ status = 'DRAFT', failedSave = false, projectList = false, failedList = false, failedOriginal = false, listPath, suggestions = {}, header = {} } = {}) {
+  let row = { ...invoice, status, suggestions, ...header };
   auth.useAuthStore.setState({ token: 'test-token', user: { id: 'u1', name: 'Test', role: 'ADMIN' } });
   globalThis.fetch = async (url, options = {}) => {
     const parsed = new URL(url, 'http://localhost'); const path = parsed.pathname; const method = options.method || 'GET';
@@ -47,7 +48,7 @@ function setup({ status = 'DRAFT', failedSave = false, projectList = false, fail
     if (path === '/api/supplier-invoices/i1') {
       if (method === 'PUT') {
         if (failedSave) return Response.json({ error: 'Fakturan har ändrats. Ladda om innan du fortsätter.' }, { status: 409 });
-        row = { ...row, ...body, revision: row.revision + 1, allocations: body.allocations.map((allocation) => ({ ...allocation, project: { name: 'Testprojekt', code: '0042' } })) };
+        row = { ...row, ...body, suggestions: { ...row.suggestions, orderAssignments: body.orderAssignments }, revision: row.revision + 1, allocations: body.allocations.map((allocation) => ({ ...allocation, project: { name: 'Testprojekt', code: '0042' } })) };
       }
       return Response.json(row);
     }
@@ -188,4 +189,65 @@ test('osparat skydd stoppar länk, bakåtnavigering och makulering utan att tapp
   fireEvent.click(within(dialog).getByRole('button', { name: 'Lämna utan att spara' }));
   await view.findByText('Tillbaka i listan');
   assert.equal(requests.some((request) => request.method !== 'GET'), false);
+});
+
+const orders = [
+  { orderNumber: '880001', customerReference: '0042 TEST', pages: [1], netOre: 3000 },
+  { orderNumber: '880002', customerReference: '0042', pages: [2, 3], netOre: 2000 },
+  { orderNumber: '880003', customerReference: 'LAGER', pages: [4], netOre: 4000 },
+  { orderNumber: '880004', customerReference: null, pages: [5], netOre: 1000 },
+];
+test('projektmatchning bevarar nollor och gissar inte för lager, saknad, okänd eller tvetydig kod', () => {
+  const projects = [{ id: 'p1', code: '0042' }, { id: 'p2', code: '42' }, { id: 'p3', code: 'LAGER' }];
+  assert.deepEqual(forms.suggestOrderProjects(orders, projects).map((row) => row.projectId), ['p1', 'p1', null, null]);
+  assert.equal(forms.suggestOrderProjects([orders[0]], [{ id: 'p2', code: '42' }])[0].projectId, null);
+  assert.equal(forms.suggestOrderProjects([orders[0]], [...projects, { id: 'p4', code: '0042' }])[0].projectId, null);
+  assert.equal(forms.suggestOrderProjects([{ ...orders[0], customerReference: '00420' }], projects)[0].projectId, null);
+});
+
+test('orderförslag summeras per projekt, lager förblir ofördelat och orderval återställs efter sparande', async () => {
+  const { view } = setup({ suggestions: { orders } });
+  const useOrders = await view.findByRole('button', { name: 'Föreslå projekt per order' });
+  await waitFor(() => assert.equal(useOrders.disabled, false));
+  fireEvent.click(useOrders);
+  await waitFor(() => assert.ok(document.activeElement === view.getByText('Orderdelar från originalet').closest('[tabindex="-1"]'), 'ordersektionen ska ha fokus'));
+  assert.equal(view.getByLabelText('Projekt för order 880001').value, 'p1');
+  assert.equal(view.getByLabelText('Projekt för order 880003').value, '');
+  assert.equal(view.getByLabelText('Netto (kr)').value, '50,00');
+  assert.ok(view.getByLabelText('Netto (kr)').closest('fieldset').disabled);
+  assert.equal(requests.some((request) => request.method === 'PUT'), false);
+  fireEvent.click(view.getByRole('button', { name: 'Spara utkast' }));
+  await waitFor(() => assert.equal(view.getByRole('checkbox').disabled, false));
+  const saved = requests.find((request) => request.method === 'PUT').body;
+  assert.equal(saved.allocations.length, 1);
+  assert.equal(saved.allocations[0].netOre, 5000);
+  assert.equal(saved.orderAssignments.length, 4);
+  assert.equal(saved.orderAssignments[2].projectId, null);
+  assert.equal(view.getByLabelText('Projekt för order 880001').value, 'p1');
+  fireEvent.change(view.getByLabelText('Projekt för order 880003'), { target: { value: 'p1' } });
+  assert.equal(view.getByLabelText('Netto (kr)').value, '90,00');
+  assert.equal(view.getByRole('checkbox').disabled, true);
+  fireEvent.click(view.getByRole('button', { name: 'Byt till manuell fördelning' }));
+  await waitFor(() => assert.ok(document.activeElement === view.getByText('Orderdelar från originalet').closest('[tabindex="-1"]'), 'ordersektionen ska ha fokus'));
+  assert.equal(view.queryByLabelText('Projekt för order 880001'), null);
+  assert.equal(view.getByLabelText('Netto (kr)').closest('fieldset').disabled, false);
+  assert.equal(view.getByLabelText('Netto (kr)').value, '90,00');
+});
+
+test('orderförslag fyller kredittyp och avrundning tillsammans med netto även före huvudfältens fyllknapp', async () => {
+  const creditOrders = orders.map((row) => ({ ...row, netOre: -row.netOre }));
+  const { view } = setup({ suggestions: { orders: creditOrders, documentType: 'CREDIT', netOre: -10000, vatOre: -2500, roundingOre: 14, grossOre: -12486 }, header: { documentType: 'INVOICE', netOre: null, vatOre: null, grossOre: null, roundingOre: 0 } });
+  const button = await view.findByRole('button', { name: 'Föreslå projekt per order' });
+  await waitFor(() => assert.equal(button.disabled, false));
+  fireEvent.click(button);
+  assert.equal(view.getByLabelText('Typ').value, 'CREDIT');
+  assert.equal(view.getByLabelText('Öresavrundning (kr)').value, '0,14');
+  assert.equal(view.getByLabelText('Netto, exkl. moms (kr)').value, '-100,00');
+  assert.equal(view.getByLabelText('Totalbelopp (kr)').value, '-124,86');
+  fireEvent.click(view.getByRole('button', { name: 'Fyll tomma fält med läsförslag' }));
+  fireEvent.click(view.getByRole('button', { name: 'Spara utkast' }));
+  await waitFor(() => assert.equal(view.getByRole('checkbox').disabled, false));
+  const saved = requests.find((request) => request.method === 'PUT').body;
+  assert.equal(saved.documentType, 'CREDIT');
+  assert.equal(saved.netOre + saved.vatOre + saved.roundingOre, saved.grossOre);
 });

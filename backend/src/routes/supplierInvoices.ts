@@ -63,6 +63,10 @@ export function createSupplierInvoiceRoutes(db: typeof prisma = prisma, service 
         .type('application/pdf').send(document.content);
     });
     fastify.put('/:id', async (request) => service.save(request.user, (request.params as { id: string }).id, invoiceDraftSchema.parse(request.body)));
+    fastify.post('/:id/reparse', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request) => {
+      const body = revisionSchema.strict().parse(request.body);
+      return service.reparse(request.user, (request.params as { id: string }).id, body.revision);
+    });
     fastify.post('/:id/confirm', async (request) => {
       const body = revisionSchema.extend({ reviewedOriginal: z.literal(true) }).strict().parse(request.body);
       return service.transition(request.user, (request.params as { id: string }).id, body.revision, 'confirm');

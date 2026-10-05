@@ -35,6 +35,7 @@ import type {
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
 export const supplierInvoicesApi = {
+  reparse: (id: string, revision: number) => fetchApi<SupplierInvoice>(`/supplier-invoices/${encodeURIComponent(id)}/reparse`, { method: 'POST', body: JSON.stringify({ revision }) }),
   list: (params: { page?: number; search?: string; status?: InvoiceStatus; projectId?: string }) => {
     const query = new URLSearchParams();
     Object.entries(params).forEach(([key, value]) => { if (value !== undefined && value !== '') query.set(key, String(value)); });

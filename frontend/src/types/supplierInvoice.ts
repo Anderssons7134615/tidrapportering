@@ -16,13 +16,16 @@ export interface InvoiceHeader {
 export interface InvoiceDraft extends InvoiceHeader {
   revision: number;
   allocations: Array<{ projectId: string; netOre: number; note: string | null }>;
+  orderAssignments?: OrderAssignment[] | null;
 }
+export interface InvoiceOrder { orderNumber: string; customerReference: string | null; pages: number[]; netOre: number }
+export interface OrderAssignment { orderNumber: string; projectId: string | null }
 export interface SupplierInvoice extends InvoiceHeader {
   id: string;
   revision: number;
   status: InvoiceStatus;
   statusReason: string | null;
-  suggestions: Partial<Omit<InvoiceHeader, 'currency'>> & { currency?: string | null };
+  suggestions: Partial<Omit<InvoiceHeader, 'currency'>> & { currency?: string | null; orders?: InvoiceOrder[]; orderAssignments?: OrderAssignment[] | null };
   parseWarnings: string[];
   document: { originalName: string; byteSize: number; sha256: string } | null;
   allocations: Array<{ projectId: string; netOre: number; note: string | null; project: { name: string; code: string } }>;

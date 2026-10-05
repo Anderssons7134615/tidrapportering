@@ -15,7 +15,8 @@ try {
       if ('str' in item) text += item.str + (item.hasEOL ? '\n' : ' ');
       if (text.length > 200_000) throw new Error('TEXT_LIMIT');
     }
-    text += '\n';
+    // Preserve physical page boundaries for order source references.
+    text += '\n\f';
     page.cleanup();
   }
   parentPort!.postMessage({ text, pages: pdf.numPages });

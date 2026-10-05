@@ -25,6 +25,7 @@ export const invoiceDraftSchema = z.object({
   grossOre: money.nullable(),
   note: nullableText(2000),
   allocations: z.array(z.object({ projectId: z.string().min(1).max(100), netOre: money, note: nullableText(500) })).max(100),
+  orderAssignments: z.array(z.object({ orderNumber: z.string().min(1).max(40), projectId: z.string().min(1).max(100).nullable() }).strict()).max(100).nullable().optional(),
 }).strict();
 export type InvoiceDraft = z.infer<typeof invoiceDraftSchema>;
 
@@ -64,6 +65,7 @@ export function validateInvoiceConfirmation(draft: Pick<InvoiceDraft, 'supplierN
 export function parseInvoiceMoney(value: string): number | null {
   let normalized = value.trim().replace(/(?:SEK|kr)\.?$/i, '').trim().replace(/[\s\u00a0]/g, '').replace(/−/g, '-');
   if (normalized.includes(',')) normalized = normalized.replace(/\./g, '').replace(',', '.');
+  if (/^\d+(?:\.\d{1,2})?-$/.test(normalized)) normalized = `-${normalized.slice(0, -1)}`;
   const match = /^(-?)(\d{1,9})(?:\.(\d{1,2}))?$/.exec(normalized);
   if (!match) return null;
   const amount = (Number(match[2]) * 100 + Number((match[3] || '').padEnd(2, '0'))) * (match[1] ? -1 : 1);
