@@ -60,6 +60,24 @@ export function suggestBevegoOrders(text: string, header: Header): { orders: Inv
 }
 
 export type OrderAssignment = { orderNumber: string; projectId: string | null };
+export function matchInvoiceOrders(orders: InvoiceOrder[], projects: Array<{ id: string; code: string }>) {
+  const orderAssignments = orders.map((order) => {
+    const code = /^(\d+)(?:\s|$)/.exec(order.customerReference || '')?.[1];
+    const matches = code ? projects.filter((project) => project.code === code) : [];
+    return { orderNumber: order.orderNumber, projectId: matches.length === 1 ? matches[0].id : null };
+  });
+  const groups = new Map<string, { netOre: number; orders: string[] }>();
+  for (const [index, assignment] of orderAssignments.entries()) {
+    if (!assignment.projectId) continue;
+    const group = groups.get(assignment.projectId) || { netOre: 0, orders: [] };
+    group.netOre += orders[index].netOre;
+    group.orders.push(assignment.orderNumber);
+    groups.set(assignment.projectId, group);
+  }
+  const allocations = [...groups].map(([projectId, group]) => ({ projectId, netOre: group.netOre, note: `Order: ${group.orders.join(', ')}`.slice(0, 500) }));
+  return { orderAssignments, allocations };
+}
+
 export function validateOrderAssignments(orders: InvoiceOrder[], assignments: OrderAssignment[], allocations: Array<{ projectId: string; netOre: number }>, netOre: number | null) {
   if (!orders.length || assignments.length !== orders.length || new Set(assignments.map((row) => row.orderNumber)).size !== orders.length
     || orders.reduce((sum, order) => sum + order.netOre, 0) !== netOre) throw new InvoiceError('Orderdelarna stämmer inte med fakturans netto. Kontrollera fördelningen.');

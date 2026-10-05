@@ -8,7 +8,7 @@ import { AppShell, Button, ConfirmDialog, Dialog, EmptyState, FormField, PageHea
 import { QueryError } from '../components/ui/QueryError';
 import { formatDate } from '../utils/format';
 import { refreshProjectQueries } from '../utils/projectQueries';
-import { allocateOrders, suggestOrderProjects, fillInvoiceSuggestions, formToDraft, invoiceToForm, moneyInput, parseMoneyInput, type InvoiceForm } from '../utils/invoiceForm';
+import { allocateOrders, fillInvoiceSuggestions, formToDraft, invoiceToForm, moneyInput, parseMoneyInput, type InvoiceForm } from '../utils/invoiceForm';
 import type { InvoiceStatus, SupplierInvoice } from '../types/supplierInvoice';
 import { InvoiceOriginal } from '../components/InvoiceOriginal';
 
@@ -43,7 +43,7 @@ export function InvoiceList({ projectId }: { projectId?: string }) {
   const query = useQuery({ queryKey: ['supplier-invoices', { projectId, status, page, search: debouncedSearch }], queryFn: () => supplierInvoicesApi.list({ projectId, status: status || undefined, page, search: debouncedSearch }) });
   const upload = useMutation({ mutationFn: supplierInvoicesApi.upload, onSuccess: async ({ invoice, duplicate }) => {
     await Promise.all([client.invalidateQueries({ queryKey: ['supplier-invoices'] }), refreshProjectQueries(client)]);
-    toast.success(duplicate ? 'Originalet finns redan. Den befintliga fakturan öppnas.' : 'Originalet är sparat. Kontrollera uppgifterna.');
+    toast.success(duplicate ? 'Originalet finns redan. Den befintliga fakturan öppnas.' : 'Originalet är sparat. Kontrollera resultatet av inläsningen.');
     navigate(`/purchases/${invoice.id}${projectId ? `?project=${encodeURIComponent(projectId)}` : ''}`);
   }, onError: (error: Error) => toast.error(error.message) });
   return <div className="space-y-4">
@@ -51,9 +51,9 @@ export function InvoiceList({ projectId }: { projectId?: string }) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0"><h2 className="section-title">{projectId ? 'Projektets inköp' : 'Leverantörsfakturor'}</h2>
           {projectId && query.data && <p className="mt-1 text-lg font-semibold tabular-nums">{money(query.data.confirmedProjectNetOre)} <span className="text-sm font-normal">bekräftat, exkl. moms</span></p>}
-          <p className="mt-1 text-sm text-graphite-600">{projectId ? 'Inköp visas separat från registrerad materialåtgång och ingår inte en gång till i projektresultatet.' : 'Ladda upp PDF, kontrollera uppgifterna och fördela nettobeloppet. Bekräftelse här bokför eller betalar inte fakturan.'}</p>
+          <p className="mt-1 text-sm text-graphite-600">{projectId ? 'Inköp visas separat från registrerad materialåtgång och ingår inte en gång till i projektresultatet.' : 'Läs in PDF så sparas säkra projektträffar automatiskt. Lager och okända order sparas separat. Bekräftelse här bokför eller betalar inte fakturan.'}</p>
         </div>
-        <Button type="button" onClick={() => fileInput.current?.click()} isLoading={upload.isPending}><Upload size={17} aria-hidden="true" />Ladda upp PDF</Button>
+        <Button type="button" onClick={() => fileInput.current?.click()} isLoading={upload.isPending}><Upload size={17} aria-hidden="true" />Läs in PDF</Button>
         <input ref={fileInput} type="file" accept="application/pdf,.pdf" className="hidden" onChange={(event) => {
           const file = event.target.files?.[0]; event.target.value = '';
           if (!file) return;
@@ -148,8 +148,9 @@ function InvoiceEditor({ invoice }: { invoice: SupplierInvoice }) {
     {editable && <TaskSection title="Kontrollera mot originalet">
       <p className="text-sm text-graphite-600">Beloppen ska vara i SEK. Förslag från PDF:en behöver alltid kontrolleras. Bekräftelse här bokför eller betalar inte fakturan.</p>
       {!!invoice.parseWarnings?.length && <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">{invoice.parseWarnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>}
-      {!form.orderAssignments && <Button type="button" variant="secondary" className="mt-3" disabled={dirty || mutation.isPending} isLoading={mutation.isPending && mutation.variables === 'reparse'} onClick={() => mutation.mutate('reparse')}>Läs originalet igen</Button>}
-      {mutation.isPending && mutation.variables === 'reparse' && <p role="status" className="mt-2 text-sm">Läser originalet och kontrollerar orderdelarna…</p>}
+      {!form.orderAssignments && <Button type="button" className="mt-3" disabled={dirty || mutation.isPending} isLoading={mutation.isPending && mutation.variables === 'reparse'} onClick={() => mutation.mutate('reparse')}>Läs in</Button>}
+      {mutation.isPending && mutation.variables === 'reparse' && <p role="status" className="mt-2 text-sm">Läser originalet och sparar projektfördelningen…</p>}
+      {invoice.suggestions?.orderAssignments && !dirty && <p role="status" className="mt-3 text-sm font-medium">Sparat på projekt: {money(invoice.allocatedOre)}. Separat utan projekt: {money(invoice.unallocatedOre)}. Fakturan väntar på bekräftelse.</p>}
       {Object.values(invoice.suggestions || {}).some((value) => value != null) && <Button variant="secondary" className="mt-3" disabled={mutation.isPending} onClick={() => {
         setForm((current) => fillInvoiceSuggestions(current, invoice.suggestions));
         setReviewed(false);
@@ -168,13 +169,8 @@ function InvoiceEditor({ invoice }: { invoice: SupplierInvoice }) {
           {projects.isError && <QueryError title="Projektlistan kunde inte hämtas" onRetry={() => void projects.refetch()} />}
           {orders.length > 0 && <div ref={orderSectionRef} tabIndex={-1} className="mb-4 space-y-3">
             <h3 className="font-semibold">Orderdelar från originalet</h3>
-            <p className="text-sm text-graphite-600">Projekt föreslås från ert ordernummer. Kontrollera förslagen. Lager och okända order lämnas ofördelade tills du väljer projekt.</p>
-            {editable && !form.orderAssignments && <Button type="button" variant="secondary" disabled={projects.isPending || projects.isError || form.allocations.length > 0} onClick={() => {
-              const assignments = suggestOrderProjects(orders, projects.data || []);
-              setForm((current) => ({ ...fillInvoiceSuggestions(current, invoice.suggestions), orderAssignments: assignments, allocations: allocateOrders(orders, assignments) }));
-              setReviewed(false); setError(''); focusOrders();
-            }}>Föreslå projekt per order</Button>}
-            {editable && !form.orderAssignments && form.allocations.length > 0 && <p className="text-sm">Ta bort de manuella fördelningsraderna först om du vill fördela per order.</p>}
+            <p className="text-sm text-graphite-600">Säkra träffar på ert projektnummer sparas automatiskt vid inläsning. Lager och okända order sparas separat utan projekt.</p>
+            {editable && !form.orderAssignments && <p className="text-sm">Tryck Läs in för att spara säkra projektträffar. Befintliga manuella fördelningar bevaras.</p>}
             {orders.map((order) => {
               const assignment = form.orderAssignments?.find((row) => row.orderNumber === order.orderNumber);
               const selected = assignment?.projectId || '';
@@ -190,11 +186,11 @@ function InvoiceEditor({ invoice }: { invoice: SupplierInvoice }) {
                   {(projects.data || []).map((project) => <option key={project.id} value={project.id}>{project.code} · {project.name}</option>)}
                   {selected && !(projects.data || []).some((project) => project.id === selected) && <option value={selected}>{invoice.allocations.find((row) => row.projectId === selected)?.project.name || selected}</option>}
                 </select></FormField>}
-                {form.orderAssignments && !selected && <p className="text-sm font-medium">Behöver kontrolleras · {order.customerReference === 'LAGER' ? 'Lager' : 'Inget projekt valt'}</p>}
+                {form.orderAssignments && !selected && <p className="text-sm font-medium">Separat utan projekt · {order.customerReference === 'LAGER' ? 'Lager' : 'Okänd projektreferens'}</p>}
               </div>;
             })}
             {editable && form.orderAssignments && <Button type="button" variant="secondary" onClick={() => { update('orderAssignments', null); focusOrders(); }}>Byt till manuell fördelning</Button>}
-            {form.orderAssignments && <p className="text-sm">Orderbeloppen summeras per projekt nedan. Dina projektval sparas med utkastet.</p>}
+            {form.orderAssignments && <p className="text-sm">Orderbeloppen summeras per projekt nedan. Ändrar du ett projektval behöver du spara utkastet.</p>}
           </div>}
           <fieldset disabled={!!form.orderAssignments} className="min-w-0">
           <div className="space-y-4">{form.allocations.map((row, index) => <div key={index} className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,15rem),1fr))] items-end gap-3 border-b border-graphite-200 pb-4">

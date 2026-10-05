@@ -2,8 +2,8 @@ import { createHash, randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { prisma } from './prisma.js';
 import { extractInvoicePdf, INVOICE_PARSER_VERSION, suggestInvoiceFields } from './invoicePdf.js';
-import { InvoiceDraft, InvoiceError, INVOICE_MAX_BYTES, invoiceIdentity, validateInvoiceAmounts, validateInvoiceConfirmation } from './supplierInvoiceRules.js';
-import { InvoiceOrder, OrderAssignment, validateOrderAssignments } from './invoiceOrders.js';
+import { InvoiceDraft, InvoiceError, INVOICE_MAX_BYTES, invoiceDraftSchema, invoiceIdentity, validateInvoiceAmounts, validateInvoiceConfirmation } from './supplierInvoiceRules.js';
+import { InvoiceOrder, OrderAssignment, matchInvoiceOrders, validateOrderAssignments } from './invoiceOrders.js';
 
 // Bytes are deliberately excluded from every ordinary invoice response.
 export const invoiceSelect = {
@@ -51,6 +51,47 @@ function duplicateError(error: unknown): never {
   throw error;
 }
 
+// Called inside the original's transaction: header, order choices, allocations
+// and audit either all persist or all roll back. Never overwrite a human choice.
+async function importOrders(tx: Tx, user: Actor, row: Record) {
+  const suggested = row.suggestions as ReturnType<typeof suggestInvoiceFields>['fields'];
+  if (!suggested?.orders?.length || row.allocations.length || orderData(row).orderAssignments) return;
+  const projects = await tx.project.findMany({ where: { companyId: user.companyId, active: true }, select: { id: true, code: true } });
+  const { orderAssignments, allocations } = matchInvoiceOrders(suggested.orders, projects);
+  const emptyAmounts = row.netOre == null && row.grossOre == null;
+  const parsed = invoiceDraftSchema.safeParse({
+    revision: row.revision, supplierName: row.supplierName || suggested.supplierName,
+    supplierOrgNumber: row.supplierOrgNumber || null, invoiceNumber: row.invoiceNumber || suggested.invoiceNumber,
+    issueDate: row.issueDate?.toISOString().slice(0, 10) || suggested.issueDate,
+    dueDate: row.dueDate?.toISOString().slice(0, 10) || suggested.dueDate,
+    documentType: emptyAmounts ? suggested.documentType : row.documentType,
+    currency: suggested.currency, note: row.note || null,
+    netOre: row.netOre ?? suggested.netOre, vatOre: row.vatOre ?? suggested.vatOre,
+    grossOre: row.grossOre ?? suggested.grossOre,
+    roundingOre: emptyAmounts ? suggested.roundingOre : row.roundingOre,
+    allocations, orderAssignments,
+  });
+  try {
+    if (!parsed.success) throw new InvoiceError('Osäkra fakturauppgifter.');
+    const draft = parsed.data;
+    validateInvoiceAmounts(draft);
+    validateOrderAssignments(suggested.orders, orderAssignments, allocations, draft.netOre);
+    if (draft.netOre == null || draft.vatOre == null || draft.grossOre == null || draft.netOre + draft.vatOre + draft.roundingOre !== draft.grossOre) throw new InvoiceError('Beloppen stämmer inte.');
+  } catch (error) {
+    if (!(error instanceof InvoiceError)) throw error;
+    await tx.supplierInvoice.updateMany({ where: { id: row.id, companyId: user.companyId }, data: {
+      parseWarnings: [...(Array.isArray(row.parseWarnings) ? row.parseWarnings : []), 'Projektfördelningen sparades inte automatiskt eftersom fakturauppgifterna behöver kontrolleras.'],
+    } });
+    return;
+  }
+  const { revision, allocations: ignoredAllocations, orderAssignments: ignoredAssignments, ...header } = parsed.data!;
+  await tx.supplierInvoice.updateMany({ where: { id: row.id, companyId: user.companyId }, data: {
+    ...header, ...invoiceIdentity(header.supplierName, header.supplierOrgNumber, header.invoiceNumber),
+    suggestions: { ...suggested, orderAssignments },
+  } });
+  if (allocations.length) await tx.supplierInvoiceAllocation.createMany({ data: allocations.map((allocation) => ({ ...allocation, invoiceId: row.id, companyId: user.companyId })) });
+}
+
 export function createInvoiceService(db: typeof prisma = prisma, extract = extractInvoicePdf) {
   return {
     async upload(user: Actor, bytes: Buffer, originalName: string) {
@@ -73,6 +114,7 @@ export function createInvoiceService(db: typeof prisma = prisma, extract = extra
             parseWarnings: warnings, parserVersion: INVOICE_PARSER_VERSION } });
           await tx.supplierInvoiceDocument.create({ data: { companyId: user.companyId, invoiceId: id, sha256, content: bytes,
             byteSize: bytes.length, originalName: originalName.split(/[\\/]/).pop()!.replace(/[\x00-\x1f\x7f]/g, '').slice(0, 200) || 'faktura.pdf' } });
+          await importOrders(tx, user, await read(tx, user.companyId, id));
           const row = await read(tx, user.companyId, id);
           await audit(tx, user, 'CREATE', id, null, row);
           return invoiceDto(row);
@@ -122,10 +164,11 @@ export function createInvoiceService(db: typeof prisma = prisma, extract = extra
       const parsed = suggestInvoiceFields((await extract(Buffer.from(document.content))).text);
       return db.$transaction(async (tx) => {
         await claim(tx, user, old, revision, { suggestions: parsed.fields, parseWarnings: parsed.warnings, parserVersion: INVOICE_PARSER_VERSION });
+        await importOrders(tx, user, await read(tx, user.companyId, id));
         const row = await read(tx, user.companyId, id);
         await audit(tx, user, 'REPARSE', id, old, row);
         return invoiceDto(row);
-      });
+      }).catch(duplicateError);
     },
     async transition(user: Actor, id: string, revision: number, action: 'confirm' | 'reopen' | 'void', reason?: string) {
       return db.$transaction(async (tx) => {

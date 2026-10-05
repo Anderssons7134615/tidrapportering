@@ -10,10 +10,15 @@ import { Prisma } from '@prisma/client';
 
 const draft = { revision: 1, supplierName: 'Testleverantör', supplierOrgNumber: '556000-0000', invoiceNumber: 'TEST-1', documentType: 'INVOICE', issueDate: '2026-10-02', dueDate: null, currency: 'SEK', netOre: 10000, vatOre: 2500, roundingOre: 0, grossOre: 12500, note: null, allocations: [{ projectId: 'pa', netOre: 6000, note: null }] };
 const pdf = Buffer.from('%PDF-1.4 TEST ONLY');
+const orderText = [
+  ['880001', '0042 TEST', '30,00'], ['880002', '0042', '20,00'],
+  ['880003', 'LAGER', '40,00'], ['880004', '', '10,00'],
+].map(([id, ref, total]) => `BEVEGO\nFaktura 990009\nFakt.datum 26-10-01 Ordernummer ${id}\nErt ordernummer\n${ref}\nGodsmärke\nOrdertotal.... ${total}`).join('\f') +
+  '\nSumma före moms\n100,00\nSumma moms\n25,00\nÖresutjämning\n0,00\nFakt.belopp\nSEK 125,00\nOrdernummer Er referens Ert ordernr. Order total\n880001 TEST 0042 30,00\n880002 TEST 0042 20,00\n880003 TEST LAGER 40,00\n880004 TEST 10,00';
 function multipartBody(files = 1) {
   return Buffer.from(Array.from({ length: files }, () => `--test-boundary\r\nContent-Disposition: form-data; name="file"; filename="test.pdf"\r\nContent-Type: application/pdf\r\n\r\n${pdf.toString()}\r\n`).join('') + '--test-boundary--\r\n');
 }
-async function setup({ companyId = 'a', failAudit = false, failParse = false } = {}) {
+async function setup({ companyId = 'a', failAudit = false, failParse = false, text = 'Bevego\nNetto 100,00 SEK', projectRows = [{ id: 'pa', companyId: 'a', code: '0042', active: true }] } = {}) {
   let records: any[] = [{ ...draft, id: 'ia', companyId, status: 'DRAFT', supplierKey: '5560000000', numberKey: 'TEST-1', createdAt: new Date(), updatedAt: new Date(), allocations: draft.allocations.map((row) => ({ ...row, companyId, invoiceId: 'ia', project: { name: 'Testprojekt', code: 'A' } })), document: { originalName: 'test.pdf', byteSize: pdf.length, sha256: 'old' }, suggestions: {}, parseWarnings: [], confirmedAt: null }];
   let documents: any[] = [{ invoiceId: 'ia', companyId, originalName: 'test.pdf', content: pdf, byteSize: pdf.length, sha256: 'old' }];
   let audits: any[] = [];
@@ -26,11 +31,11 @@ async function setup({ companyId = 'a', failAudit = false, failParse = false } =
       count: async () => records.length,
       create: async ({ data }: any) => { records.push({ ...data, status: 'DRAFT', documentType: 'INVOICE', revision: 1, allocations: [], netOre: null, document: null }); return data; },
       updateMany: async ({ where, data }: any) => {
-        const row = records.find((row) => scoped(row, where) && row.status === where.status && row.revision === where.revision);
+        const row = records.find((row) => scoped(row, where) && (!where.status || row.status === where.status) && (!where.revision || row.revision === where.revision));
         if (!row) return { count: 0 };
         const next = { ...row, ...data };
         if (next.supplierKey && next.numberKey && records.some((other) => other.id !== row.id && other.companyId === row.companyId && other.supplierKey === next.supplierKey && other.numberKey === next.numberKey && other.documentType === next.documentType)) throw new Prisma.PrismaClientKnownRequestError('Duplicate', { code: 'P2002', clientVersion: 'test' });
-        Object.assign(row, data, { revision: row.revision + data.revision.increment }); return { count: 1 };
+        Object.assign(row, data, { revision: row.revision + (data.revision?.increment || 0) }); return { count: 1 };
       },
     },
     supplierInvoiceDocument: {
@@ -43,13 +48,13 @@ async function setup({ companyId = 'a', failAudit = false, failParse = false } =
       aggregate: async (args: any) => { calls.push(args); return { _sum: { netOre: records.filter((row) => row.companyId === args.where.companyId && row.status === args.where.invoice.status).flatMap((row) => row.allocations).filter((row) => row.projectId === args.where.projectId).reduce((sum, row) => sum + row.netOre, 0) } }; },
     },
     project: {
-      findMany: async ({ where }: any) => where.companyId === 'a' ? where.id.in.filter((id: string) => id === 'pa').map((id: string) => ({ id, active: true })) : [],
+      findMany: async ({ where }: any) => (calls.push({ where, select: { id: true, code: true } }), projectRows.filter((row) => row.companyId === where.companyId && (!where.id || where.id.in.includes(row.id)) && (where.active === undefined || row.active === where.active))),
       findFirst: async ({ where }: any) => where.companyId === 'a' && where.id === 'pa' ? { id: 'pa' } : null,
     },
     auditLog: { create: async ({ data }: any) => { if (failAudit) throw new Error('Audit unavailable'); audits.push(data); return data; } },
     $transaction: async (fn: any) => { const before = structuredClone({ records, documents, audits }); try { return await fn(db); } catch (error) { records = before.records; documents = before.documents; audits = before.audits; throw error; } },
   };
-  const service = createInvoiceService(db, async () => { if (failParse) throw new Error('parser'); return { text: 'Bevego\nNetto 100,00 SEK', pages: 1 }; });
+  const service = createInvoiceService(db, async () => { if (failParse) throw new Error('parser'); return { text, pages: 1 }; });
   const app = Fastify();
   await app.register(multipart);
   app.decorate('authenticate', async (request: any) => { request.user = { id: 'ua', companyId: 'a', role: request.headers['x-test-role'] || 'ADMIN' }; });
@@ -57,6 +62,108 @@ async function setup({ companyId = 'a', failAudit = false, failParse = false } =
   await app.register(createSupplierInvoiceRoutes(db, service), { prefix: '/api/supplier-invoices' });
   return { app, records: () => records, documents: () => documents, audits: () => audits, calls };
 }
+test('inläsning sparar säkra projektträffar och separata order atomärt utan dubbletter', async () => {
+  const ctx = await setup({ text: orderText, projectRows: [
+    { id: 'pa', code: '0042', companyId: 'a', active: true },
+    { id: 'foreign', code: '0042', companyId: 'b', active: true },
+    { id: 'archived', code: '0042', companyId: 'a', active: false },
+  ] });
+  try {
+    const request = { method: 'POST' as const, url: '/api/supplier-invoices', payload: multipartBody(), headers: { 'content-type': 'multipart/form-data; boundary=test-boundary' } };
+    const response = await ctx.app.inject(request);
+    assert.equal(response.statusCode, 201, response.body);
+    const row = response.json().invoice;
+    assert.equal(row.status, 'DRAFT');
+    assert.equal(row.netOre, 10000);
+    assert.equal(row.invoiceNumber, '990009');
+    assert.equal(row.issueDate, '2026-10-01T00:00:00.000Z');
+    assert.equal(row.unallocatedOre, 5000);
+    assert.deepEqual(row.suggestions.orderAssignments.map((part: any) => part.projectId), ['pa', 'pa', null, null]);
+    assert.deepEqual(row.allocations.map(({ projectId, netOre }: any) => ({ projectId, netOre })), [{ projectId: 'pa', netOre: 5000 }]);
+    assert.equal(JSON.parse(ctx.audits()[0].newValue).allocations[0].netOre, 5000);
+    const repeat = await ctx.app.inject(request);
+    assert.equal(repeat.json().duplicate, true);
+    assert.deepEqual(repeat.json().invoice, row);
+    assert.equal(ctx.audits().length, 1);
+  } finally { await ctx.app.close(); }
+});
+
+test('automatisk inläsning gissar inte vid tvetydiga, arkiverade eller okända projektnummer', async () => {
+  for (const projectRows of [[], [
+    { id: 'pa', code: '0042', companyId: 'a', active: true },
+    { id: 'pa2', code: '0042', companyId: 'a', active: true },
+  ], [{ id: 'pa', code: '0042', companyId: 'a', active: false }], [{ id: 'pa', code: '42', companyId: 'a', active: true }]]) {
+    const ctx = await setup({ text: orderText, projectRows });
+    try {
+      const response = await ctx.app.inject({ method: 'POST', url: '/api/supplier-invoices', payload: multipartBody(), headers: { 'content-type': 'multipart/form-data; boundary=test-boundary' } });
+      assert.equal(response.statusCode, 201, response.body);
+      assert.deepEqual(response.json().invoice.allocations, []);
+      assert.ok(response.json().invoice.suggestions.orderAssignments.every((row: any) => row.projectId === null));
+    } finally { await ctx.app.close(); }
+  }
+});
+
+test('Läs in sparar tomt utkast och kredit men skyddar manuella val, konflikter och behörighet', async () => {
+  for (const credit of [false, true]) {
+    const ctx = await setup({ text: credit ? orderText.replaceAll('Faktura ', 'Kreditfaktura ') : orderText });
+    try {
+      Object.assign(ctx.records()[0], { allocations: [], netOre: null, grossOre: null, vatOre: null, issueDate: null, invoiceNumber: null });
+      const request = { method: 'POST' as const, url: '/api/supplier-invoices/ia/reparse', payload: { revision: 1 } };
+      assert.equal((await ctx.app.inject({ ...request, headers: { 'x-test-role': 'EMPLOYEE' } })).statusCode, 403);
+      const response = await ctx.app.inject(request);
+      assert.equal(response.statusCode, 200, response.body);
+      assert.equal(response.json().allocations[0].netOre, credit ? -5000 : 5000);
+      assert.equal(response.json().revision, 2);
+      assert.equal((await ctx.app.inject(request)).statusCode, 409);
+      assert.equal((await ctx.app.inject({ ...request, payload: { revision: 2 } })).statusCode, 400);
+      assert.equal(ctx.audits().length, 1);
+    } finally { await ctx.app.close(); }
+  }
+  const ctx = await setup({ text: orderText });
+  try {
+    const response = await ctx.app.inject({ method: 'POST', url: '/api/supplier-invoices/ia/reparse', payload: { revision: 1 } });
+    assert.equal(response.statusCode, 200, response.body);
+    assert.equal(response.json().allocations[0].netOre, 6000);
+    assert.equal(response.json().suggestions.orderAssignments, undefined);
+  } finally { await ctx.app.close(); }
+});
+
+test('automatisk fördelning rullas tillbaka vid loggfel och lämnar beloppskonflikt ofördelad', async () => {
+  const failed = await setup({ text: orderText, failAudit: true });
+  try {
+    const before = structuredClone(failed.records());
+    const response = await failed.app.inject({ method: 'POST', url: '/api/supplier-invoices', payload: multipartBody(), headers: { 'content-type': 'multipart/form-data; boundary=test-boundary' } });
+    assert.equal(response.statusCode, 500);
+    assert.deepEqual(failed.records(), before);
+    assert.equal(failed.documents().length, 1);
+  } finally { await failed.app.close(); }
+  const ctx = await setup({ text: orderText });
+  try {
+    Object.assign(ctx.records()[0], { allocations: [], netOre: 9900, issueDate: null });
+    const response = await ctx.app.inject({ method: 'POST', url: '/api/supplier-invoices/ia/reparse', payload: { revision: 1 } });
+    assert.equal(response.statusCode, 200, response.body);
+    assert.deepEqual(response.json().allocations, []);
+    assert.equal(response.json().netOre, 9900);
+    assert.match(response.json().parseWarnings.join(' '), /sparades inte automatiskt/);
+  } finally { await ctx.app.close(); }
+});
+
+test('Läs in rapporterar dubblett och rullar tillbaka automatisk fördelning', async () => {
+  const ctx = await setup({ text: orderText });
+  try {
+    const existing = structuredClone(ctx.records()[0]);
+    Object.assign(existing, { id: 'duplicate', invoiceNumber: '990009', numberKey: '990009' });
+    ctx.records().push(existing);
+    Object.assign(ctx.records()[0], { allocations: [], invoiceNumber: null, netOre: null, vatOre: null, grossOre: null, issueDate: null });
+    const before = structuredClone(ctx.records());
+    const response = await ctx.app.inject({ method: 'POST', url: '/api/supplier-invoices/ia/reparse', payload: { revision: 1 } });
+    assert.equal(response.statusCode, 409, response.body);
+    assert.match(response.body, /finns redan/);
+    assert.deepEqual(ctx.records(), before);
+    assert.equal(ctx.audits().length, 0);
+  } finally { await ctx.app.close(); }
+});
+
 test('fakturaroller avvisas före läsning och skrivning', async () => {
   const ctx = await setup();
   try {
