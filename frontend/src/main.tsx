@@ -9,6 +9,7 @@ import '@fontsource/ibm-plex-mono/latin-400.css';
 import '@fontsource/ibm-plex-mono/latin-600.css';
 import App from './App';
 import AppErrorBoundary from './components/AppErrorBoundary';
+import { appRoutes } from './appRoutes';
 import './index.css';
 
 const APP_UPDATE_EVENT = 'tidapp:update-ready';
@@ -76,7 +77,7 @@ const queryClient = new QueryClient({
 
 // Keep the existing route tree; the data router supplies reliable navigation
 // blocking for unsaved invoice forms, including the browser's Back button.
-const router = createBrowserRouter([{ path: '*', element: <App /> }]);
+const router = createBrowserRouter(appRoutes(<App />));
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
