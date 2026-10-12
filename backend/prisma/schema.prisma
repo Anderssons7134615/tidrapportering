@@ -58,6 +58,8 @@ model Company {
   projectUpdates     ProjectUpdate[]
   projectTasks       ProjectTask[]
   supplierInvoices   SupplierInvoice[]
+  inventoryItems     InventoryItem[]
+  inventoryMovements InventoryMovement[]
 }
 
 model User {
@@ -85,6 +87,7 @@ model User {
   createdProjectTasks  ProjectTask[] @relation("ProjectTaskCreator")
   createdSupplierInvoices SupplierInvoice[] @relation("SupplierInvoiceCreator")
   confirmedSupplierInvoices SupplierInvoice[] @relation("SupplierInvoiceReviewer")
+  inventoryMovements InventoryMovement[]
 
   @@index([companyId, active])
   @@unique([id, companyId])
@@ -219,6 +222,7 @@ model Project {
   integrationMaterialOperations IntegrationMaterialOperation[]
   integrationProjectCreateOperation IntegrationProjectCreateOperation?
   supplierInvoiceAllocations SupplierInvoiceAllocation[]
+  inventoryMovements InventoryMovement[]
 
   @@unique([companyId, code])
   @@unique([id, companyId])
@@ -370,7 +374,9 @@ model MaterialArticle {
   updatedAt             DateTime  @updatedAt
 
   projectMaterials ProjectMaterial[]
+  inventoryItem    InventoryItem?
 
+  @@unique([id, companyId])
   @@index([companyId, active])
   @@index([companyId, category, active])
   @@index([companyId, articleNumber])
@@ -400,11 +406,59 @@ model ProjectMaterial {
   integrationOperationId String?
   integrationOperation IntegrationMaterialOperation? @relation(fields: [integrationOperationId], references: [id], onDelete: SetNull)
   integrationRowIndex Int?
+  inventoryMovementId String? @unique
+  inventoryMovement InventoryMovement? @relation(fields: [inventoryMovementId], references: [id], onDelete: Restrict)
 
   @@index([projectId, date])
   @@index([createdByUserId])
   @@index([integrationOperationId])
   @@unique([integrationOperationId, integrationRowIndex])
+}
+
+// The local warehouse starts empty. Quantities are derived from the ledger.
+model InventoryItem {
+  id          String @id @default(uuid())
+  companyId   String
+  company     Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  articleId   String @unique
+  article     MaterialArticle @relation(fields: [articleId, companyId], references: [id, companyId], onDelete: Restrict)
+  unit        String
+  shelf       String @default("")
+  revision    Int @default(1)
+  createdAt   DateTime @default(now())
+  movements   InventoryMovement[]
+
+  @@unique([articleId, companyId])
+  @@unique([id, companyId])
+}
+
+model InventoryMovement {
+  id                String @id @default(uuid())
+  companyId         String
+  company           Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  itemId            String
+  item              InventoryItem @relation(fields: [itemId, companyId], references: [id, companyId], onDelete: Restrict)
+  kind              String
+  deltaMilli        Int
+  balanceAfterMilli Int
+  articleName       String
+  unit              String
+  note              String
+  createdAt         DateTime @default(now())
+  createdByUserId    String
+  createdByUser      User @relation(fields: [createdByUserId, companyId], references: [id, companyId], onDelete: Restrict)
+  projectId         String?
+  project           Project? @relation(fields: [projectId, companyId], references: [id, companyId], onDelete: Restrict)
+  sourceIssueId     String?
+  sourceIssue       InventoryMovement? @relation("InventoryReturn", fields: [sourceIssueId, companyId, itemId], references: [id, companyId, itemId], onDelete: Restrict)
+  returns           InventoryMovement[] @relation("InventoryReturn")
+  projectMaterial   ProjectMaterial?
+  requestKey        String
+  requestHash       String
+
+  @@unique([companyId, requestKey])
+  @@unique([id, companyId, itemId])
+  @@index([companyId, itemId, createdAt])
 }
 
 model Activity {

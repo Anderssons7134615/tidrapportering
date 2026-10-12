@@ -193,6 +193,7 @@ export interface MaterialArticle {
 }
 
 export interface ProjectMaterial {
+  inventoryMovementId?: string | null;
   id: string;
   projectId: string;
   articleId: string;

@@ -36,6 +36,7 @@ test('employees can only modify their own uninvoiced material on active projects
   assert.equal(canModifyProjectMaterial({ ...ownRow, currentUserId: undefined, createdByUserId: undefined }), false);
   assert.equal(canModifyProjectMaterial({ ...ownRow, invoiceStatus: 'INVOICED' }), false);
   assert.equal(canModifyProjectMaterial({ ...ownRow, projectActive: false }), false);
+  assert.equal(canModifyProjectMaterial({ ...ownRow, isManager: true, inventoryMovementId: 'stock-issue' }), false);
   assert.equal(canModifyProjectMaterial({ ...ownRow, isManager: true, createdByUserId: 'u2' }), true);
 });
 

@@ -20,6 +20,7 @@ const PurchaseDetail = lazy(() => import('./pages/Purchases').then((module) => (
 const ProjectDetail = lazy(() => import('./pages/ProjectDetail'));
 const Activities = lazy(() => import('./pages/Activities'));
 const Materials = lazy(() => import('./pages/Materials'));
+const Inventory = lazy(() => import('./pages/Inventory'));
 const Users = lazy(() => import('./pages/Users'));
 const Reports = lazy(() => import('./pages/Reports'));
 const Settings = lazy(() => import('./pages/Settings'));
@@ -106,6 +107,7 @@ export default function App() {
         <Route path="time-overview" element={<WorkRoute><PageLoader><Dashboard /></PageLoader></WorkRoute>} />
         <Route path="overview/details/:metric" element={<WorkRoute><PageLoader><DashboardDetail /></PageLoader></WorkRoute>} />
         <Route path="time-entry" element={<WorkRoute><PageLoader><TimeEntry /></PageLoader></WorkRoute>} />
+        <Route path="inventory" element={<WorkRoute><PageLoader><Inventory /></PageLoader></WorkRoute>} />
         <Route path="week" element={<WorkRoute><PageLoader><WeekView /></PageLoader></WorkRoute>} />
         <Route
           path="team-week"

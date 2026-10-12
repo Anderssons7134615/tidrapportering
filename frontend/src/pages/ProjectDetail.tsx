@@ -1094,6 +1094,7 @@ function MaterialsTable({
               currentUserId,
               createdByUserId: item.createdByUserId,
               invoiceStatus: item.invoiceStatus,
+              inventoryMovementId: item.inventoryMovementId,
             });
             return (
             <tr key={item.id} className="border-b border-slate-100">
@@ -1101,6 +1102,7 @@ function MaterialsTable({
               <td className="px-3 py-2">
                 <div className="font-semibold text-slate-900">{item.articleName}</div>
                 <div className="text-xs text-slate-500">{item.articleNumber || '-'}</div>
+                {item.inventoryMovementId && <Link to="/inventory" className="text-link inline-flex min-h-11 items-center">Lageruttag – retur görs i Lager</Link>}
                 {item.invoiceStatus === 'INVOICED' && (
                   <div className="mt-1">
                     <StatusBadge label={item.invoiceReference ? `Fakturerad · ${item.invoiceReference}` : 'Fakturerad'} tone="green" />

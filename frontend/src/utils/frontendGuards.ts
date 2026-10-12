@@ -36,13 +36,16 @@ export function canModifyProjectMaterial({
   currentUserId,
   createdByUserId,
   invoiceStatus,
+  inventoryMovementId,
 }: {
   projectActive: boolean;
   isManager: boolean;
   currentUserId?: string;
   createdByUserId?: string | null;
   invoiceStatus?: string;
+  inventoryMovementId?: string | null;
 }) {
+  if (inventoryMovementId) return false;
   if (!projectActive || invoiceStatus === 'INVOICED') return false;
   return isManager || Boolean(currentUserId && createdByUserId === currentUserId);
 }

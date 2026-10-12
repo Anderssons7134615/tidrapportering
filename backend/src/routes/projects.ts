@@ -1337,6 +1337,9 @@ return async (fastify) => {
         if (!material || material.projectId !== id) {
           throw Object.assign(new Error('Materialraden hittades inte'), { statusCode: 404 });
         }
+        if (material.inventoryMovementId && Object.keys(body).some((key) => !['invoiceStatus', 'invoiceReference'].includes(key))) {
+          throw Object.assign(new Error('Lageruttag ändras genom en retur i Lager. Endast fakturastatus kan ändras här.'), { statusCode: 409 });
+        }
         const materialError = getMaterialMutationError(true, material.invoiceStatus);
         if (materialError) {
           throw Object.assign(new Error(materialError.message), { statusCode: 409, code: materialError.code });
@@ -1472,6 +1475,9 @@ return async (fastify) => {
       const current = await tx.projectMaterial.findUnique({ where: { id: materialId } });
       if (!current || current.projectId !== id) {
         throw Object.assign(new Error('Materialraden hittades inte'), { statusCode: 404 });
+      }
+      if (current.inventoryMovementId) {
+        throw Object.assign(new Error('Lageruttag får inte tas bort. Registrera en retur i Lager.'), { statusCode: 409 });
       }
       const materialError = getMaterialMutationError(true, current.invoiceStatus);
       if (materialError) {

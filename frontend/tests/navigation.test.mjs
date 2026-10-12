@@ -41,9 +41,9 @@ function setup({ role = 'ADMIN', path = '/projects', pending = [] } = {}) {
 
 test('navigation keeps the exact role boundaries and manager purchases on mobile', () => {
   const expectations = {
-    ADMIN: ['/projects', '/purchases', '/project-economy', '/time-overview', '/time-entry', '/week', '/team-week', '/approval', '/reports', '/customers', '/materials', '/activities', '/users', '/settings'],
-    SUPERVISOR: ['/projects', '/purchases', '/project-economy', '/time-overview', '/time-entry', '/week', '/team-week', '/approval', '/reports', '/customers', '/materials', '/settings'],
-    EMPLOYEE: ['/projects', '/', '/time-entry', '/week', '/settings'],
+    ADMIN: ['/projects', '/inventory', '/purchases', '/project-economy', '/time-overview', '/time-entry', '/week', '/team-week', '/approval', '/reports', '/customers', '/materials', '/activities', '/users', '/settings'],
+    SUPERVISOR: ['/projects', '/inventory', '/purchases', '/project-economy', '/time-overview', '/time-entry', '/week', '/team-week', '/approval', '/reports', '/customers', '/materials', '/settings'],
+    EMPLOYEE: ['/projects', '/inventory', '/', '/time-entry', '/week', '/settings'],
     ACCOUNTANT: ['/project-economy', '/reports', '/settings'],
   };
   for (const [role, expected] of Object.entries(expectations)) {

@@ -1,4 +1,5 @@
 import { useAuthStore } from '../stores/authStore';
+import type { InventoryItem, InventoryMovement, InventoryMovementInput } from '../types/inventory';
 import type { InvoiceDraft, InvoiceList, InvoiceStatus, SupplierInvoice } from '../types/supplierInvoice';
 import type {
   User,
@@ -33,6 +34,14 @@ import type {
 } from '../types';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
+
+export const inventoryApi = {
+  list: () => fetchApi<InventoryItem[]>('/inventory/items'),
+  history: (id: string, page = 1) => fetchApi<{ items: InventoryMovement[]; page: number; total: number }>(`/inventory/items/${encodeURIComponent(id)}/history?page=${page}`),
+  addItem: (articleId: string, shelf: string) => fetchApi<{ id: string }>('/inventory/items', { method: 'POST', body: JSON.stringify({ articleId, shelf }) }),
+  setShelf: (id: string, revision: number, shelf: string) => fetchApi(`/inventory/items/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ revision, shelf }) }),
+  move: (id: string, input: InventoryMovementInput) => fetchApi(`/inventory/items/${encodeURIComponent(id)}/movements`, { method: 'POST', body: JSON.stringify(input) }),
+};
 
 export const supplierInvoicesApi = {
   reparse: (id: string, revision: number) => fetchApi<SupplierInvoice>(`/supplier-invoices/${encodeURIComponent(id)}/reparse`, { method: 'POST', body: JSON.stringify({ revision }) }),

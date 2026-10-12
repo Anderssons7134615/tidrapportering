@@ -6,6 +6,7 @@ export type NavigationItem = { to: string; icon: LucideIcon; label: string; role
 
 const items: NavigationItem[] = [
   { to: '/projects', icon: FolderKanban, label: 'Projekt', roles: ['ADMIN', 'SUPERVISOR', 'EMPLOYEE'], group: 'projects' },
+  { to: '/inventory', icon: Package, label: 'Lager', roles: ['ADMIN', 'SUPERVISOR', 'EMPLOYEE'], group: 'projects' },
   { to: '/purchases', icon: Package, label: 'Inköp', roles: ['ADMIN', 'SUPERVISOR'], group: 'projects' },
   { to: '/project-economy', icon: FileBarChart, label: 'Ekonomi', roles: ['ADMIN', 'SUPERVISOR', 'ACCOUNTANT'], group: 'projects' },
   { to: '/', icon: Home, label: 'Översikt', roles: ['EMPLOYEE'], group: 'time' },
