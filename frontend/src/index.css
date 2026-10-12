@@ -3,24 +3,24 @@
 @tailwind utilities;
 
 @font-face {
-  font-family: 'Manrope Variable';
+  font-family: 'Geist';
   font-style: normal;
   font-display: swap;
-  font-weight: 200 800;
-  src: url('@fontsource-variable/manrope/files/manrope-latin-wght-normal.woff2') format('woff2');
+  font-weight: 100 900;
+  src: url('./assets/fonts/Geist.ttf') format('truetype');
 }
 
 @layer base {
   :root {
     color-scheme: light;
 
-    --color-bg: #f4f6f8;
-    --color-bg-soft: #edf1f5;
+    --color-bg: #f5f6f8;
+    --color-bg-soft: #eef1f5;
     --color-surface: #ffffff;
-    --color-text: #253244;
-    --color-text-muted: #596779;
-    --color-border: #dce3eb;
-    --color-focus: #1b7169;
+    --color-text: #26303e;
+    --color-text-muted: #657080;
+    --color-border: #dfe4eb;
+    --color-focus: #3159b8;
 
     --radius-sm: 0.5rem;
     --radius-md: 0.75rem;
@@ -35,8 +35,9 @@
   }
 
   body {
-    @apply bg-[#f4f6f8] text-graphite-900 antialiased;
-    font-feature-settings: "cv02", "cv05", "ss03";
+    @apply text-sm text-graphite-900 antialiased;
+    background: var(--color-bg);
+    font-feature-settings: "ss01";
   }
 
   :focus-visible {
@@ -46,14 +47,14 @@
 
   input[type='checkbox'], input[type='radio'] { accent-color: var(--color-focus); }
   input, textarea { caret-color: var(--color-focus); }
-  html { scrollbar-color: #bbc6d2 #f4f6f8; }
+  html { scrollbar-color: #bbc6d2 #f5f6f8; }
 
   #root {
     min-height: 100dvh;
   }
 
   ::selection {
-    background: rgba(27, 113, 105, 0.2);
+    background: #dce7fb;
   }
 
   input,
@@ -73,15 +74,17 @@
 
 @layer components {
   .btn {
-    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-[13px] font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600 disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .btn-primary {
     @apply btn border border-primary-700 bg-primary-700 text-white hover:border-primary-800 hover:bg-primary-800;
+    box-shadow: inset 0 1px 0 #ffffff26, 0 1px 2px #20396720;
   }
 
   .btn-secondary {
-    @apply btn border border-graphite-300 bg-white text-graphite-800 hover:bg-graphite-50 hover:text-graphite-950;
+    @apply btn border border-graphite-200 bg-white text-graphite-800 hover:border-graphite-300 hover:bg-graphite-50 hover:text-graphite-950;
+    box-shadow: 0 1px 2px #20293808;
   }
 
   .btn-danger {
@@ -111,11 +114,11 @@
   }
 
   .page-title {
-    @apply text-2xl font-bold leading-tight tracking-tight text-graphite-950 sm:text-[1.75rem];
+    @apply text-[21px] font-semibold leading-tight tracking-[-0.035em] text-graphite-950 sm:text-[23px];
   }
 
   .badge {
-    @apply inline-flex items-center rounded-md border px-2.5 py-1 text-xs font-bold;
+    @apply inline-flex items-center rounded-md border px-2 py-1 text-xs font-medium;
   }
 
   .badge-blue {
@@ -139,7 +142,7 @@
   }
 
   .section-title {
-    @apply text-base font-bold tracking-[-0.015em] text-graphite-950;
+    @apply text-sm font-semibold tracking-[-0.015em] text-graphite-950;
   }
 
   .surface-muted {
@@ -195,7 +198,7 @@
   }
 
   .app-header {
-    @apply pb-1;
+    @apply border-b border-graphite-200 pb-5;
   }
 
   .app-eyebrow {
@@ -203,7 +206,7 @@
   }
 
   .app-description {
-    @apply mt-2 max-w-3xl text-sm leading-6 text-graphite-600;
+    @apply mt-1.5 max-w-3xl text-[13px] leading-5 text-graphite-500;
   }
 
   .work-panel {
@@ -239,7 +242,7 @@
   }
 
   .review-summary {
-    @apply rounded-xl border border-primary-200/80 bg-primary-50/65 px-4 py-4 sm:px-5;
+    @apply rounded-lg border border-graphite-200 bg-graphite-50 px-4 py-3 sm:px-5;
   }
 
   .kpi-summary {
@@ -247,7 +250,7 @@
   }
 
   .empty-state {
-    @apply rounded-xl border border-dashed border-graphite-300 bg-white px-5 py-10 text-center;
+    @apply flex flex-col items-center rounded-xl border border-dashed border-graphite-200 bg-graphite-50/50 px-5 py-10 text-center;
   }
 
   .material-list-footer {
@@ -307,7 +310,7 @@
   }
 
   .app-update-dismiss {
-    @apply absolute right-1 top-1 inline-flex min-h-10 min-w-10 items-center justify-center rounded-md text-white/70 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300;
+    @apply absolute right-1 top-1 inline-flex min-h-11 min-w-11 items-center justify-center rounded-md text-white/70 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300;
   }
 
   .app-update-action {
@@ -329,10 +332,11 @@
 
   .dialog-surface {
     @apply w-[min(32rem,calc(100%-2rem))] rounded-2xl border border-graphite-200 bg-white p-0 text-graphite-900 shadow-premium;
+    max-height: calc(100dvh - 2rem);
   }
 
   .dialog-surface::backdrop {
-    background: rgba(11, 15, 14, 0.42);
+    background: rgba(32, 41, 56, 0.28);
   }
 
   .dialog-header {
@@ -352,11 +356,17 @@
   }
 
   .app-sidebar {
-    @apply border-r border-graphite-200 bg-white text-graphite-800;
+    @apply bg-[#f5f6f8] text-graphite-800;
+  }
+
+  .workspace-shell {
+    @apply min-w-0 flex-1 bg-white lg:my-3 lg:mr-3 lg:rounded-2xl lg:border lg:border-graphite-200;
+    min-height: calc(100dvh - 1.5rem);
+    box-shadow: 0 2px 8px #20293804;
   }
 
   .app-main {
-    @apply min-w-0 w-full px-4 pb-32 pt-6 sm:px-6 sm:pt-8 lg:px-8 lg:pb-12 xl:px-10;
+    @apply min-w-0 w-full px-4 pb-32 pt-5 sm:px-6 sm:pt-6 lg:px-7 lg:pb-10 xl:px-8;
     scroll-margin-top: 5rem;
   }
 
@@ -370,23 +380,55 @@
   }
 
   .desktop-header {
-    @apply sticky top-0 z-30 hidden min-h-[4.5rem] items-center justify-between gap-4 border-b border-graphite-200 bg-white px-8 py-3 lg:flex xl:px-10;
+    @apply sticky top-0 z-30 hidden min-h-14 items-center justify-between gap-4 border-b border-graphite-200 bg-white px-7 py-2 lg:flex lg:rounded-t-2xl xl:px-8;
   }
 
   .sidebar-identity {
-    @apply flex min-h-[4.5rem] items-center gap-3 border-b border-graphite-200 px-5 py-5;
+    @apply mx-3 rounded-lg border border-graphite-200 bg-white px-3 py-2.5;
   }
 
   .brand-mark {
-    @apply flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-primary-200 bg-primary-50 text-primary-800;
+    @apply inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] border border-primary-800 bg-primary-700 text-white;
+    box-shadow: inset 0 1px 0 #ffffff36, 0 2px 3px #20396714;
+  }
+
+  .brand-mark svg { width: 24px; height: 24px; }
+
+  .brand-wordmark {
+    @apply text-[21px] font-semibold tracking-[-0.055em] text-graphite-950;
+  }
+
+  .identity-mark {
+    @apply inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] border text-[11px] font-semibold tracking-tight;
+  }
+
+  .identity-person { @apply rounded-full; }
+  .identity-tone-0 { color: #416087; background: #edf3fa; border-color: #dbe5f1; }
+  .identity-tone-1 { color: #655982; background: #f1eff7; border-color: #e5e0ef; }
+  .identity-tone-2 { color: #446b62; background: #edf5f1; border-color: #dceae4; }
+  .identity-tone-3 { color: #876747; background: #f8f3eb; border-color: #ece2d4; }
+  .identity-tone-4 { color: #805c67; background: #f7eff2; border-color: #ebdee3; }
+
+  .status-badge {
+    @apply inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border px-2 py-1 text-[11px] font-medium;
+  }
+
+  .status-dot { @apply h-1.5 w-1.5 shrink-0 rounded-full bg-current; }
+
+  .side-nav-link > svg { @apply shrink-0; }
+
+  .side-nav-active::after {
+    content: '';
+    @apply ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-primary-700;
   }
 
   .side-nav-link {
-    @apply flex min-h-11 items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-graphite-600 transition-colors hover:bg-graphite-50 hover:text-graphite-950;
+    @apply flex min-h-11 items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] font-medium text-graphite-600 transition-colors hover:bg-white hover:text-graphite-950;
   }
 
   .side-nav-active {
     @apply bg-primary-50 font-semibold text-primary-800 hover:bg-primary-50 hover:text-primary-800;
+    box-shadow: inset 0 0 0 1px #dce6f8;
   }
 
   .mobile-nav-items {
@@ -398,8 +440,8 @@
   }
 
   .mobile-nav-link {
-    @apply flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 rounded-lg px-0.5 py-2 text-[0.6875rem] font-medium text-graphite-600 transition-colors hover:bg-graphite-50;
-    overflow-wrap: anywhere;
+    @apply flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 rounded-lg px-0 py-2 text-[0.6875rem] font-medium text-graphite-600 transition-colors hover:bg-graphite-50;
+    overflow-wrap: normal;
   }
 
   .mobile-nav-active {
@@ -415,7 +457,44 @@
   }
 
   .project-directory-row {
-    @apply flex min-h-16 items-center justify-between gap-3 border-b border-graphite-200 px-4 py-3 text-sm last:border-b-0 hover:bg-graphite-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary-600 sm:px-5;
+    @apply flex min-h-[76px] items-center gap-3 border-b border-graphite-200 px-4 py-3 text-sm last:border-b-0 hover:bg-graphite-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary-600 sm:px-5;
+  }
+
+  .project-directory-row > svg:last-child { @apply ml-auto; }
+
+  .project-directory-row > span:not(.identity-mark) { @apply flex-1; }
+
+  .project-directory-row:hover .identity-mark {
+    border-color: #b8c2d0;
+  }
+
+  .task-section.team-week-section { @apply border-0 p-0 sm:p-0; }
+  .task-section.time-entry-section { @apply rounded-none border-0 p-0 sm:p-0; }
+  .team-week-list { --week-days: 5; @apply overflow-hidden rounded-xl border border-graphite-200; }
+  .team-week-seven { --week-days: 7; }
+  .team-week-person { @apply border-b border-graphite-200 bg-white last:border-b-0; }
+  .team-week-person-open { @apply bg-primary-50/40; }
+  .team-week-columns { @apply hidden; }
+  .team-week-row { @apply grid grid-cols-[minmax(0,1fr)_auto_44px] items-center gap-x-2 gap-y-2 px-3 py-3; }
+  .team-week-name { @apply flex min-h-11 min-w-0 items-center gap-2.5 text-left; }
+  .team-week-total { @apply text-right; grid-column: 2; grid-row: 1; }
+  .team-week-expand { grid-column: 3; grid-row: 1; }
+  .team-week-days { display: grid; grid-template-columns: repeat(var(--week-days), minmax(0, 1fr)); }
+  .team-week-row > .team-week-days { grid-column: 1 / -1; grid-row: 2; grid-template-columns: repeat(var(--week-days), minmax(44px, 1fr)); overflow-x: auto; }
+  .team-week-day { @apply flex min-h-14 min-w-0 flex-col items-center justify-center gap-0.5 rounded-md border border-transparent py-1 hover:bg-primary-50; }
+  .team-week-day-label { @apply text-[11px] text-graphite-500; }
+  .team-week-day-selected { @apply border-primary-300 bg-primary-50; box-shadow: inset 0 0 0 1px #ffffff; }
+
+  @media (min-width: 1200px) {
+    .team-week-columns, .team-week-row { display: grid; grid-template-columns: minmax(185px, 1fr) minmax(0, 1.8fr) 98px 44px; }
+    .team-week-columns { @apply gap-x-2 border-b border-graphite-200 bg-graphite-50/70 px-3 py-3 text-[11px] font-medium text-graphite-500; }
+    .team-week-columns > .team-week-days { @apply text-center; }
+    .team-week-row { @apply min-h-[68px] py-2; }
+    .team-week-row > .team-week-days { grid-column: 2; grid-row: 1; }
+    .team-week-total { grid-column: 3; }
+    .team-week-expand { grid-column: 4; }
+    .team-week-day { @apply min-h-11; }
+    .team-week-day-label { @apply sr-only; }
   }
 
   .project-row {
@@ -454,8 +533,7 @@
   }
 
   .login-brand-panel {
-    @apply relative flex flex-col justify-between overflow-hidden bg-graphite-950 px-6 py-8 text-white sm:px-10 sm:py-10 lg:px-14 lg:py-14;
-    background: #174a47;
+    @apply relative flex flex-col justify-between overflow-hidden bg-primary-50 px-6 py-8 text-graphite-950 sm:px-10 sm:py-10 lg:px-14 lg:py-14;
   }
 
   .login-brand-panel::after {
@@ -468,6 +546,7 @@
 
   .login-form-surface {
     @apply w-full rounded-xl border border-graphite-200 bg-white p-6 sm:p-8;
+    box-shadow: 0 4px 24px #20293806;
   }
 
   .choice-tile {
@@ -484,7 +563,7 @@
 
   @media (max-width: 767px) {
     .btn {
-      @apply min-h-[48px] px-4 py-3 text-base;
+      @apply min-h-[48px] px-4 py-3 text-sm;
     }
 
     .input {
@@ -513,10 +592,17 @@
 
 }
 
+@media (prefers-reduced-motion: no-preference) and (hover: hover) {
+  .btn:active:not(:disabled), .choice-tile:active:not(:disabled) { transform: translateY(1px); }
+  .dialog-surface[open] { animation: dialog-enter 180ms ease-out; }
+  .team-week-detail { animation: detail-enter 160ms ease-out; }
+}
+
+@keyframes dialog-enter { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes detail-enter { from { opacity: 0; } to { opacity: 1; } }
+
 @media (prefers-reduced-motion: reduce) {
-  .animate-spin {
-    animation: none !important;
-  }
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
 }
 
 @supports (padding-top: env(safe-area-inset-top)) {

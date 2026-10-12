@@ -1,17 +1,17 @@
 import { useEffect, useId, useLayoutEffect, useRef, type HTMLAttributes, type KeyboardEvent, type ReactNode } from 'react';
-import { AlertCircle, Loader2, X } from 'lucide-react';
+import { AlertCircle, CheckCircle2, CircleDashed, Clock3, Loader2, X } from 'lucide-react';
 
 type Tone = 'blue' | 'green' | 'yellow' | 'red' | 'gray' | 'slate' | 'orange' | 'dark';
 
 const toneClasses: Record<Tone, string> = {
-  blue: 'border-sky-200 bg-sky-50 text-sky-800',
+  blue: 'border-primary-200 bg-primary-50 text-primary-800',
   green: 'border-emerald-200 bg-emerald-50 text-emerald-800',
   yellow: 'border-amber-200 bg-amber-50 text-amber-900',
   red: 'border-rose-200 bg-rose-50 text-rose-800',
   gray: 'border-graphite-200 bg-graphite-100 text-graphite-700',
   slate: 'border-graphite-200 bg-white text-graphite-800',
   orange: 'border-primary-200 bg-primary-50 text-primary-900',
-  dark: 'border-graphite-800 bg-graphite-950 text-white',
+  dark: 'border-graphite-200 bg-graphite-100 text-graphite-800',
 };
 
 const toneTextClasses: Record<Tone, string> = {
@@ -159,8 +159,9 @@ export function Button({
   );
 }
 
-export function StatusBadge({ label, tone = 'gray' }: { label: string; tone?: Tone }) {
-  return <span className={`inline-flex items-center rounded-md border px-2.5 py-1 text-xs font-bold ${toneClasses[tone]}`}>{label}</span>;
+export function StatusBadge({ label, tone = 'gray', quiet = false }: { label: string; tone?: Tone; quiet?: boolean }) {
+  const Icon = tone === 'green' ? CheckCircle2 : tone === 'red' || tone === 'yellow' ? AlertCircle : tone === 'blue' ? Clock3 : CircleDashed;
+  return <span className={`status-badge ${quiet ? `border-transparent px-0 ${toneTextClasses[tone]}` : toneClasses[tone]}`}><Icon size={12} strokeWidth={1.8} aria-hidden="true" />{label}</span>;
 }
 
 export function DataTable({ children, label }: { children: ReactNode; label: string }) {

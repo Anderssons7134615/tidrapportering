@@ -5,6 +5,7 @@ import type {
   User,
   Customer,
   Project,
+  ProjectOption,
   MaterialArticle,
   ProjectMaterial,
   ProjectMaterialsResponse,
@@ -175,6 +176,19 @@ export const customersApi = {
 
 // Projects
 export const projectsApi = {
+  options: async (): Promise<ProjectOption[]> => {
+    try {
+      return await fetchApi<ProjectOption[]>('/projects/options');
+    } catch (error) {
+      // Frontend and API deploy separately. Keep choices usable on the previous API.
+      if ((error as { status?: number })?.status !== 404) throw error;
+      const projects = await fetchApi<Project[]>('/projects?active=true');
+      return projects.map(({ id, code, name, customer }) => ({
+        id, code, name,
+        customer: customer ? { id: customer.id, name: customer.name } : null,
+      }));
+    }
+  },
   customerOptions: () => fetchApi<Array<{ id: string; name: string }>>('/projects/customer-options'),
   list: (params?: { status?: string; customerId?: string; active?: boolean }) => {
     const searchParams = new URLSearchParams();

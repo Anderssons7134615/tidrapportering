@@ -1,10 +1,10 @@
-import { refreshProjectQueries } from '../utils/projectQueries';
+import { refreshTimeQueries } from '../utils/timeQueries';
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { format } from 'date-fns';
 import { sv } from 'date-fns/locale';
-import { Check, ChevronDown, Clock, Copy, Loader2, PencilLine, RefreshCw, Save } from 'lucide-react';
+import { Check, ChevronDown, Copy, Loader2, PencilLine, RefreshCw, Save } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { activitiesApi, projectsApi, timeEntriesApi, usersApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
@@ -13,9 +13,9 @@ import { useHaptic } from '../hooks/useHaptic';
 import { AppShell, Button, DataList, DataRow, FormField, PageHeader, ReviewSummary, TaskSection } from '../components/ui/design';
 import { QueryError } from '../components/ui/QueryError';
 import { ProjectPicker } from '../components/ProjectPicker';
-import { getDisabledReason, parseDateOnlyLocal, parseSwedishNumber, toDateInputValue } from '../utils/format';
+import { formatHours, getDisabledReason, parseDateOnlyLocal, parseSwedishNumber, toDateInputValue } from '../utils/format';
 import { referenceQueryCache } from '../utils/referenceQuery';
-import type { Activity, Project, User } from '../types';
+import type { Activity, ProjectOption, User } from '../types';
 
 function readReferenceCache<T>(key: string): T | undefined {
   if (!key) return undefined;
@@ -81,10 +81,10 @@ export default function TimeEntry() {
     isError: projectsFailed,
     isFetching: projectsFetching,
     refetch: refetchProjects,
-  } = useQuery<Project[]>({
-    queryKey: ['projects', 'active', user?.id],
-    queryFn: () => projectsApi.list({ active: true }),
-    ...referenceQueryCache(() => readReferenceCache<Project[]>(projectsCacheKey)),
+  } = useQuery<ProjectOption[]>({
+    queryKey: ['projects', 'options', 'active', user?.id],
+    queryFn: projectsApi.options,
+    ...referenceQueryCache(() => readReferenceCache<ProjectOption[]>(projectsCacheKey)),
   });
   const {
     data: activities,
@@ -165,11 +165,7 @@ export default function TimeEntry() {
   }, [activities]);
 
   const invalidate = () => {
-    queryClient.invalidateQueries({ queryKey: ['timeEntries'] });
-    queryClient.invalidateQueries({ queryKey: ['week'] });
-    queryClient.invalidateQueries({ queryKey: ['weekLocks'] });
-    queryClient.invalidateQueries({ queryKey: ['team-week-summary'] });
-    void refreshProjectQueries(queryClient);
+    void refreshTimeQueries(queryClient);
   };
 
   const rememberProject = (id: string) => {
@@ -323,13 +319,7 @@ export default function TimeEntry() {
       <div className="mx-auto max-w-4xl space-y-5">
         <PageHeader
           title={isEditMode ? 'Redigera tidrad' : 'Rapportera tid'}
-          description="Fyll i projekt, aktivitet och timmar. Allt viktigt ligger först, resten finns under fler val."
-          action={
-            <div className="hidden rounded-lg border border-primary-200 bg-primary-50 px-3 py-2 text-sm font-semibold text-primary-800 sm:flex sm:items-center sm:gap-2">
-              <Clock className="h-4 w-4" />
-              {selectedDateLabel}
-            </div>
-          }
+          description="Välj projekt, aktivitet och timmar för din arbetsdag."
         />
 
         {!isEditMode && (
@@ -338,7 +328,7 @@ export default function TimeEntry() {
               <div>
                 <p className="text-sm font-semibold text-graphite-950">{selectedDateLabel}</p>
                 <p className="mt-0.5 text-sm text-graphite-600">
-                  {dailyEntries?.length ? `${dailyTotal.toFixed(1)} h rapporterat på dagen` : 'Ingen tid rapporterad på dagen ännu'}
+                  {dailyEntries?.length ? `${formatHours(dailyTotal)} rapporterat på dagen` : 'Ingen tid rapporterad på dagen ännu'}
                 </p>
               </div>
               <Link to={defaultReturnUrl} className="text-link inline-flex min-h-11 items-center">
@@ -350,23 +340,16 @@ export default function TimeEntry() {
 
         <form onSubmit={handleSubmit} className="space-y-5 pb-16 lg:pb-0">
           {!isEditMode && (
-            <TaskSection className="space-y-4">
-              <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
-                <div>
-                  <div className="flex items-center gap-2 text-primary-700">
-                    <Clock className="h-4 w-4" />
-                    <p className="text-xs font-bold">Snabbval</p>
-                  </div>
-                  <h2 className="mt-2 text-xl font-semibold text-graphite-950">Börja med dagens tid</h2>
-                  <p className="mt-1 text-sm leading-6 text-graphite-600">Välj datum, projekt och standardtimmar utan att lämna formuläret.</p>
-                </div>
+            <TaskSection className="time-entry-section space-y-4" aria-label="Snabbval">
+              <div className="border-b border-graphite-200 pb-4">
                 <div className="space-y-3">
-                  <div className="grid grid-cols-3 gap-2">
-                    <button type="button" onClick={() => setDate(format(new Date(), 'yyyy-MM-dd'))} className="choice-tile text-sm">Idag</button>
-                    <button type="button" onClick={() => setDate(yesterday)} className="choice-tile text-sm">Igår</button>
-                    <button type="button" onClick={copyYesterday} className="choice-tile border-primary-200 bg-primary-50 text-sm text-primary-800">
-                      <Copy className="mx-auto mb-1 h-4 w-4" />
-                      Kopiera
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="mr-1 text-xs font-medium text-graphite-500">Snabbval</span>
+                    <button type="button" onClick={() => setDate(format(new Date(), 'yyyy-MM-dd'))} className="btn-secondary">Idag</button>
+                    <button type="button" onClick={() => setDate(yesterday)} className="btn-secondary">Igår</button>
+                    <button type="button" onClick={copyYesterday} className="btn-secondary">
+                      <Copy className="h-4 w-4" aria-hidden="true" />
+                      Kopiera gårdagen
                     </button>
                   </div>
                   {!!recentProjects?.length && (
@@ -391,7 +374,7 @@ export default function TimeEntry() {
             </TaskSection>
           )}
 
-          <TaskSection className="space-y-5">
+          <TaskSection className="time-entry-section space-y-5">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               {canReportForOthers && (
                 <FormField label="Anställd" controlId="time-entry-user">
@@ -485,12 +468,12 @@ export default function TimeEntry() {
               <textarea id="time-entry-note" value={note} onChange={(event) => setNote(event.target.value)} className="input" rows={3} placeholder="Kort kommentar, valfritt" />
             </FormField>
 
-            <details className="rounded-lg border border-graphite-200 bg-graphite-50/80 p-3.5">
-              <summary className="flex cursor-pointer list-none items-center justify-between font-semibold text-graphite-800">
+            <details className="rounded-lg border border-graphite-200 bg-graphite-50/80 px-3.5">
+              <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between font-semibold text-graphite-800">
                 Fler val
                 <ChevronDown className="h-4 w-4 text-graphite-500" />
               </summary>
-              <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div className="mb-3.5 mt-1 grid grid-cols-1 gap-3 md:grid-cols-2">
                 <FormField label="Starttid" controlId="time-entry-start"><input id="time-entry-start" type="time" value={startTime} onChange={(event) => setStartTime(event.target.value)} className="input" /></FormField>
                 <FormField label="Sluttid" controlId="time-entry-end"><input id="time-entry-end" type="time" value={endTime} onChange={(event) => setEndTime(event.target.value)} className="input" /></FormField>
               </div>

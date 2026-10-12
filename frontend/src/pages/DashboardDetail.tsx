@@ -7,13 +7,13 @@ import { dashboardApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
 import { AppShell, DataList, DataRow, EmptyState, PageHeader, ReviewSummary, StatusBadge, TaskSection } from '../components/ui/design';
 import type { DashboardMetric } from '../types';
-import { parseDateOnlyLocal, toDateInputValue } from '../utils/format';
+import { formatHours, parseDateOnlyLocal, toDateInputValue } from '../utils/format';
 
 const validMetrics: DashboardMetric[] = ['weekly-hours', 'monthly-hours', 'pending-approval'];
 
 function formatDecimalHours(value: unknown) {
   const hours = Number(value);
-  return Number.isFinite(hours) ? `${hours.toFixed(1).replace('.', ',')} h` : '0,0 h';
+  return formatHours(Number.isFinite(hours) ? hours : 0);
 }
 
 export default function DashboardDetail() {
@@ -116,13 +116,13 @@ function WeeklyUserSummary({ data, periodStart }: { data: any; periodStart: Date
                 <p className="truncate font-semibold text-graphite-950">{summary.userName}</p>
                 <p className="text-sm text-graphite-500">{formatDecimalHours(summary.totalHours)} totalt</p>
               </div>
-              <div className="grid flex-1 grid-cols-7 gap-1">
+              <div className="grid min-w-0 flex-1 grid-cols-[repeat(7,minmax(3.5rem,1fr))] gap-1 overflow-x-auto" role="region" aria-label={`Veckodagar för ${summary.userName}`} tabIndex={0}>
                 {(Array.isArray(summary.days) ? summary.days : []).map((day: any) => (
                   <div key={`${summary.userId}-${day.date}`} className="min-h-16 border-l border-graphite-200 bg-graphite-50 px-2 py-2 text-center">
                     <p className="text-xs font-semibold uppercase text-graphite-500">
                       {format(parseDateOnlyLocal(day.date), 'EEE', { locale: sv })}
                     </p>
-                    <p className="mt-1 text-sm font-semibold text-graphite-950">{Number(day.hours) > 0 ? formatDecimalHours(day.hours) : '-'}</p>
+                    <p className="mt-1 whitespace-nowrap text-sm font-semibold text-graphite-950">{Number(day.hours) > 0 ? formatDecimalHours(day.hours) : '-'}</p>
                     {(Array.isArray(day.projectCodes) ? day.projectCodes : []).length > 0 && (
                       <p className="mt-1 truncate text-xs text-graphite-500" title={(Array.isArray(day.projectNames) ? day.projectNames : []).join(', ')}>
                         {(Array.isArray(day.projectCodes) ? day.projectCodes : []).join(', ')}

@@ -1,12 +1,13 @@
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Building2, ChevronRight, LogOut, Menu, X, WifiOff, Wifi } from 'lucide-react';
+import { ChevronRight, LogOut, Menu, X, WifiOff, Wifi } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import { useOfflineStore } from '../stores/offlineStore';
 import { useSync } from '../hooks/useSync';
 import { authApi } from '../services/api';
 import { getFocusTrapAction } from '../utils/frontendGuards';
+import { BrandMark, IdentityMark } from './ui/IdentityMark';
 
 import { activeNavigationPath, navigationFor, groupLabels, roleLabel, type NavigationItem, type NavigationGroup, type NavigationRole as Role } from '../utils/navigation';
 
@@ -135,7 +136,7 @@ export default function Layout() {
             <button ref={menuButtonRef} onClick={() => setMenuOpen(!menuOpen)} className="icon-button" aria-label="Meny" aria-expanded={menuOpen} aria-controls="mobile-navigation">
               {menuOpen ? <X size={20} /> : <Menu size={20} />}
             </button>
-            <BrandMark compact />
+            <BrandMark />
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold text-graphite-950">{user?.companyName || 'Anderssons Isolering'}</p>
               {activeItem && <p className="truncate text-xs text-graphite-500">{activeItem.label}</p>}
@@ -171,7 +172,8 @@ export default function Layout() {
       )}
 
       <div className="app-frame">
-        <aside className="app-sidebar sticky top-0 hidden h-[100dvh] w-64 shrink-0 flex-col lg:flex">
+        <aside className="app-sidebar sticky top-0 hidden h-[100dvh] w-[218px] shrink-0 flex-col lg:flex">
+          <div className="flex min-h-[76px] items-center gap-2.5 px-5"><BrandMark /><span className="brand-wordmark">tidapp.</span></div>
           <SidebarIdentity companyName={user?.companyName} role={role} />
           <SidebarNavigation activePath={activePath} items={filteredNavItems} />
           <SidebarFooter isOnline={isOnline} pendingEntryCount={pendingEntryCount} onLogout={handleLogout} />
@@ -190,7 +192,7 @@ export default function Layout() {
         >
           <div className="flex items-center justify-between border-b border-graphite-200 px-4 py-4">
             <div className="flex min-w-0 items-center gap-3">
-              <BrandMark compact />
+              <BrandMark />
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-graphite-950 [overflow-wrap:anywhere]">{user?.companyName || 'Anderssons Isolering'}</p>
                 <p className="mt-1 text-xs text-graphite-500">Navigation</p>
@@ -202,9 +204,9 @@ export default function Layout() {
           <SidebarFooter isOnline={isOnline} pendingEntryCount={pendingEntryCount} onLogout={handleLogout} />
         </aside>
 
-        <div ref={mainContentRef} className="min-w-0 flex-1">
+        <div ref={mainContentRef} className="workspace-shell">
           <header className="desktop-header">
-            <div className="flex min-w-0 items-center gap-2 text-sm text-graphite-500" aria-label="Du är här">
+            <div className="flex min-w-0 items-center gap-2 text-xs text-graphite-500" aria-label="Du är här">
               <span>{activeItem ? groupLabels[activeItem.group] : 'Anderssons Isolering'}</span>
               {activeItem && <><ChevronRight size={14} aria-hidden="true" /><span className="font-semibold text-graphite-900">{activeItem.label}</span></>}
             </div>
@@ -228,7 +230,7 @@ export default function Layout() {
 }
 
 function SidebarIdentity({ companyName, role }: { companyName?: string; role?: Role }) {
-  return <div className="sidebar-identity"><BrandMark /><div className="min-w-0"><p className="text-sm font-bold leading-5 text-graphite-950 [overflow-wrap:anywhere]">{companyName || 'Anderssons Isolering'}</p><p className="mt-1 text-xs text-graphite-500">{role ? roleLabel[role] : 'Medarbetare'}</p></div></div>;
+  return <div className="sidebar-identity"><p className="text-[13px] font-semibold leading-5 text-graphite-950 [overflow-wrap:anywhere]">{companyName || 'Anderssons Isolering'}</p><p className="mt-0.5 text-[11px] text-graphite-500">{role ? roleLabel[role] : 'Medarbetare'}</p></div>;
 }
 
 function SidebarNavigation({ items, activePath, onClick }: { items: NavigationItem[]; activePath?: string; onClick?: () => void }) {
@@ -236,8 +238,8 @@ function SidebarNavigation({ items, activePath, onClick }: { items: NavigationIt
     {(Object.keys(groupLabels) as NavigationGroup[]).map((group) => {
       const groupItems = items.filter((item) => item.group === group);
       if (!groupItems.length) return null;
-      return <div key={group} className="mb-5 last:mb-0">
-        {group !== 'system' && <p className="mb-1 px-3 text-xs font-medium text-graphite-500">{groupLabels[group]}</p>}
+      return <div key={group} className="mb-4 last:mb-0">
+        {group !== 'system' && <p className="mb-1 px-3 text-[11px] font-medium text-graphite-500">{groupLabels[group]}</p>}
         <div className="space-y-0.5">{groupItems.map((item) => <Link key={item.to} to={item.to} onClick={onClick} aria-current={item.to === activePath ? 'page' : undefined} className={`side-nav-link ${item.to === activePath ? 'side-nav-active' : ''}`}><item.icon size={18} strokeWidth={1.7} aria-hidden="true" /><span>{item.label}</span></Link>)}</div>
       </div>;
     })}
@@ -252,12 +254,8 @@ function MobileNavLink({ item, active }: { item: NavigationItem; active: boolean
   return <Link to={item.to} aria-current={active ? 'page' : undefined} className={`mobile-nav-link ${active ? 'mobile-nav-active' : ''}`}><item.icon size={21} strokeWidth={active ? 2 : 1.7} aria-hidden="true" /><span>{item.label}</span></Link>;
 }
 
-function BrandMark({ compact = false }: { compact?: boolean }) {
-  return <div aria-hidden="true" className="brand-mark"><Building2 size={compact ? 19 : 22} strokeWidth={1.7} /></div>;
-}
-
 function TopStatus({ isOnline, pendingEntries, userName, onLogout }: { isOnline: boolean; pendingEntries: number; userName?: string; onLogout: () => void }) {
   return <div className="top-status flex shrink-0 items-center gap-2 sm:gap-4"><span className={`inline-flex items-center gap-1.5 text-xs font-medium ${isOnline ? 'text-graphite-500' : 'text-amber-800'}`} role="status" aria-label={`${isOnline ? 'Ansluten' : 'Offline'}${pendingEntries ? `, ${pendingEntries} rader väntar på synkning` : ''}`}>
     {isOnline ? <Wifi size={15} aria-hidden="true" /> : <WifiOff size={15} aria-hidden="true" />}<span className="hidden md:inline">{isOnline ? 'Ansluten' : 'Offline'}</span>{pendingEntries > 0 && <span className="font-semibold text-amber-800">{pendingEntries}</span>}
-  </span><span className="hidden max-w-40 truncate text-sm font-medium text-graphite-800 lg:block">{userName}</span><button onClick={onLogout} className="icon-button" title="Logga ut" aria-label="Logga ut"><LogOut size={18} aria-hidden="true" /></button></div>;
+  </span><span className="hidden max-w-40 truncate text-xs font-medium text-graphite-800 lg:block">{userName}</span>{userName && <span className="hidden lg:inline-flex"><IdentityMark name={userName} person /></span>}<button onClick={onLogout} className="icon-button" title="Logga ut" aria-label="Logga ut"><LogOut size={18} aria-hidden="true" /></button></div>;
 }

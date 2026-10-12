@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
-import { addWeeks, format, startOfWeek, subWeeks } from 'date-fns';
+import { addDays, addWeeks, format, startOfWeek, subWeeks } from 'date-fns';
 import { sv } from 'date-fns/locale';
 import {
   AlertTriangle,
@@ -13,7 +13,6 @@ import {
   FileCheck2,
   Search,
   UserX,
-  Users,
 } from 'lucide-react';
 import { timeEntriesApi } from '../services/api';
 import type { TeamWeekAttentionStatus, TeamWeekSummaryDay, TeamWeekSummaryUser } from '../types';
@@ -21,6 +20,7 @@ import { AppShell, EmptyState, PageHeader, ReviewSummary, StatusBadge, TaskSecti
 import { formatDate, formatHours } from '../utils/format';
 import { parseDateOnlyLocal } from '../utils/format';
 import { QueryError } from '../components/ui/QueryError';
+import { IdentityMark } from '../components/ui/IdentityMark';
 
 const weekStatusLabel: Record<string, string> = {
   DRAFT: 'Ej inskickad',
@@ -34,18 +34,18 @@ const attentionMeta: Record<TeamWeekAttentionStatus, { label: string; tone: 'gre
   MISSING: { label: 'Saknar tid', tone: 'red' },
   DEVIATION: { label: 'Avvikelse', tone: 'yellow' },
   PENDING: { label: 'Väntar attest', tone: 'blue' },
-  APPROVED: { label: 'Godkänd', tone: 'gray' },
+  APPROVED: { label: 'Godkänd', tone: 'green' },
   REJECTED: { label: 'Nekad', tone: 'red' },
 };
 
 const dayClass: Record<string, string> = {
-  REPORTED: 'border-emerald-200 bg-emerald-50 text-emerald-900',
-  APPROVED: 'border-slate-200 bg-slate-100 text-slate-700',
-  MISSING: 'border-rose-200 bg-rose-50 text-rose-900',
-  DEVIATION: 'border-amber-200 bg-amber-50 text-amber-900',
-  EMPTY: 'border-slate-200 bg-white text-slate-400',
-  OFF: 'border-slate-200 bg-slate-50 text-slate-400',
-  FUTURE: 'border-slate-200 bg-white text-slate-300',
+  REPORTED: 'text-graphite-900',
+  APPROVED: 'text-graphite-700',
+  MISSING: 'text-rose-800',
+  DEVIATION: 'text-amber-800',
+  EMPTY: 'text-graphite-500',
+  OFF: 'text-graphite-500',
+  FUTURE: 'text-graphite-500',
 };
 
 const filterTabs = [
@@ -61,10 +61,12 @@ type FilterId = typeof filterTabs[number]['id'];
 export default function TeamWeekOverview() {
   const [searchParams, setSearchParams] = useSearchParams();
   const dateParam = searchParams.get('date');
-  const [selectedDate, setSelectedDate] = useState(() => startOfWeek(dateParam ? parseDateOnlyLocal(dateParam) : new Date(), { weekStartsOn: 1 }));
+  const requestedDate = dateParam ? parseDateOnlyLocal(dateParam) : new Date();
+  const selectedDate = Number.isNaN(requestedDate.getTime()) ? new Date() : requestedDate;
   const [search, setSearch] = useState('');
   const [activeFilter, setActiveFilter] = useState<FilterId>('needs-action');
   const [expandedUsers, setExpandedUsers] = useState<Record<string, boolean>>({});
+  const [showWeekend, setShowWeekend] = useState(false);
 
   const weekStart = startOfWeek(selectedDate, { weekStartsOn: 1 });
   const weekStartStr = format(weekStart, 'yyyy-MM-dd');
@@ -133,8 +135,8 @@ export default function TeamWeekOverview() {
 
   const navigateWeek = (dir: 'prev' | 'next') => {
     const nextDate = dir === 'prev' ? subWeeks(weekStart, 1) : addWeeks(weekStart, 1);
-    setSelectedDate(nextDate);
     setSearchParams({ date: format(nextDate, 'yyyy-MM-dd') });
+    setExpandedUsers({});
   };
 
   const toggleUser = (userId: string) => {
@@ -145,15 +147,15 @@ export default function TeamWeekOverview() {
     <AppShell>
       <PageHeader
         title="Teamvecka"
-        description="Se direkt vilka som saknar tid, vilka veckor som väntar på attest och var det finns avvikelser."
+        description="Tid, avvikelser och attest. Hela teamets vecka på samma plats."
         action={
           <div className="flex items-center gap-2">
             <button onClick={() => navigateWeek('prev')} className="btn-secondary px-3" type="button" aria-label="Föregående vecka">
               <ChevronLeft className="h-4 w-4" />
             </button>
-            <div className="border-y border-graphite-200 px-4 py-2 text-center">
-              <p className="text-xs font-semibold text-graphite-500">Vecka {format(weekStart, 'w', { locale: sv })}</p>
-              <p className="text-sm font-semibold text-graphite-950">{format(weekStart, 'd MMM', { locale: sv })}</p>
+            <div className="px-1 py-1 text-center">
+              <p className="text-sm font-semibold text-graphite-950">Vecka {format(weekStart, 'w', { locale: sv })}</p>
+              <p className="text-xs text-graphite-500">{format(weekStart, weekStart.getFullYear() !== addDays(weekStart, 6).getFullYear() ? 'd MMM yyyy' : 'd MMM', { locale: sv })} – {format(addDays(weekStart, 6), 'd MMM yyyy', { locale: sv })}</p>
             </div>
             <button onClick={() => navigateWeek('next')} className="btn-secondary px-3" type="button" aria-label="Nästa vecka">
               <ChevronRight className="h-4 w-4" />
@@ -162,21 +164,15 @@ export default function TeamWeekOverview() {
         }
       />
 
-      <ReviewSummary>
+      {!isLoading && !isError && data && <ReviewSummary>
         <p className="text-sm leading-6 text-graphite-700">
           <strong className="text-graphite-950">{totals.needsActionUsers} personer</strong> behöver följas upp. {totals.missingUsers} saknar tid, {totals.pendingUsers} väntar attest och {totals.deviationUsers} har avvikelse. Totalt <strong className="tabular-nums text-graphite-950">{formatHours(totals.totalHours)}</strong>.
         </p>
-      </ReviewSummary>
+      </ReviewSummary>}
 
-      <TaskSection className="space-y-4">
+      <TaskSection className="team-week-section space-y-4">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-          <div className="flex min-w-0 items-center gap-2">
-            <Users className="h-5 w-5 text-primary-700" />
-            <div>
-              <h2 className="section-title">Rapporteringskontroll</h2>
-              <p className="text-sm text-slate-500">Vardagar till och med idag räknas som förväntade rapportdagar.</p>
-            </div>
-          </div>
+          <div className="min-w-0"><h2 className="sr-only">Rapporteringskontroll</h2><p className="text-xs text-graphite-500">Vardagar till och med idag förväntas vara rapporterade.</p></div>
 
           <div className="relative w-full xl:w-80">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -191,19 +187,21 @@ export default function TeamWeekOverview() {
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-x-4 gap-y-2">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-graphite-200">
           {filterTabs.map((tab) => (
             <button
               key={tab.id}
               type="button"
               onClick={() => setActiveFilter(tab.id)}
-              className={`whitespace-nowrap border-b-2 px-1 py-2 text-sm font-semibold transition ${
+              aria-pressed={activeFilter === tab.id}
+              className={`min-h-11 min-w-11 whitespace-nowrap border-b-2 px-1 py-2 text-[13px] font-medium transition ${
                 activeFilter === tab.id ? 'border-primary-600 text-primary-800' : 'border-transparent text-graphite-600 hover:border-graphite-300 hover:text-graphite-950'
               }`}
             >
               {tab.label}
             </button>
           ))}
+          <button type="button" className="ml-auto min-h-11 px-2 text-xs font-medium text-graphite-600 hover:text-primary-800" aria-pressed={showWeekend} onClick={() => setShowWeekend((value) => !value)}>{showWeekend ? 'Dölj helg' : 'Visa helg'}</button>
         </div>
 
         {isLoading ? (
@@ -219,14 +217,16 @@ export default function TeamWeekOverview() {
         ) : !filteredUsers.length ? (
           <EmptyState title="Inga träffar" description="Testa ett annat filter eller sök på namn/projekt." />
         ) : (
-          <div className="space-y-3">
+          <div className={`team-week-list ${showWeekend ? 'team-week-seven' : ''}`}>
+            <div className="team-week-columns" aria-hidden="true"><span>Medarbetare</span><div className="team-week-days">{Array.from({ length: showWeekend ? 7 : 5 }, (_, index) => <span key={index}>{format(addDays(weekStart, index), 'EEE d', { locale: sv })}</span>)}</div><span className="text-right">Totalt</span><span /></div>
             {filteredUsers.map((user) => (
               <TeamWeekUserRow
-                key={user.userId}
+                key={`${weekStartStr}-${user.userId}`}
                 user={user}
                 expanded={!!expandedUsers[user.userId]}
                 onToggle={() => toggleUser(user.userId)}
                 weekStart={weekStartStr}
+                showWeekend={showWeekend}
               />
             ))}
           </div>
@@ -241,53 +241,58 @@ function TeamWeekUserRow({
   expanded,
   onToggle,
   weekStart,
+  showWeekend,
 }: {
   user: TeamWeekSummaryUser;
   expanded: boolean;
   onToggle: () => void;
   weekStart: string;
+  showWeekend: boolean;
 }) {
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  useEffect(() => {
+    if (!showWeekend) setSelectedDay((day) => day && [0, 6].includes(parseDateOnlyLocal(day).getDay()) ? null : day);
+  }, [showWeekend]);
+  const { data: weekDetails, isLoading: detailsLoading, isError: detailsFailed, refetch: refetchDetails } = useQuery({
+    queryKey: ['week', weekStart, user.userId],
+    queryFn: () => timeEntriesApi.getWeek(weekStart, user.userId),
+    enabled: expanded,
+  });
   const attention = attentionMeta[user.attentionStatus || 'OK'] || attentionMeta.OK;
   const missingDays = user.missingDays || [];
   const missingText = missingDays.length
     ? `${missingDays.length} saknade dag${missingDays.length === 1 ? '' : 'ar'}`
     : 'Inga saknade vardagar';
 
+  // The summary contains only recent rows. Day details require the complete week.
+  const weekEntries = weekDetails?.entries || [];
+  const entries = selectedDay ? weekEntries.filter((entry) => formatDate(entry.date) === selectedDay) : weekEntries;
+  const weekendHours = user.days.filter((day) => [0, 6].includes(parseDateOnlyLocal(day.date).getDay())).reduce((sum, day) => sum + day.hours, 0);
+  const visibleDays = user.days.filter((day) => showWeekend || ![0, 6].includes(parseDateOnlyLocal(day.date).getDay()));
+  const toggleAll = () => { setSelectedDay(null); onToggle(); };
+
   return (
-    <article className="overflow-hidden border-y border-graphite-200 bg-white">
-      <button type="button" onClick={onToggle} aria-expanded={expanded} aria-controls={`team-week-${user.userId}`} className="w-full px-4 py-3 text-left transition hover:bg-primary-50/60">
-        <div className="grid gap-3 xl:grid-cols-[minmax(170px,0.75fr)_minmax(350px,1.35fr)_auto] xl:items-center">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <p className="truncate text-base font-semibold text-graphite-950">{user.userName}</p>
-              <StatusBadge label={attention.label} tone={attention.tone} />
-            </div>
-            <p className="mt-1 text-sm text-graphite-500">
-              {weekStatusLabel[user.status] || user.status} · {missingText}
-            </p>
-          </div>
-
-          <div className="grid grid-cols-7 gap-1.5">
-            {(user.days || []).map((day) => (
-              <DayCell key={day.date} day={day} />
-            ))}
-          </div>
-
-          <div className="flex items-center justify-between gap-3 text-sm xl:justify-end">
-            <div className="flex items-center gap-2">
-              <span className="border-y border-graphite-200 px-2 py-1 font-semibold text-graphite-950">{formatHours(user.totalHours)}</span>
-            </div>
-            <ChevronDown className={`h-4 w-4 text-slate-500 transition-transform ${expanded ? 'rotate-180' : ''}`} />
-          </div>
+    <article className={`team-week-person ${expanded ? 'team-week-person-open' : ''}`}>
+      <div className="team-week-row">
+        <button type="button" onClick={toggleAll} aria-expanded={expanded} aria-controls={`team-week-${user.userId}`} className="team-week-name" aria-label={`${expanded ? 'Dölj' : 'Visa'} vecka för ${user.userName}`}>
+          <IdentityMark name={user.userName} identity={user.userId} person />
+          <span className="min-w-0"><span className="block text-[13px] font-semibold text-graphite-950 [overflow-wrap:anywhere]">{user.userName}</span><span className="mt-1 block"><StatusBadge label={attention.label} tone={attention.tone} quiet={user.attentionStatus === 'OK' || user.attentionStatus === 'APPROVED'} /></span></span>
+        </button>
+        <div className="team-week-days">
+          {visibleDays.map((day) => <DayCell key={day.date} day={day} userName={user.userName} selected={expanded && selectedDay === day.date} onSelect={() => { setSelectedDay(day.date); if (!expanded) onToggle(); }} />)}
         </div>
-      </button>
+        <div className="team-week-total"><span className="text-sm font-semibold tabular-nums text-graphite-950">{formatHours(user.totalHours)}</span>{!showWeekend && weekendHours > 0 && <span className="mt-1 block text-[11px] text-graphite-500">varav {formatHours(weekendHours)} helg</span>}</div>
+        <button type="button" onClick={toggleAll} aria-expanded={expanded} aria-controls={`team-week-${user.userId}`} className="team-week-expand icon-button border-0 bg-transparent" aria-label={`${expanded ? 'Dölj' : 'Visa'} detaljer för ${user.userName}`}><ChevronDown size={16} className={`transition-transform ${expanded ? 'rotate-180' : ''}`} /></button>
+      </div>
 
       {expanded && (
-        <div id={`team-week-${user.userId}`} className="space-y-4 border-t border-graphite-200 bg-graphite-50 px-4 pb-4 pt-3">
+        <div id={`team-week-${user.userId}`} className="team-week-detail space-y-4 border-t border-primary-100 bg-primary-50/40 px-4 pb-4 pt-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-graphite-600"><p>{weekStatusLabel[user.status] || user.status} · {missingText}</p>{selectedDay && <button type="button" className="min-h-11 px-2 font-medium text-primary-800" onClick={() => setSelectedDay(null)}>Visa hela veckan</button>}</div>
           <ActionPanel user={user} weekStart={weekStart} />
 
           <div className="grid gap-4 xl:grid-cols-2">
             <div className="table-wrap overflow-x-auto" role="region" aria-label={`Projektfördelning för ${user.userName}`} tabIndex={0}>
+              <p className="border-b border-graphite-200 px-3 py-3 text-xs font-semibold">Projektfördelning · hela veckan</p>
               <table className="min-w-full text-sm">
                 <thead>
                   <tr className="table-head">
@@ -315,6 +320,7 @@ function TeamWeekUserRow({
             </div>
 
             <div className="table-wrap overflow-x-auto" role="region" aria-label={`Tidrader för ${user.userName}`} tabIndex={0}>
+              <p className="border-b border-graphite-200 px-3 py-3 text-xs font-semibold">Tidrader · {selectedDay ? formatDate(selectedDay) : 'hela veckan'}</p>
               <table className="min-w-full text-sm">
                 <thead>
                   <tr className="table-head">
@@ -325,12 +331,16 @@ function TeamWeekUserRow({
                   </tr>
                 </thead>
                 <tbody>
-                  {(user.entries || []).length === 0 ? (
+                  {detailsLoading ? (
+                    <tr><td colSpan={4} className="px-3 py-4 text-graphite-500" role="status">Hämtar veckans tidrader...</td></tr>
+                  ) : detailsFailed ? (
+                    <tr><td colSpan={4} className="p-3"><QueryError title="Kunde inte hämta tidraderna" onRetry={() => refetchDetails()} /></td></tr>
+                  ) : entries.length === 0 ? (
                     <tr>
-                      <td colSpan={4} className="px-3 py-3 text-slate-500">Inga tidrader för veckan.</td>
+                      <td colSpan={4} className="px-3 py-3 text-slate-500">{selectedDay ? 'Inga tidrader för dagen.' : 'Inga tidrader för veckan.'}</td>
                     </tr>
                   ) : (
-                    user.entries.map((entry) => (
+                    entries.map((entry) => (
                       <tr key={entry.id} className="border-t border-slate-100">
                         <td className="px-3 py-2 text-slate-700">{formatDate(entry.date)}</td>
                         <td className="px-3 py-2 font-medium text-slate-900">{entry.project?.name || 'Intern tid'}</td>
@@ -349,15 +359,17 @@ function TeamWeekUserRow({
   );
 }
 
-function DayCell({ day }: { day: TeamWeekSummaryDay }) {
+function DayCell({ day, userName, selected, onSelect }: { day: TeamWeekSummaryDay; userName: string; selected: boolean; onSelect: () => void }) {
   return (
-    <div
+    <button type="button" onClick={onSelect} aria-pressed={selected}
+      aria-label={`${userName}, ${day.dayName} ${day.date}, ${formatHours(day.hours)}${day.warnings.length ? `, ${day.warnings.join(', ')}` : ''}`}
       title={`${day.dayName} ${day.date}: ${formatHours(day.hours)}${day.warnings.length ? ` - ${day.warnings.join(', ')}` : ''}`}
-      className={`min-h-[58px] border px-2 py-1.5 text-center ${dayClass[day.status] || dayClass.EMPTY}`}
+      className={`team-week-day ${selected ? 'team-week-day-selected' : ''} ${dayClass[day.status] || dayClass.EMPTY}`}
     >
-      <p className="text-xs font-semibold uppercase tracking-normal opacity-70">{day.dayName}</p>
-      <p className="mt-1 text-sm font-bold">{day.hours > 0 ? formatHours(day.hours) : day.expected ? '0 h' : '-'}</p>
-    </div>
+      <span className="team-week-day-label">{day.dayName}</span>
+      <span className="text-[13px] font-medium tabular-nums">{day.hours > 0 ? formatHours(day.hours) : day.expected ? '0 h' : '–'}</span>
+      {(day.status === 'MISSING' || day.status === 'DEVIATION') && <span className="text-[10px]">{day.status === 'MISSING' ? 'Saknas' : 'Avvikelse'}</span>}
+    </button>
   );
 }
 

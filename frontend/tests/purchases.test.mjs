@@ -40,7 +40,7 @@ function setup({ status = 'DRAFT', failedSave = false, projectList = false, fail
       assert.equal(options.headers.Authorization, 'Bearer test-token');
       return failedOriginal ? Response.json({ error: 'Nekad' }, { status: 403 }) : new Response('%PDF-test', { headers: { 'Content-Type': 'application/pdf' } });
     }
-    if (path === '/api/projects') return Response.json([{ id: 'p1', name: 'Testprojekt', code: '0042', active: true }]);
+    if (path === '/api/projects/options') return Response.json([{ id: 'p1', name: 'Testprojekt', code: '0042' }]);
     if (path === '/api/supplier-invoices') return failedList ? Response.json({ error: 'Testfel' }, { status: 503 }) : Response.json({ items: [row], total: 1, page: 1, pageSize: 25, confirmedProjectNetOre: 10000 });
     if (path.endsWith('/reparse')) {
       if (failedRead) return Response.json({ error: 'Fakturan har ändrats. Ladda om innan du fortsätter.' }, { status: 409 });

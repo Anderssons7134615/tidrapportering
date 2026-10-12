@@ -28,7 +28,7 @@ test('cached reference data is shown while a fresh project list is fetched immed
     defaultOptions: { queries: { staleTime: 5 * 60 * 1000, retry: false } },
   });
   const observer = new QueryObserver(client, {
-    queryKey: ['projects', 'active', 'employee'],
+    queryKey: ['projects', 'options', 'active', 'employee'],
     queryFn: async () => {
       fetchCount += 1;
       return freshProjects;
@@ -49,7 +49,7 @@ test('a fresh in-memory project cache is still refreshed when the form is reopen
   const cachedProjects = [{ id: 'old', name: 'Gammalt projekt' }];
   const freshProjects = [...cachedProjects, { id: 'new', name: 'Nytt projekt' }];
   let fetchCount = 0;
-  const queryKey = ['projects', 'active', 'employee'];
+  const queryKey = ['projects', 'options', 'active', 'employee'];
   const client = new QueryClient({
     defaultOptions: { queries: { staleTime: 5 * 60 * 1000, retry: false } },
   });
@@ -77,7 +77,7 @@ test('cached projects remain selectable when the refresh fails', async () => {
     defaultOptions: { queries: { staleTime: 5 * 60 * 1000, retry: false } },
   });
   const observer = new QueryObserver(client, {
-    queryKey: ['projects', 'active', 'employee'],
+    queryKey: ['projects', 'options', 'active', 'employee'],
     queryFn: async () => {
       fetchCount += 1;
       throw new Error('Nätfel');

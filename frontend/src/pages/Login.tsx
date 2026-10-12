@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowRight, Loader2, Building2 } from 'lucide-react';
+import { ArrowRight, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { authApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
+import { BrandMark } from '../components/ui/IdentityMark';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -45,7 +46,7 @@ export default function Login() {
       <section className="login-form-surface max-w-md" aria-label="Inloggning">
           <div>
             <div className="mb-6">
-              <div className="brand-mark mb-5"><Building2 className="h-6 w-6" aria-hidden="true" /></div>
+              <div className="mb-8 flex items-center gap-2.5"><BrandMark /><span className="brand-wordmark">tidapp.</span></div>
               <h1 className="page-title">Anderssons Isolering</h1>
               <p className="mt-2 text-sm text-graphite-600">Logga in för att se dina projekt och rapportera tid.</p>
             </div>

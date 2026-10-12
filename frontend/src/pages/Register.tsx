@@ -70,21 +70,21 @@ export default function Register() {
       <div className="login-frame lg:grid-cols-[minmax(21rem,0.8fr)_minmax(28rem,1.2fr)]">
         <section className="login-brand-panel">
           <div className="relative z-10 inline-flex h-11 w-11 items-center justify-center rounded-lg bg-white text-primary-800" aria-hidden="true"><Building2 className="h-5 w-5" /></div>
-          <p className="relative z-10 mt-10 text-sm font-bold text-primary-300">Nytt konto</p>
-          <h1 className="relative z-10 mt-3 max-w-2xl text-4xl font-extrabold leading-[1.08] tracking-[-0.04em] text-white sm:text-5xl">
+          <p className="relative z-10 mt-10 text-xs font-medium text-primary-800">Nytt konto</p>
+          <h1 className="page-title relative z-10 mt-3 max-w-2xl">
             Skapa företagets arbetsyta.
           </h1>
-          <p className="relative z-10 mt-5 max-w-xl text-base leading-7 text-white/68">
+          <p className="relative z-10 mt-5 max-w-xl text-sm leading-6 text-graphite-600">
             Skapa företaget, lägg till administratören och fortsätt sedan direkt in i samma rena arbetsyta som används för projekt, tid och rapporter.
           </p>
 
-          <dl className="relative z-10 mt-10 space-y-3 text-sm leading-6 text-white/70">
-            <div className="border-t border-white/10 pt-3">
-              <dt className="font-bold text-white">1. Företagsuppgifter</dt>
+          <dl className="relative z-10 mt-10 space-y-3 text-sm leading-6 text-graphite-600">
+            <div className="border-t border-primary-200 pt-3">
+              <dt className="font-semibold text-graphite-950">1. Företagsuppgifter</dt>
               <dd>Företagsnamn och organisationsnummer.</dd>
             </div>
-            <div className="border-t border-white/10 pt-3">
-              <dt className="font-bold text-white">2. Administratör</dt>
+            <div className="border-t border-primary-200 pt-3">
+              <dt className="font-semibold text-graphite-950">2. Administratör</dt>
               <dd>Den första användaren får åtkomst direkt efter registrering.</dd>
             </div>
           </dl>
@@ -97,7 +97,7 @@ export default function Register() {
                 <Building2 className="h-4 w-4" />
                 Registrera företag
               </p>
-              <h2 className="mt-2 text-2xl font-semibold tracking-normal text-graphite-950">Företag och konto</h2>
+              <h2 className="mt-2 text-lg font-semibold tracking-tight text-graphite-950">Företag och konto</h2>
             </div>
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">

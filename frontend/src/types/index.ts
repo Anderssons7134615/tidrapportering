@@ -569,6 +569,13 @@ export interface TeamWeekSummaryUser {
   entries: TimeEntry[];
 }
 
+export interface ProjectOption {
+  id: string;
+  code: string;
+  name: string;
+  customer?: { id: string; name: string } | null;
+}
+
 export interface TeamWeekSummary {
   weekStart: string;
   weekEnd: string;

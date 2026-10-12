@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Search, X } from 'lucide-react';
-import type { Project } from '../types';
+import type { ProjectOption } from '../types';
 
-type Props = { id: string; projects: Project[]; value: string; onChange: (id: string) => void; required: boolean };
-const label = (project: Project) => `${project.code} · ${project.name}${project.customer ? ` (${project.customer.name})` : ''}`;
+type Props = { id: string; projects: ProjectOption[]; value: string; onChange: (id: string) => void; required: boolean };
+const label = (project: ProjectOption) => `${project.code} · ${project.name}${project.customer ? ` (${project.customer.name})` : ''}`;
 
 export function ProjectPicker({ id, projects, value, onChange, required }: Props) {
   const [query, setQuery] = useState('');

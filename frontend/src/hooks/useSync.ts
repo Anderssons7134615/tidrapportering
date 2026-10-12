@@ -1,4 +1,4 @@
-import { refreshProjectQueries } from '../utils/projectQueries';
+import { refreshTimeQueries } from '../utils/timeQueries';
 import { useEffect, useMemo, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useOfflineStore } from '../stores/offlineStore';
@@ -70,12 +70,7 @@ export function useSync() {
           toast.error('Synksvaret var ofullständigt. Osäkra rader ligger kvar i kön.');
         }
 
-        queryClient.invalidateQueries({ queryKey: ['timeEntries'] });
-        queryClient.invalidateQueries({ queryKey: ['week'] });
-        queryClient.invalidateQueries({ queryKey: ['weekLocks'] });
-        queryClient.invalidateQueries({ queryKey: ['team-week-summary'] });
-        if (successfulLocalIds.length > 0) void refreshProjectQueries(queryClient);
-        queryClient.invalidateQueries({ queryKey: ['report'] });
+        void refreshTimeQueries(queryClient, { projectDataChanged: successfulLocalIds.length > 0 });
       } catch (error) {
         console.error('Sync failed:', error);
         const signature = error instanceof Error ? error.message : 'Okänt synkfel';

@@ -1,4 +1,4 @@
-import { refreshProjectQueries } from '../utils/projectQueries';
+import { refreshTimeQueries } from '../utils/timeQueries';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -14,7 +14,7 @@ import { useOfflineStore } from '../stores/offlineStore';
 import type { TimeEntry } from '../types';
 import { AppShell, Button, ConfirmDialog, Dialog, FormField, StatusBadge } from '../components/ui/design';
 import { QueryError } from '../components/ui/QueryError';
-import { parseDateOnlyLocal, toDateInputValue } from '../utils/format';
+import { formatHours, parseDateOnlyLocal, toDateInputValue } from '../utils/format';
 
 function SwipeableEntry({
   entry,
@@ -45,15 +45,16 @@ function SwipeableEntry({
 
   return (
     <div className="relative overflow-hidden rounded-lg">
-      <motion.div
+      {canModify && <motion.div
+        aria-hidden="true"
         className="absolute inset-0 flex items-center justify-end rounded-lg bg-red-500 pr-2"
         style={{ opacity: deleteOpacity }}
       >
-        <button type="button" onClick={onDelete} className="btn-danger min-h-11 px-3" disabled={isDeleting}>
+        <button type="button" tabIndex={-1} onClick={onDelete} className="btn-danger min-h-11 px-3" disabled={isDeleting}>
           <Trash2 className="h-4 w-4" />
           Ta bort
         </button>
-      </motion.div>
+      </motion.div>}
 
       <motion.div
         drag={canModify && !revealed ? 'x' : false}
@@ -169,11 +170,7 @@ export default function WeekView() {
       setPendingDelete(null);
       haptic('light');
       toast.success('Tidrad borttagen');
-      refetch();
-      queryClient.invalidateQueries({ queryKey: ['timeEntries'] });
-      queryClient.invalidateQueries({ queryKey: ['weekLocks'] });
-      queryClient.invalidateQueries({ queryKey: ['team-week-summary'] });
-      void refreshProjectQueries(queryClient);
+      void refreshTimeQueries(queryClient);
     },
     onError: (error: Error) => {
       haptic('error');
@@ -191,11 +188,7 @@ export default function WeekView() {
       setVacationDialogOpen(false);
       haptic('light');
       toast.success(`Semester rapporterad: ${result.totalHours.toLocaleString('sv-SE')} h`);
-      refetch();
-      queryClient.invalidateQueries({ queryKey: ['timeEntries'] });
-      queryClient.invalidateQueries({ queryKey: ['weekLocks'] });
-      queryClient.invalidateQueries({ queryKey: ['team-week-summary'] });
-      void refreshProjectQueries(queryClient);
+      void refreshTimeQueries(queryClient);
     },
     onError: (error: Error) => {
       haptic('error');
@@ -321,7 +314,7 @@ export default function WeekView() {
         </div>
         <div className="grid grid-cols-1 gap-4">
           <div>
-            <p className="text-2xl font-bold">{data?.summary.totalHours.toFixed(1)}h</p>
+            <p className="text-xl font-semibold tabular-nums">{formatHours(data?.summary.totalHours)}</p>
             <p className="text-sm text-slate-500">Total tid</p>
           </div>
         </div>
@@ -384,7 +377,7 @@ export default function WeekView() {
                 </div>
                 <div className="flex items-center gap-2">
                   <Link to={dayReportUrl} className="inline-flex min-h-11 items-center text-xs font-semibold text-primary-700 hover:text-primary-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400">Rapportera</Link>
-                  <span className="font-bold">{dayTotal.toFixed(1)}h</span>
+                  <span className="font-semibold tabular-nums">{formatHours(dayTotal)}</span>
                 </div>
               </div>
 

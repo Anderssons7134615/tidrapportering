@@ -114,7 +114,7 @@ function MovementDialog({ item, kind, source, resume, online, persist, onClose, 
   const [frozen, setFrozen] = useState(resume || null);
   const [error, setError] = useState('');
   const [conflicted, setConflicted] = useState(false);
-  const projects = useQuery({ queryKey: ['projects', 'active', 'inventory'], queryFn: () => projectsApi.list({ active: true }), enabled: kind === 'ISSUE' && !resume });
+  const projects = useQuery({ queryKey: ['projects', 'options', 'inventory'], queryFn: projectsApi.options, enabled: kind === 'ISSUE' && !resume });
   const amount = parseSwedishNumber(quantity);
   const validAmount = quantity.trim() !== '' && Number.isFinite(amount) && amount >= (kind === 'COUNT' ? 0 : 0.001) && amount <= 1_000_000 && Math.abs(amount * 1000 - Math.round(amount * 1000)) < 0.000001;
   const next = kind === 'COUNT' ? amount : item.balance + (kind === 'ISSUE' ? -amount : amount);

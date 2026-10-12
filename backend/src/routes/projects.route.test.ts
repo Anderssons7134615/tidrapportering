@@ -5,6 +5,36 @@ import { createProjectRoutes } from './projects.js';
 
 const baseline = { id: 'project-1', companyId: 'company-a', name: 'Testprojekt', code: '0042', status: 'ONGOING', active: true, site: 'Plats', notes: 'Anteckning', budgetHours: 80, customerId: null };
 
+test('project choices keep company and active scope without financial or metrics queries', async () => {
+  const calls: any[] = [];
+  const choices = [{ id: 'project-1', code: '0042', name: 'Testprojekt', customer: { id: 'customer-1', name: 'Testkund' } }];
+  // Only this read exists: an accidental metrics/finance call fails the request.
+  const db: any = { project: { findMany: async (query: any) => { calls.push(query); return choices; } } };
+  const app = Fastify();
+  app.decorate('authenticate', async (request: any, reply: any) => {
+    if (!request.headers['x-test-role']) return reply.code(401).send({ error: 'Logga in' });
+    request.user = { id: 'user-1', companyId: 'company-a', role: request.headers['x-test-role'] };
+  });
+  await app.register(createProjectRoutes(db), { prefix: '/api/projects' });
+  try {
+    for (const role of ['ADMIN', 'SUPERVISOR', 'EMPLOYEE']) {
+      const response = await app.inject({ method: 'GET', url: '/api/projects/options?companyId=company-b&active=false', headers: { 'x-test-role': role } });
+      assert.equal(response.statusCode, 200);
+      assert.deepEqual(response.json(), choices);
+      assert.deepEqual(calls.at(-1), {
+        where: { companyId: 'company-a', active: true },
+        select: { id: true, code: true, name: true, customer: { select: { id: true, name: true } } },
+        orderBy: [{ code: 'asc' }, { name: 'asc' }],
+      });
+    }
+    for (const [role, expected] of [['ACCOUNTANT', 403], ['', 401]] as const) {
+      const response = await app.inject({ method: 'GET', url: '/api/projects/options', headers: role ? { 'x-test-role': role } : {} });
+      assert.equal(response.statusCode, expected);
+    }
+    assert.equal(calls.length, 3);
+  } finally { await app.close(); }
+});
+
 async function setupCreation(failAt = '', customerActive = true) {
   const rows: any[] = [];
   const audits: any[] = [];

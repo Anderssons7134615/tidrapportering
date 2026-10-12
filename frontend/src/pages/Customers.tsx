@@ -138,7 +138,8 @@ export default function Customers() {
                 key={filter.id}
                 type="button"
                 onClick={() => setStatusFilter(filter.id as typeof statusFilter)}
-                className={`rounded-md border px-3 py-2.5 text-sm font-semibold transition ${
+                aria-pressed={statusFilter === filter.id}
+                className={`min-h-11 min-w-11 rounded-md border px-3 py-2.5 text-sm font-semibold transition ${
                   statusFilter === filter.id
                     ? 'border-primary-700 bg-primary-50 text-primary-800'
                     : 'border-graphite-200 bg-white text-graphite-700 hover:border-primary-200 hover:bg-primary-50'

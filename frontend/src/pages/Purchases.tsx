@@ -108,7 +108,7 @@ function InvoiceEditor({ invoice }: { invoice: SupplierInvoice }) {
   const editable = invoice.status === 'DRAFT';
   const dirty = JSON.stringify(form) !== JSON.stringify(invoiceToForm(invoice));
   const blocker = useBlocker(dirty);
-  const projects = useQuery({ queryKey: ['projects', 'invoice-allocation'], queryFn: () => projectsApi.list({ active: true }), enabled: editable });
+  const projects = useQuery({ queryKey: ['projects', 'options', 'invoice-allocation'], queryFn: projectsApi.options, enabled: editable });
   useEffect(() => { if (error) { errorRef.current?.scrollIntoView({ block: 'nearest' }); errorRef.current?.focus(); } }, [error]);
   useEffect(() => {
     if (!dirty) return;

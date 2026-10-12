@@ -1,5 +1,5 @@
 export function formatHours(value?: number | null) {
-  return `${(value || 0).toLocaleString('sv-SE', { maximumFractionDigits: 1 })} h`;
+  return `${(value || 0).toLocaleString('sv-SE', { maximumFractionDigits: 2 })} h`;
 }
 
 export function formatPercent(value?: number | null) {

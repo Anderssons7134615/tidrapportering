@@ -7,6 +7,7 @@ import { projectTasksApi, projectsApi, usersApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
 import type { Project, ProjectControlItem, ProjectTask, ProjectTaskPriority, ProjectTaskStatus, User } from '../types';
 import { AppShell, ConfirmDialog, Dialog, EmptyState, PageHeader } from '../components/ui/design';
+import { IdentityMark } from '../components/ui/IdentityMark';
 import { ListSkeleton, Skeleton } from '../components/ui/Skeleton';
 import { QueryError } from '../components/ui/QueryError';
 import { ProjectDialog } from '../components/ProjectDialog';
@@ -301,6 +302,7 @@ export default function Projects() {
           ) : (
             <div className="project-list">
               {!managing && !customerView ? [...customerGroups.entries()].map(([key, group]) => <Link key={key} to={group.path} className="project-directory-row">
+                <IdentityMark name={group.name} identity={key} />
                 <span className="min-w-0">
                   <span className="block font-semibold text-graphite-950 [overflow-wrap:anywhere]">{group.name}</span>
                   <span className="mt-1 block text-sm text-graphite-600">{countLabel(group.projects.length)}</span>
@@ -326,6 +328,7 @@ export default function Projects() {
                 />
               ) : (
                 <Link key={project.id} to={projectPath(project.id)} className="project-directory-row">
+                  <IdentityMark name={project.name} identity={project.id} />
                   <span className="min-w-0">
                     <span className="block font-semibold text-graphite-950 [overflow-wrap:anywhere]">{project.name}</span>
                     <span className="mt-1 block text-sm text-graphite-600">{project.code} · {project.status === 'PLANNED' ? 'Planerad' : project.status === 'COMPLETED' ? 'Avslutad' : 'Pågående'}</span>

@@ -39,7 +39,7 @@ function setup({ role = 'EMPLOYEE', items = [stock], path = '/inventory?item=ite
     let data;
     if (parsed.pathname === '/api/inventory/items') data = items;
     else if (parsed.pathname.endsWith('/history')) data = { items: history, total: history.length, page: 1 };
-    else if (parsed.pathname === '/api/projects') data = [{ id: 'p1', code: '0042', name: 'TEST Projekt' }];
+    else if (parsed.pathname === '/api/projects/options') data = [{ id: 'p1', code: '0042', name: 'TEST Projekt' }];
     else if (parsed.pathname.endsWith('/movements')) {
       attempts++;
       if (failFirst && attempts === 1) return Response.json({ error: 'Testfel' }, { status: failureStatus });

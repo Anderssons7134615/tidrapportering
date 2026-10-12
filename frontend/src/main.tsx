@@ -93,8 +93,12 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         toastOptions={{
           duration: 3000,
           style: {
-            background: '#1a1a1a',
-            color: '#fff',
+            background: '#ffffff',
+            color: '#26303e',
+            border: '1px solid #dfe4eb',
+            fontSize: '13px',
+            borderRadius: '10px',
+            boxShadow: '0 4px 20px #20293812',
           },
         }}
       />

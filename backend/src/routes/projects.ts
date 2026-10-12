@@ -357,6 +357,17 @@ return async (fastify) => {
     return projectsWithHours;
   });
 
+  // Reference choices do not need project financials or per-project metrics.
+  fastify.get('/options', {
+    preHandler: [fastify.authenticate, requireProjectAccess],
+  }, async (request) => {
+    return prisma.project.findMany({
+      where: { companyId: request.user.companyId, active: true },
+      select: { id: true, code: true, name: true, customer: { select: { id: true, name: true } } },
+      orderBy: [{ code: 'asc' }, { name: 'asc' }],
+    });
+  });
+
   fastify.get('/materials/articles', {
     preHandler: [fastify.authenticate, requireProjectAccess],
   }, async (request) => {
