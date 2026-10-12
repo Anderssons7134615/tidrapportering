@@ -166,6 +166,7 @@ export const customersApi = {
 
 // Projects
 export const projectsApi = {
+  customerOptions: () => fetchApi<Array<{ id: string; name: string }>>('/projects/customer-options'),
   list: (params?: { status?: string; customerId?: string; active?: boolean }) => {
     const searchParams = new URLSearchParams();
     if (params?.status) searchParams.set('status', params.status);

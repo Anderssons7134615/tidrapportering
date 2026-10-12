@@ -12,6 +12,7 @@ import { useOfflineStore } from '../stores/offlineStore';
 import { useHaptic } from '../hooks/useHaptic';
 import { AppShell, Button, DataList, DataRow, FormField, PageHeader, ReviewSummary, TaskSection } from '../components/ui/design';
 import { QueryError } from '../components/ui/QueryError';
+import { ProjectPicker } from '../components/ProjectPicker';
 import { getDisabledReason, parseDateOnlyLocal, parseSwedishNumber, toDateInputValue } from '../utils/format';
 import { referenceQueryCache } from '../utils/referenceQuery';
 import type { Activity, Project, User } from '../types';
@@ -406,10 +407,7 @@ export default function TimeEntry() {
               </FormField>
               <div>
                 <FormField label="Projekt" controlId="time-entry-project">
-                  <select id="time-entry-project" value={projectId} onChange={(event) => setProjectId(event.target.value)} className="input">
-                    <option value="">{projectRequired ? 'Välj projekt...' : 'Inget projekt (intern/frånvaro)'}</option>
-                    {projects?.map((project) => <option key={project.id} value={project.id}>{project.code} - {project.name}{project.customer ? ` (${project.customer.name})` : ''}</option>)}
-                  </select>
+                  <ProjectPicker id="time-entry-project" projects={projects || []} value={projectId} onChange={setProjectId} required={projectRequired} />
                 </FormField>
                 <div className="mt-2 flex min-h-11 flex-wrap items-center justify-between gap-2" aria-live="polite">
                   <div className="min-w-0 text-xs font-medium">

@@ -49,7 +49,8 @@ function renderProjects({ extraProjects = [], tasks = [], failArchive = '', fail
       data = { items, summary: { active: items.length, overdue: 0, dueToday: 0, upcoming: 0, invoiceDraftCount: 3 } };
     }
     else if (path.endsWith('/users')) data = [{ id: 'admin-1', name: 'Testadmin', role: 'ADMIN', active: true }];
-    else if (path.endsWith('/customers')) data = [project.customer];
+    else if (path.endsWith('/customers') || path.endsWith('/projects/customer-options')) data = [project.customer];
+    else if (path.endsWith('/projects') && method === 'POST') { data = { ...project, ...body, id: 'project-99', code: '0043' }; records.push(data); }
     else if (/\/projects\/project-\d+(\/restore)?$/.test(path)) {
       const id = path.match(/project-\d+/)[0];
       if (method === 'DELETE' && archiveResponse) { const response = await archiveResponse(); if (response instanceof Response) return response; }
@@ -69,6 +70,25 @@ function renderProjects({ extraProjects = [], tasks = [], failArchive = '', fail
   const view = render(React.createElement(QueryClientProvider, { client }, React.createElement(MemoryRouter, { initialEntries: [initialPath] }, React.createElement(Projects), React.createElement(CurrentPath))));
   return { view, client };
 }
+
+test('employee can create a project through a reduced form without fetching financial customer data', async () => {
+  const { view } = renderProjects({ role: 'EMPLOYEE' });
+  fireEvent.click(await view.findByRole('button', { name: 'Nytt projekt' }));
+  const dialog = view.getByRole('dialog');
+  const form = within(dialog);
+  assert.equal(form.queryByLabelText('Timpris till kund (kr/tim)'), null);
+  assert.equal(form.queryByLabelText('Projektnummer'), null);
+  assert.equal(form.queryByLabelText('Budget timmar'), null);
+  await form.findByRole('option', { name: 'Testkund' });
+  fireEvent.change(form.getByLabelText('Projektnamn'), { target: { value: 'Nytt montage' } });
+  fireEvent.change(form.getByLabelText('Kund'), { target: { value: 'customer-1' } });
+  fireEvent.change(form.getByLabelText('Arbetsplats'), { target: { value: 'Panncentral' } });
+  fireEvent.click(form.getByRole('button', { name: 'Skapa projekt' }));
+  await waitFor(() => assert.ok(requests.some((request) => request.method === 'POST' && request.path === '/api/projects')));
+  assert.deepEqual(requests.find((request) => request.method === 'POST' && request.path === '/api/projects').body,
+    { name: 'Nytt montage', customerId: 'customer-1', site: 'Panncentral' });
+  assert.equal(requests.some((request) => request.path === '/api/customers' || request.path === '/api/projects/next-code'), false);
+});
 
 test('customer appears once, opens its overview then a project with return context', async () => {
   const economy = { reportedHours: 12, unapprovedHours: 4, budgetHours: 10, budgetUsagePercent: 120, warnings: ['Inköpspris saknas på material'] };
@@ -189,7 +209,7 @@ test('projects without a customer use Intern and the employee opens only permitt
   const { view } = renderProjects({ role: 'EMPLOYEE', tasks: [task], extraProjects: [{ id: 'project-2', name: 'Internt arbete', customer: null }] });
   await view.findByRole('link', { name: 'Intern 1 aktivt projekt' });
   assert.equal(view.queryByRole('button', { name: 'Hantera' }), null);
-  assert.equal(view.queryByRole('button', { name: 'Nytt projekt' }), null);
+  assert.ok(view.getByRole('button', { name: 'Nytt projekt' }));
   await openTools(view);
   assert.equal(view.getByRole('button', { name: 'Uppgifter' }).getAttribute('aria-pressed'), 'true');
   assert.equal(view.queryAllByRole('checkbox').length, 0);
@@ -324,7 +344,8 @@ test('employee sees projects without archive or project editing actions', async 
   await openTools(view);
   await view.findByRole('link', { name: /0042.*Testprojekt/ });
   assert.equal(view.queryAllByRole('checkbox').length, 0);
-  assert.equal(view.queryAllByRole('button', { name: /Redigera|Arkiverade|Nytt projekt/ }).length, 0);
+  assert.equal(view.queryAllByRole('button', { name: /Redigera|Arkiverade/ }).length, 0);
+  assert.ok(view.getByRole('button', { name: 'Nytt projekt' }));
 });
 
 test('changing search clears selection so hidden projects cannot be archived', async () => {

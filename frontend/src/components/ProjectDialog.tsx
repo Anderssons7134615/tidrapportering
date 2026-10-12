@@ -6,14 +6,16 @@ import type { Project } from '../types';
 import { Dialog } from './ui/design';
 import { parseSwedishNumber } from '../utils/format';
 import { refreshProjectQueries } from '../utils/projectQueries';
+import { useAuthStore } from '../stores/authStore';
 
 export function ProjectDialog({ project, onClose, onSaved }: { project?: Project; onClose: () => void; onSaved: () => void }) {
   const client = useQueryClient();
+  const employeeCreate = useAuthStore((state) => state.user?.role === 'EMPLOYEE') && !project;
   const [customerId, setCustomerId] = useState(project?.customerId || '');
   const [code, setCode] = useState<string | null>(null);
   const [error, setError] = useState('');
-  const { data: customers, isError: customersFailed, refetch: retryCustomers } = useQuery({ queryKey: ['customers', 'active'], queryFn: () => customersApi.list(true) });
-  const { data: nextCode } = useQuery({ queryKey: ['projects', 'next-code'], queryFn: projectsApi.nextCode, enabled: !project });
+  const { data: customers, isError: customersFailed, refetch: retryCustomers } = useQuery({ queryKey: employeeCreate ? ['projects', 'customer-options'] : ['customers', 'active'], queryFn: employeeCreate ? projectsApi.customerOptions : () => customersApi.list(true) });
+  const { data: nextCode } = useQuery({ queryKey: ['projects', 'next-code'], queryFn: projectsApi.nextCode, enabled: !project && !employeeCreate });
   const save = useMutation({
     mutationFn: (data: Partial<Project>) => project ? projectsApi.update(project.id, data) : projectsApi.create(data),
     onSuccess: () => {
@@ -30,6 +32,11 @@ export function ProjectDialog({ project, onClose, onSaved }: { project?: Project
     setError('');
     const form = new FormData(event.currentTarget);
     const text = (key: string) => String(form.get(key) || '').trim();
+    if (employeeCreate) {
+      if (text('name').length < 2) { setError('Ange ett projektnamn med minst två tecken.'); return; }
+      save.mutate({ name: text('name'), customerId: customerId || null, site: text('site') || null });
+      return;
+    }
     const number = (key: string) => text(key) ? parseSwedishNumber(text(key)) : null;
     const budgetHours = number('budgetHours');
     const fixedPrice = number('fixedPrice');
@@ -63,7 +70,7 @@ export function ProjectDialog({ project, onClose, onSaved }: { project?: Project
   };
 
   return (
-    <Dialog open onClose={close} title={project ? 'Redigera projekt' : 'Nytt projekt'} description={project ? `${project.code} · ${project.name}` : 'Fyll i projektuppgifter. Ekonomifälten är valfria för löpande projekt.'} footer={
+    <Dialog open onClose={close} title={project ? 'Redigera projekt' : 'Nytt projekt'} description={project ? `${project.code} · ${project.name}` : employeeCreate ? 'Ange namn, kund och arbetsplats. Projektnummer skapas automatiskt.' : 'Fyll i projektuppgifter. Ekonomifälten är valfria för löpande projekt.'} footer={
       <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
         <button type="button" className="btn-secondary" onClick={close} disabled={save.isPending}>Avbryt</button>
         <button type="submit" form="project-form" className="btn-primary" disabled={save.isPending}>{save.isPending ? 'Sparar…' : project ? 'Spara ändringar' : 'Skapa projekt'}</button>
@@ -73,7 +80,7 @@ export function ProjectDialog({ project, onClose, onSaved }: { project?: Project
         {error && <p role="alert" className="mb-4 text-sm text-rose-700">{error}</p>}
         <fieldset disabled={save.isPending} className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2">
           <ProjectField autoFocus name="name" label="Projektnamn" defaultValue={project?.name} minLength={2} required />
-          <ProjectField name="code" label="Projektnummer" value={code ?? project?.code ?? nextCode?.code ?? ''} onChange={(event) => setCode(event.target.value)} required />
+          {!employeeCreate && <ProjectField name="code" label="Projektnummer" value={code ?? project?.code ?? nextCode?.code ?? ''} onChange={(event) => setCode(event.target.value)} required />}
           <label><span className="label">Kund</span><select name="customerId" className="input" value={customerId} onChange={(event) => setCustomerId(event.target.value)}>
             <option value="">Intern</option>
             {project?.customerId && !customers?.some((item) => item.id === project.customerId) && <option value={project.customerId}>{project.customer?.name || 'Nuvarande kund'}</option>}
@@ -81,6 +88,7 @@ export function ProjectDialog({ project, onClose, onSaved }: { project?: Project
           </select></label>
           <ProjectField name="site" label="Arbetsplats" defaultValue={project?.site || ''} />
           {customersFailed && <div className="sm:col-span-2 text-sm text-rose-700" role="alert">Kundlistan kunde inte hämtas. Nuvarande kund behålls. <button type="button" className="min-h-11 px-2 underline" onClick={() => void retryCustomers()}>Försök igen</button></div>}
+          {!employeeCreate && <>
           <label><span className="label">Status</span><select name="status" className="input" defaultValue={project?.status || 'PLANNED'}><option value="PLANNED">Planerad</option><option value="ONGOING">Pågående</option><option value="COMPLETED">Avslutad</option></select></label>
           <ProjectField name="budgetHours" label="Budget timmar" defaultValue={project?.budgetHours ?? ''} inputMode="decimal" placeholder="Valfritt" />
           <label><span className="label">Debitering</span><select name="billingModel" className="input" defaultValue={project?.billingModel || 'HOURLY'}><option value="HOURLY">Löpande</option><option value="FIXED">Fast pris</option></select></label>
@@ -88,6 +96,7 @@ export function ProjectDialog({ project, onClose, onSaved }: { project?: Project
           <ProjectField name="fixedPrice" label="Anbud / fast pris (exkl. moms)" defaultValue={project?.fixedPrice ?? ''} inputMode="decimal" placeholder="Valfritt vid löpande" />
           <label className="sm:col-span-2"><span className="label">Anteckningar</span><textarea name="notes" className="input min-h-24" defaultValue={project?.notes || ''} /></label>
           <label className="sm:col-span-2 flex min-h-11 items-center gap-3 border-t border-graphite-200 py-3 text-sm"><input name="employeeCanSeeResults" type="checkbox" defaultChecked={project?.employeeCanSeeResults || false} /><span>Visa attesterade projekttimmar för medarbetare</span></label>
+          </>}
         </fieldset>
       </form>
     </Dialog>

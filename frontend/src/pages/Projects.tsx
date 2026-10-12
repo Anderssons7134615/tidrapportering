@@ -189,7 +189,7 @@ export default function Projects() {
         description={customerView ? `${countLabel(visibleProjects.length)}. Välj ett projekt för att öppna detaljerna.` : managing ? isManager ? 'Uppgifter, underlag och hantering av projekten.' : 'Dina öppna uppgifter visas först.' : 'Välj en kund för att se deras projekt.'}
         action={(
           <div className="flex flex-wrap gap-2">
-            {isManager && <button type="button" className="btn-primary" onClick={() => setProjectDialog({})}>Nytt projekt</button>}
+            {(isManager || user?.role === 'EMPLOYEE') && <button type="button" className="btn-primary" onClick={() => setProjectDialog({})}>Nytt projekt</button>}
             <button type="button" className="btn-secondary" aria-pressed={managing} onClick={() => setManaging((current) => !current)}>{isManager ? 'Hantera' : 'Uppgifter'}</button>
             {isManager && managing && <button type="button" className="btn-secondary" onClick={() => setTaskDialog({})} disabled={archived || !scopedProjects.length}>
               <Plus className="h-4 w-4" aria-hidden="true" />Ny uppgift

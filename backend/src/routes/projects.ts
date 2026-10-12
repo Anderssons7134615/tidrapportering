@@ -54,6 +54,9 @@ const createProjectSchema = projectSchema.extend({
   ),
 });
 
+const employeeCreateProjectSchema = projectSchema.pick({ name: true, customerId: true, site: true })
+  .extend({ name: z.string().trim().min(2) }).strict();
+
 const materialArticleSchema = z.object({
   name: z.string().min(2),
   articleNumber: z.string().trim().optional().nullable(),
@@ -97,6 +100,7 @@ const projectMaterialPatchSchema = z.object({
 
 
 const requireAdminOrSupervisor = requireRoles(['ADMIN', 'SUPERVISOR']);
+const requireProjectCreator = requireRoles(['ADMIN', 'SUPERVISOR', 'EMPLOYEE']);
 const requireProjectAccess = async (request: any, reply: any) => {
   if (request.user.role === 'ACCOUNTANT') {
     return reply.status(403).send({ error: 'Lön och ekonomi använder rapporter med attesterad tid' });
@@ -160,10 +164,10 @@ function sanitizeProjectForRole<T extends Record<string, any>>(project: T, canVi
   return sanitized as T;
 }
 
-async function customerBelongsToCompany(prisma: typeof defaultPrisma, customerId: string | null | undefined, companyId: string) {
+async function customerBelongsToCompany(prisma: typeof defaultPrisma, customerId: string | null | undefined, companyId: string, activeOnly = false) {
   if (!customerId) return true;
   const customer = await prisma.customer.findFirst({
-    where: { id: customerId, companyId },
+    where: { id: customerId, companyId, ...(activeOnly ? { active: true } : {}) },
     select: { id: true },
   });
   return Boolean(customer);
@@ -790,6 +794,14 @@ return async (fastify) => {
     });
 
     return { message: 'Materialartikeln inaktiverad' };
+  });
+
+  fastify.get('/customer-options', { preHandler: [requireProjectCreator] }, async (request) => {
+    return prisma.customer.findMany({
+      where: { companyId: request.user.companyId, active: true },
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
+    });
   });
 
   fastify.get('/next-code', {
@@ -1681,12 +1693,14 @@ return async (fastify) => {
 
   // Create project
   fastify.post('/', {
-    preHandler: [requireAdminOrSupervisor],
+    preHandler: [requireProjectCreator],
   }, async (request, reply) => {
     try {
-      const body = createProjectSchema.parse(request.body);
-      if (!await customerBelongsToCompany(prisma, body.customerId, request.user.companyId)) {
-        return reply.status(400).send({ error: 'Kunden finns inte i ditt företag' });
+      const body: z.infer<typeof createProjectSchema> = request.user.role === 'EMPLOYEE'
+        ? employeeCreateProjectSchema.parse(request.body)
+        : createProjectSchema.parse(request.body);
+      if (!await customerBelongsToCompany(prisma, body.customerId, request.user.companyId, request.user.role === 'EMPLOYEE')) {
+        return reply.status(400).send({ error: 'Kunden finns inte eller är inte tillgänglig i ditt företag' });
       }
 
       const requestedCode = body.code?.trim();
@@ -1714,7 +1728,8 @@ return async (fastify) => {
       }
 
       try {
-        project = await prisma.project.create({
+        project = await prisma.$transaction(async (tx) => {
+        const created = await tx.project.create({
         data: {
           ...body,
           code,
@@ -1725,6 +1740,24 @@ return async (fastify) => {
           customer: { select: { id: true, name: true } },
         },
       });
+        await tx.auditLog.create({
+          data: {
+            userId: request.user.id,
+            action: 'CREATE',
+            entityType: 'Project',
+            entityId: created.id,
+            newValue: JSON.stringify({ name: created.name, code: created.code, employeeCanSeeResults: created.employeeCanSeeResults }),
+          },
+        });
+        await enqueueProjectChanged(tx, {
+          companyId: request.user.companyId,
+          projectId: created.id,
+          entityId: created.id,
+          action: 'CREATE',
+          payload: { code: created.code, name: created.name, customerId: created.customerId },
+        });
+        return created;
+        });
         break;
       } catch (error: any) {
         if (!requestedCode && error?.code === 'P2002') {
@@ -1739,34 +1772,7 @@ return async (fastify) => {
         return reply.status(409).send({ error: 'Kunde inte skapa ett unikt projektnummer. Försök igen.' });
       }
 
-      // Audit log
-      await prisma.auditLog.create({
-        data: {
-          userId: request.user.id,
-          action: 'CREATE',
-          entityType: 'Project',
-          entityId: project.id,
-          newValue: JSON.stringify({
-            name: project.name,
-            code: project.code,
-            employeeCanSeeResults: project.employeeCanSeeResults,
-          }),
-        },
-      });
-
-      await enqueueProjectChanged(prisma, {
-        companyId: request.user.companyId,
-        projectId: project.id,
-        entityId: project.id,
-        action: 'CREATE',
-        payload: {
-          code: project.code,
-          name: project.name,
-          customerId: project.customerId,
-        },
-      });
-
-      return reply.status(201).send(project);
+      return reply.status(201).send(sanitizeProjectForRole(project, canViewProjectFinancials(request.user.role)));
     } catch (error) {
       if (error instanceof z.ZodError) {
         return reply.status(400).send({ error: 'Ogiltig data', details: error.errors });
