@@ -9,6 +9,7 @@ process.env.DATABASE_URL = localUrl;
 const { prisma: db } = await import('./prisma.js');
 const { createTimeEntryWriteService } = await import('./timeEntryWrites.js');
 const { default: timeRoutes } = await import('../routes/timeEntries.js');
+const { default: userRoutes } = await import('../routes/users.js');
 const { default: weekRoutes } = await import('../routes/weekLocks.js');
 after(() => db.$disconnect());
 
@@ -27,6 +28,7 @@ async function setup(t: TestContext) {
   app.decorate('authenticate', async (req: any) => { req.user = { ...actor, role: req.headers['x-role'] || actor.role }; });
   await app.register(timeRoutes, { prefix: '/time' });
   await app.register(weekRoutes, { prefix: '/weeks' });
+  await app.register(userRoutes, { prefix: '/users' });
   t.after(() => app.close());
   const receipts = () => db.timeEntryWriteRequest.count({ where: { companyId: company.id } });
   const rows = () => db.timeEntry.count({ where: { userId: user.id } });
@@ -154,4 +156,77 @@ test('time writes: an unlocked week can be resubmitted and approved without edit
   const entries = await db.timeEntry.findMany({ where: { userId: c.user.id } });
   assert.ok(entries.every(row => row.hours === 8 && row.revision === 4 && row.status === 'SUBMITTED'));
   assert.equal((await c.app.inject({ method: 'POST', url: `/weeks/${lock.id}/approve` })).statusCode, 200);
+});
+
+test('incomplete week approval is opt-in for the owner and keeps role, state and empty-week guards', async t => {
+  const c = await setup(t);
+  const entry = await c.service.create(c.actor, c.input, randomUUID());
+  const lock = await c.lock();
+  const approve = (id = lock.id, role = 'ADMIN') => c.app.inject({ method: 'POST', url: `/weeks/${id}/approve`, headers: { 'x-role': role } });
+  assert.equal((await approve()).statusCode, 400);
+  for (const role of ['SUPERVISOR','EMPLOYEE','ACCOUNTANT']) {
+    assert.equal((await c.app.inject({ method: 'PUT', url: `/users/${c.user.id}`, headers: { 'x-role': role }, payload: { allowIncompleteWeekApproval: true } })).statusCode, 403);
+  }
+  assert.equal((await c.app.inject({ method: 'PUT', url: `/users/${c.user.id}`, payload: { allowIncompleteWeekApproval: 'true' } })).statusCode, 400);
+  const before = (await c.app.inject({ url: '/weeks' })).json()[0];
+  assert.equal(before.isCompleteForApproval, false); assert.equal(before.missingRequiredWeekdays.length, 4);
+  const allowed = await c.app.inject({ method: 'PUT', url: `/users/${c.user.id}`, payload: { allowIncompleteWeekApproval: true, hourlyCost: 500 } });
+  assert.equal(allowed.statusCode, 200, allowed.body); assert.equal(allowed.json().allowIncompleteWeekApproval, true);
+  const audit = await db.auditLog.findFirstOrThrow({ where: { entityId: c.user.id, action: 'UPDATE' } });
+  assert.equal(JSON.parse(audit.oldValue!).allowIncompleteWeekApproval, false);
+  assert.equal(JSON.parse(audit.newValue!).allowIncompleteWeekApproval, true);
+  const after = (await c.app.inject({ url: '/weeks' })).json()[0];
+  assert.equal(after.isCompleteForApproval, true); assert.equal(after.missingRequiredWeekdays.length, 4);
+  assert.equal((await approve(lock.id,'SUPERVISOR')).statusCode, 403);
+  await db.timeEntry.update({ where: { id: entry.id }, data: { status: 'DRAFT' } });
+  assert.equal((await approve()).statusCode, 409);
+  await db.timeEntry.update({ where: { id: entry.id }, data: { status: 'SUBMITTED' } });
+  assert.equal((await approve()).statusCode, 200);
+  const row = await db.timeEntry.findUniqueOrThrow({ where: { id: entry.id } });
+  assert.equal(row.hours, 8); assert.equal(row.status, 'APPROVED'); assert.equal(row.approvedHourlyCostSnapshot, 500); assert.ok(row.financialSnapshotCapturedAt);
+  const approvalAudit = await db.auditLog.findFirstOrThrow({ where: { entityId: lock.id, action: 'APPROVE' } });
+  assert.equal(JSON.parse(approvalAudit.newValue!).incompleteWeekException, true);
+  assert.equal((await approve()).statusCode, 400);
+  const empty = await db.weekLock.create({ data: { userId: c.user.id, weekStartDate: new Date('2026-10-12'), status: 'SUBMITTED' } });
+  assert.equal((await approve(empty.id)).statusCode, 400);
+  const emptySummary = (await c.app.inject({ url: '/weeks' })).json().find((row: any) => row.id === empty.id);
+  assert.equal(emptySummary.isCompleteForApproval, false);
+  const other = await setup(t);
+  assert.equal((await c.app.inject({ method: 'PUT', url: `/users/${other.user.id}`, payload: { allowIncompleteWeekApproval: true } })).statusCode, 404);
+  assert.equal((await db.user.findUniqueOrThrow({ where: { id: other.user.id } })).allowIncompleteWeekApproval, false);
+  const colleague = await db.user.create({ data: { companyId: c.company.id, name: 'TEST COLLEAGUE', email: `${randomUUID()}@test.invalid`, password: 'TEST' } });
+  await c.service.create(c.actor, { ...c.input, userId: colleague.id }, randomUUID());
+  const colleagueLock = await db.weekLock.findFirstOrThrow({ where: { userId: colleague.id } });
+  assert.equal((await approve(colleagueLock.id)).statusCode, 400, 'The reviewers own exception must not apply to colleagues');
+});
+
+test('team summary keeps actual empty days without missing-time warnings for an exempt owner', async t => {
+  const c = await setup(t);
+  await c.service.create(c.actor, c.input, randomUUID());
+  const url = '/time/week-summary/2026-10-05';
+  const before = await c.app.inject({ url }); assert.equal(before.statusCode, 200, before.body);
+  assert.equal(before.json().users[0].missingDays.length, 4);
+  await c.app.inject({ method: 'PUT', url: `/users/${c.user.id}`, payload: { allowIncompleteWeekApproval: true } });
+  const after = (await c.app.inject({ url })).json().users[0];
+  assert.equal(after.allowIncompleteWeekApproval, true); assert.equal(after.days.length, 7); assert.equal(after.totalHours, 8);
+  assert.equal(after.missingDays.length, 0); assert.equal(after.attentionStatus, 'PENDING');
+  assert.ok(after.days.every((day: any) => !day.expected && !day.warnings.includes('Saknar tid')));
+  await c.service.update(c.actor, (await db.timeEntry.findFirstOrThrow({ where: { userId: c.user.id } })).id, { hours: 11 }, 1, randomUUID());
+  const high = (await c.app.inject({ url })).json().users[0];
+  assert.ok(high.deviations.some((item: any) => item.type === 'Mer än 10 h'));
+});
+
+test('user week exception rolls back if its audit cannot be written', async t => {
+  const c = await setup(t);
+  const fn = `fail_week_flag_${c.user.id.replaceAll('-', '')}`;
+  await db.$executeRawUnsafe(`CREATE FUNCTION "${fn}"() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW."entityType"='User' AND NEW."entityId"='${c.user.id}' THEN RAISE EXCEPTION 'SYNTHETIC audit failure'; END IF; RETURN NEW; END $$`);
+  await db.$executeRawUnsafe(`CREATE TRIGGER "${fn}" BEFORE INSERT ON "AuditLog" FOR EACH ROW EXECUTE FUNCTION "${fn}"()`);
+  try {
+    const result = await c.app.inject({ method: 'PUT', url: `/users/${c.user.id}`, payload: { allowIncompleteWeekApproval: true } });
+    assert.equal(result.statusCode, 500);
+    assert.equal((await db.user.findUniqueOrThrow({ where: { id: c.user.id } })).allowIncompleteWeekApproval, false);
+  } finally {
+    await db.$executeRawUnsafe(`DROP TRIGGER "${fn}" ON "AuditLog"`);
+    await db.$executeRawUnsafe(`DROP FUNCTION "${fn}"()`);
+  }
 });

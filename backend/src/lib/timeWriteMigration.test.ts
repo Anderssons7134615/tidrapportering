@@ -27,3 +27,17 @@ test('time write migration preserves legacy identity, hours and approvals and en
     assert.equal((await db.query('SELECT * FROM "TimeEntryWriteRequest"')).rows.length, 1);
   } finally { await db.close(); }
 });
+
+test('incomplete-week migration keeps existing and new users opted out by default', async () => {
+  const db = new PGlite();
+  try {
+    await db.exec(`CREATE TABLE "User" (id TEXT PRIMARY KEY, role TEXT); INSERT INTO "User" VALUES ('old','ADMIN');`);
+    await db.exec(await readFile(new URL('../../prisma/migrations/20261013200000_incomplete_week_approval/migration.sql', import.meta.url), 'utf8'));
+    await db.exec(`INSERT INTO "User" (id,role) VALUES ('new','EMPLOYEE')`);
+    assert.deepEqual((await db.query('SELECT * FROM "User" ORDER BY id')).rows, [
+      { id: 'new', role: 'EMPLOYEE', allowIncompleteWeekApproval: false },
+      { id: 'old', role: 'ADMIN', allowIncompleteWeekApproval: false },
+    ]);
+    await assert.rejects(db.exec(`UPDATE "User" SET "allowIncompleteWeekApproval"=NULL WHERE id='old'`), /not-null/);
+  } finally { await db.close(); }
+});

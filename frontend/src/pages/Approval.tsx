@@ -174,6 +174,7 @@ export default function Approval() {
                   <div className="min-w-0">
                     <p className="font-semibold text-graphite-950">{lock.user?.name}</p>
                     <p className="mt-1 text-sm text-graphite-600">Vecka {format(weekStart, 'w', { locale: sv })} · {format(weekStart, 'd/M')} - {format(addDays(weekStart, 6), 'd/M')} · <strong>{formatHours(lock.totalHours)}</strong></p>
+                    {lock.allowIncompleteWeekApproval && <p className="mt-1 text-sm text-graphite-600">Full vecka krävs inte</p>}
                     <p className="mt-2 text-sm font-medium text-graphite-700">
                       {deviations.length ? deviations.join(' · ') : detailsLoaded ? 'Inga avvikelser' : 'Öppna för att kontrollera avvikelser'}
                     </p>
@@ -252,6 +253,7 @@ export default function Approval() {
                       <td className="px-3 py-3 text-right font-semibold text-graphite-950">{formatHours(lock.totalHours)}</td>
                       <td className="px-3 py-3"><StatusBadge label="Väntar" tone="yellow" /></td>
                       <td className="px-3 py-3">
+                        {lock.allowIncompleteWeekApproval && <p className="mb-1 text-xs text-graphite-600">Full vecka krävs inte</p>}
                         {deviations.length ? (
                           <div className="flex flex-wrap gap-1">
                             {deviations.slice(0, 2).map((deviation) => <StatusBadge key={deviation} label={deviation} tone="red" />)}
@@ -492,7 +494,7 @@ function renderWeekDetails({
 
 function getLockDeviations(lock: WeekLock, entries: TimeEntry[], hasDetails: boolean) {
   const deviations: string[] = [];
-  if ((lock.missingRequiredWeekdays?.length || 0) > 0) deviations.push('Vecka ej komplett');
+  if (!lock.allowIncompleteWeekApproval && (lock.missingRequiredWeekdays?.length || 0) > 0) deviations.push('Vecka ej komplett');
   if ((lock.totalHours || 0) === 0) deviations.push('Saknar tid');
   if ((lock.totalHours || 0) > 50) deviations.push('Hög vecka');
   if (!hasDetails) return deviations;

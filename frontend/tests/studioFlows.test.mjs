@@ -5,7 +5,7 @@ import { JSDOM } from 'jsdom';
 import React from 'react';
 import { createServer } from 'vite';
 
-let writes, dom, vite, Team, TimeEntry, WeekView, Approval, DashboardDetail, Layout, auth, offline, projectsApi, refreshTimeQueries, formatHours;
+let writes, dom, vite, Users, Team, TimeEntry, WeekView, Approval, DashboardDetail, Layout, auth, offline, projectsApi, refreshTimeQueries, formatHours;
 let render, cleanup, fireEvent, waitFor, within, act, QueryClient, QueryClientProvider, createMemoryRouter, RouterProvider;
 const clients = [], originalFetch = globalThis.fetch;
 const user = { id: 'u1', name: 'Testperson', companyId: 'c1', companyName: 'Testbolag', role: 'ADMIN', active: true };
@@ -26,6 +26,7 @@ before(async () => {
   ({ QueryClient, QueryClientProvider } = await import('@tanstack/react-query'));
   ({ createMemoryRouter, RouterProvider } = await import('react-router-dom'));
   vite = await createServer({ root: fileURLToPath(new URL('..', import.meta.url)), server: { middlewareMode: true }, appType: 'custom', logLevel: 'silent' });
+  ({ default: Users } = await vite.ssrLoadModule('/src/pages/Users.tsx'));
   ({ default: Team } = await vite.ssrLoadModule('/src/pages/TeamWeekOverview.tsx'));
   ({ default: TimeEntry } = await vite.ssrLoadModule('/src/pages/TimeEntry.tsx'));
   ({ default: WeekView } = await vite.ssrLoadModule('/src/pages/WeekView.tsx'));
@@ -468,4 +469,66 @@ test('rapid submits of one time form reuse its request key', async () => {
   act(() => { fireEvent.submit(hours.closest('form')); fireEvent.submit(hours.closest('form')); });
   await waitFor(() => assert.equal(requests, 1));
   assert.equal(offline.useOfflineStore.getState().pendingEntries.length, 1);
+});
+
+test('admin can toggle the per-person incomplete-week setting and refreshes approval and team views', async () => {
+  let allowed = false; const updates = [];
+  const { view, cache } = setup(Users, { path: '/users', handler: (url, options) => {
+    if (url.pathname === '/api/users') return [{ ...user, email: 'test@example.invalid', allowIncompleteWeekApproval: allowed }];
+    if (url.pathname === '/api/users/u1') { const body = JSON.parse(options.body); assert.equal(options.method, 'PUT'); assert.equal(typeof body.allowIncompleteWeekApproval, 'boolean'); allowed = body.allowIncompleteWeekApproval; updates.push(allowed); return { ...user, ...body }; }
+  } });
+  cache.setQueryData(['weekLocks'], []); cache.setQueryData(['team-week-summary','2026-10-05'], {});
+  for (const expected of [true, false]) {
+    fireEvent.click(await view.findByRole('button', { name: 'Redigera användare' }));
+    const checkbox = view.getByRole('checkbox', { name: /Tillåt attest av ofullständiga veckor/ });
+    assert.equal(checkbox.checked, !expected);
+    fireEvent.click(checkbox); fireEvent.submit(checkbox.closest('form'));
+    await waitFor(() => assert.equal(allowed, expected));
+    await waitFor(() => assert.equal(view.queryByRole('dialog'), null));
+    assert.equal(cache.getQueryState(['weekLocks']).isInvalidated, true);
+    assert.equal(cache.getQueryState(['team-week-summary','2026-10-05']).isInvalidated, true);
+  }
+  assert.deepEqual(updates, [true,false]);
+});
+
+test('approval explains the personal exception and enables review of an incomplete week', async () => {
+  const lock = { id: 'w1', userId: 'u2', user: { id: 'u2', name: 'Testkollega' }, status: 'SUBMITTED', weekStartDate: '2026-10-05', totalHours: 8, allowIncompleteWeekApproval: true, isCompleteForApproval: true, missingRequiredWeekdays: ['2026-10-06'] };
+  const { view } = setup(Approval, { path: '/approval', handler: url => {
+    if (url.pathname === '/api/week-locks') return [lock];
+    if (url.pathname === '/api/time-entries/week/2026-10-05') return { entries: [team().users[0].entries[0]], summary: { totalHours: 8 } };
+  } });
+  fireEvent.click(await view.findByRole('button', { name: 'Testkollega' }));
+  const region = view.getByRole('region', { name: 'Veckor som väntar på attest' });
+  await waitFor(() => assert.equal(within(region).getAllByRole('button', { name: 'Godkänn', exact: true })[0].disabled, false));
+  assert.ok(view.getAllByText('Full vecka krävs inte').length);
+  assert.equal(view.queryByText('Vecka ej komplett'), null);
+});
+
+test('team detail explains an incomplete-week exception without claiming all weekdays were reported', async () => {
+  const summary = team(); summary.users[0].allowIncompleteWeekApproval = true;
+  const { view } = setup(Team, { handler: url => url.pathname.includes('/week-summary/') ? summary : { entries: summary.users[0].entries } });
+  fireEvent.click(await view.findByRole('button', { name: `Visa vecka för ${user.name}` }));
+  await view.findByText(/Full vecka krävs inte/);
+  assert.equal(view.queryByText(/Inga saknade vardagar/), null);
+});
+
+
+test('an unchanged checkbox in an older user dialog does not overwrite a newer policy', async () => {
+  let allowed = true; let update;
+  const { view } = setup(Users, { path: '/users', handler: (url, options) => {
+    if (url.pathname === '/api/users') return [{ ...user, email: 'test@example.invalid', allowIncompleteWeekApproval: allowed }];
+    if (url.pathname === '/api/users/u1') {
+      update = JSON.parse(options.body);
+      assert.equal(Object.hasOwn(update, 'allowIncompleteWeekApproval'), false);
+      return { ...user, ...update, allowIncompleteWeekApproval: allowed };
+    }
+  } });
+  fireEvent.click(await view.findByRole('button', { name: 'Redigera användare' }));
+  const checkbox = view.getByRole('checkbox', { name: /Tillåt attest av ofullständiga veckor/ });
+  assert.equal(checkbox.checked, true);
+  allowed = false; // Another admin revoked the exception after this dialog opened.
+  fireEvent.change(view.getByRole('textbox', { name: /^Namn/ }), { target: { value: 'Uppdaterat namn' } });
+  fireEvent.submit(checkbox.closest('form'));
+  await waitFor(() => assert.equal(update?.name, 'Uppdaterat namn'));
+  assert.equal(allowed, false);
 });

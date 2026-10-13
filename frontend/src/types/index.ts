@@ -1,4 +1,5 @@
 export interface User {
+  allowIncompleteWeekApproval?: boolean;
   id: string;
   email: string;
   name: string;
@@ -383,6 +384,7 @@ export interface Attachment {
 }
 
 export interface WeekLock {
+  allowIncompleteWeekApproval?: boolean;
   id: string;
   userId: string;
   user?: { id: string; name: string; email: string };
@@ -555,6 +557,7 @@ export interface TeamWeekDeviation {
 }
 
 export interface TeamWeekSummaryUser {
+  allowIncompleteWeekApproval?: boolean;
   userId: string;
   userName: string;
   role: string;

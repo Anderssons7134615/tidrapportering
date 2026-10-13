@@ -53,7 +53,7 @@ const weekLockRoutes: FastifyPluginAsync = async (fastify) => {
     const locks = await prisma.weekLock.findMany({
       where,
       include: {
-        user: { select: { id: true, name: true, email: true } },
+        user: { select: { id: true, name: true, email: true, allowIncompleteWeekApproval: true } },
       },
       orderBy: [{ status: 'asc' }, { weekStartDate: 'desc' }],
     });
@@ -105,7 +105,8 @@ const weekLockRoutes: FastifyPluginAsync = async (fastify) => {
           billableHours: billableStats._sum.hours || 0,
           entryCount: stats._count,
           missingRequiredWeekdays,
-          isCompleteForApproval: missingRequiredWeekdays.length === 0,
+          allowIncompleteWeekApproval: lock.user.allowIncompleteWeekApproval,
+          isCompleteForApproval: weekEntries.length > 0 && (missingRequiredWeekdays.length === 0 || lock.user.allowIncompleteWeekApproval),
         };
       })
     );
@@ -231,13 +232,15 @@ const weekLockRoutes: FastifyPluginAsync = async (fastify) => {
             date: { gte: weekLock.weekStartDate, lte: weekEnd },
           },
           include: {
-            user: { select: { hourlyCost: true } },
+            user: { select: { hourlyCost: true, allowIncompleteWeekApproval: true } },
             activity: { select: { rateOverride: true } },
             project: { select: { defaultRate: true, customer: { select: { defaultRate: true } } } },
           },
         });
         const missingRequiredWeekdays = getMissingRequiredWeekdays(weekLock.weekStartDate, entries);
-        if (missingRequiredWeekdays.length > 0) {
+        if (entries.length === 0) throw Object.assign(new Error('Inga tidrader finns för veckan'), { statusCode: 400 });
+        const allowIncompleteWeekApproval = entries[0].user.allowIncompleteWeekApproval;
+        if (missingRequiredWeekdays.length > 0 && !allowIncompleteWeekApproval) {
           throw Object.assign(
             new Error(`Veckan kan inte låsas innan hela veckan är rapporterad. Saknar tid: ${missingRequiredWeekdays.join(', ')}`),
             { statusCode: 400 }
@@ -274,6 +277,7 @@ const weekLockRoutes: FastifyPluginAsync = async (fastify) => {
             newValue: JSON.stringify({
               status: 'APPROVED',
               selfApproval: request.user.id === weekLock.userId,
+              ...(missingRequiredWeekdays.length > 0 ? { incompleteWeekException: true, missingRequiredWeekdays } : {}),
             }),
           },
         });

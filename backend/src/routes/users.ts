@@ -20,6 +20,7 @@ const updateUserSchema = z.object({
   role: z.enum(['ADMIN', 'SUPERVISOR', 'EMPLOYEE', 'ACCOUNTANT']).optional(),
   hourlyCost: z.number().nonnegative().nullable().optional(),
   active: z.boolean().optional(),
+  allowIncompleteWeekApproval: z.boolean().optional(),
 });
 
 const requireUserViewer = requireRoles(['ADMIN', 'SUPERVISOR', 'ACCOUNTANT']);
@@ -39,6 +40,7 @@ const userRoutes: FastifyPluginAsync = async (fastify) => {
         name: true,
         role: true,
         hourlyCost: true,
+        allowIncompleteWeekApproval: true,
         active: true,
         createdAt: true,
       },
@@ -68,6 +70,7 @@ const userRoutes: FastifyPluginAsync = async (fastify) => {
         name: true,
         role: true,
         hourlyCost: true,
+        allowIncompleteWeekApproval: true,
         active: true,
         createdAt: true,
       },
@@ -111,6 +114,7 @@ const userRoutes: FastifyPluginAsync = async (fastify) => {
           name: true,
           role: true,
           hourlyCost: true,
+          allowIncompleteWeekApproval: true,
           active: true,
           createdAt: true,
         },
@@ -144,11 +148,6 @@ const userRoutes: FastifyPluginAsync = async (fastify) => {
       const { id } = request.params as { id: string };
       const body = updateUserSchema.parse(request.body);
 
-      const user = await prisma.user.findUnique({ where: { id } });
-      if (!user || user.companyId !== request.user.companyId) {
-        return reply.status(404).send({ error: 'Användare hittades inte' });
-      }
-
       if (id === request.user.id && body.active === false) {
         return reply.status(400).send({ error: 'Du kan inte inaktivera ditt eget konto' });
       }
@@ -158,16 +157,20 @@ const userRoutes: FastifyPluginAsync = async (fastify) => {
         ...(body.email ? { email: normalizeEmail(body.email) } : {}),
       };
 
-      // Spara gamla värden för audit
-      const oldValue = {
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        hourlyCost: user.hourlyCost,
-        active: user.active,
-      };
-
       const updatedUser = await prisma.$transaction(async (tx) => {
+        const user = await tx.user.findUnique({ where: { id } });
+        if (!user || user.companyId !== request.user.companyId) {
+          throw Object.assign(new Error('Användare hittades inte'), { statusCode: 404 });
+        }
+        const oldValue = {
+          email: user.email,
+          name: user.name,
+          role: user.role,
+          hourlyCost: user.hourlyCost,
+          active: user.active,
+          allowIncompleteWeekApproval: user.allowIncompleteWeekApproval,
+        };
+
         const removesActiveAdmin = user.role === 'ADMIN' && user.active && (
           (updateData.role !== undefined && updateData.role !== 'ADMIN') || updateData.active === false
         );
@@ -186,7 +189,7 @@ const userRoutes: FastifyPluginAsync = async (fastify) => {
           }
         }
 
-        return tx.user.update({
+        const updated = await tx.user.update({
           where: { id },
           data: updateData,
           select: {
@@ -195,23 +198,23 @@ const userRoutes: FastifyPluginAsync = async (fastify) => {
             name: true,
             role: true,
             hourlyCost: true,
+            allowIncompleteWeekApproval: true,
             active: true,
             createdAt: true,
           },
         });
+        await tx.auditLog.create({
+          data: {
+            userId: request.user.id,
+            action: 'UPDATE',
+            entityType: 'User',
+            entityId: id,
+            oldValue: JSON.stringify(oldValue),
+            newValue: JSON.stringify(updateData),
+          },
+        });
+        return updated;
       }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
-
-      // Audit log
-      await prisma.auditLog.create({
-        data: {
-          userId: request.user.id,
-          action: 'UPDATE',
-          entityType: 'User',
-          entityId: id,
-          oldValue: JSON.stringify(oldValue),
-          newValue: JSON.stringify(updateData),
-        },
-      });
 
       return updatedUser;
     } catch (error) {

@@ -19,7 +19,7 @@ npm run test:time:postgres
 if ($LASTEXITCODE -ne 0) { throw 'Tidskrivningstester misslyckades' }
 ```
 
-Nio fall verifierar dubblettåterförsök, ändrat innehåll med samma nyckel, radering och gamla återförsök, konkurrerande revisioner, rollback vid loggningsfel, atomisk semestervecka, attest/upplåsning/rättelse, attest samtidigt med redigering, företagsgränser samt återinskickning av upplåst vecka utan ändrade timmar.
+Tolv fall verifierar dubblettåterförsök, ändrat innehåll med samma nyckel, radering och gamla återförsök, konkurrerande revisioner, rollback vid loggningsfel, atomisk semestervecka, attest/upplåsning/rättelse, attest samtidigt med redigering, företagsgränser samt återinskickning av upplåst vecka utan ändrade timmar. De tre tillkommande fallen provar personligt veckoundantag med roll- och företagsgränser, teamöversiktens saknade dagar samt atomär rollback av användarinställningen vid auditfel.
 
 Varje körning skapar nya syntetiska företag. Befintliga rader raderas inte. Kvittotabellen är avsiktligt oföränderlig: använd **en ny databas/datakatalog** för en helt ren körning. Seed är ingen återställningsväg för en databas med kvitton och stoppar innan data raderas. Stäng just denna instans med `pg_ctl -D <testets datakatalog> -m fast -w stop`; bevara katalogen för felsökning.
 

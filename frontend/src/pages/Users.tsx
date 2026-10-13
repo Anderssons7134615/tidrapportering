@@ -53,6 +53,8 @@ export default function UsersPage() {
       closeModal();
       queryClient.invalidateQueries({ queryKey: ['users'] });
       void refreshProjectQueries(queryClient);
+      void queryClient.invalidateQueries({ queryKey: ['weekLocks'] });
+      void queryClient.invalidateQueries({ queryKey: ['team-week-summary'] });
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -88,6 +90,9 @@ export default function UsersPage() {
       email: formData.get('email') as string,
       role: formData.get('role') as User['role'],
       hourlyCost,
+      ...(editingUser && (formData.get('allowIncompleteWeekApproval') === 'on') !== Boolean(editingUser.allowIncompleteWeekApproval)
+        ? { allowIncompleteWeekApproval: formData.get('allowIncompleteWeekApproval') === 'on' }
+        : {}),
     };
 
     if (editingUser) updateMutation.mutate({ id: editingUser.id, data });
@@ -228,6 +233,12 @@ export default function UsersPage() {
                   Används som arbetskostnad när projektets resultat beräknas. Beloppet visas inte för medarbetaren.
                 </p>
               </div>
+              {editingUser && <label className="flex min-h-11 cursor-pointer items-start gap-3 py-2">
+                <input type="checkbox" name="allowIncompleteWeekApproval" defaultChecked={editingUser.allowIncompleteWeekApproval ?? false}
+                  className="mt-1 h-5 w-5 shrink-0 rounded border-graphite-300 text-primary-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600" />
+                <span><span className="block text-sm font-medium">Tillåt attest av ofullständiga veckor</span>
+                  <span className="mt-1 block text-sm text-graphite-600">Personens rapporterade tid kan attesteras även om tid saknas på någon vardag. Övriga attestregler gäller.</span></span>
+              </label>}
             </form>
       </Dialog>
       <ConfirmDialog open={Boolean(deletingUser)} onClose={() => setDeletingUser(null)} onConfirm={() => deletingUser && deleteMutation.mutate(deletingUser.id)} title="Inaktivera användare" description={deletingUser ? `${deletingUser.name} kan inte längre logga in, men historik behålls.` : undefined} confirmLabel="Inaktivera" isLoading={deleteMutation.isPending} />

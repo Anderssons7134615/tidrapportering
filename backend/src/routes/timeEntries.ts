@@ -173,7 +173,7 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
     const [activeUsers, entries, weekLocks] = await Promise.all([
       prisma.user.findMany({
         where: { companyId: request.user.companyId, active: true, role: { not: 'ACCOUNTANT' } },
-        select: { id: true, name: true, role: true },
+        select: { id: true, name: true, role: true, allowIncompleteWeekApproval: true },
       }),
       prisma.timeEntry.findMany({
         where: {
@@ -183,7 +183,7 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
         select: {
           id: true,
           userId: true,
-          user: { select: { id: true, name: true, role: true } },
+          user: { select: { id: true, name: true, role: true, allowIncompleteWeekApproval: true } },
           date: true,
           createdAt: true,
           hours: true,
@@ -203,12 +203,12 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
         select: {
           userId: true,
           status: true,
-          user: { select: { id: true, name: true, role: true } },
+          user: { select: { id: true, name: true, role: true, allowIncompleteWeekApproval: true } },
         },
       }),
     ]);
 
-    const usersById = new Map<string, { id: string; name: string; role: string }>();
+    const usersById = new Map<string, { id: string; name: string; role: string; allowIncompleteWeekApproval: boolean }>();
     for (const user of activeUsers) {
       usersById.set(user.id, user);
     }
@@ -293,7 +293,7 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
         const hours = dayEntries.reduce((sum, entry) => sum + entry.hours, 0);
         const billableDayHours = dayEntries.reduce((sum, entry) => sum + (entry.billable ? entry.hours : 0), 0);
         const isWeekday = index < 5;
-        const isExpected = isWeekday && date <= today;
+        const isExpected = isWeekday && date <= today && !u.allowIncompleteWeekApproval;
         const isFuture = date > today;
         const hasMissingActivity = dayEntries.some((entry) => !entry.activity);
         const warnings: string[] = [];
@@ -350,6 +350,7 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
       return {
         userId: u.id,
         userName: u.name,
+        allowIncompleteWeekApproval: u.allowIncompleteWeekApproval,
         role: u.role,
         totalHours,
         billableHours,

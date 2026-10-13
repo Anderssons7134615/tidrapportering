@@ -172,7 +172,7 @@ export default function TeamWeekOverview() {
 
       <TaskSection className="team-week-section space-y-4">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-          <div className="min-w-0"><h2 className="sr-only">Rapporteringskontroll</h2><p className="text-xs text-graphite-500">Vardagar till och med idag förväntas vara rapporterade.</p></div>
+          <div className="min-w-0"><h2 className="sr-only">Rapporteringskontroll</h2><p className="text-xs text-graphite-500">Vardagar till och med idag förväntas vara rapporterade, utom för personer med undantag.</p></div>
 
           <div className="relative w-full xl:w-80">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -260,7 +260,7 @@ function TeamWeekUserRow({
   });
   const attention = attentionMeta[user.attentionStatus || 'OK'] || attentionMeta.OK;
   const missingDays = user.missingDays || [];
-  const missingText = missingDays.length
+  const missingText = user.allowIncompleteWeekApproval ? 'Full vecka krävs inte' : missingDays.length
     ? `${missingDays.length} saknade dag${missingDays.length === 1 ? '' : 'ar'}`
     : 'Inga saknade vardagar';
 

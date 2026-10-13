@@ -74,6 +74,7 @@ model User {
   hourlyCost Float?
   active     Boolean  @default(true)
   sessionVersion Int  @default(0)
+  allowIncompleteWeekApproval Boolean @default(false)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
