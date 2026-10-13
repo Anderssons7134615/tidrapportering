@@ -27,7 +27,7 @@ async function setup(t: TestContext) {
   const foreignProject = await db.project.create({ data: { companyId: otherCompany.id, name: 'TEST Other', code: 'T1' } });
   const service = createInventoryService(db);
   const item = await service.addItem(actor, { articleId: article.id, shelf: 'TEST A1' });
-  const stock = async () => (await service.list(actor))[0];
+  const stock = async () => (await service.list(actor)).find(row => row.id === item.id)!;
   const move = async (kind: 'RECEIPT' | 'ISSUE' | 'COUNT', quantity: number) => service.move(kind === 'ISSUE' ? employee : actor, item.id, {
     kind, quantity, revision: (await stock()).revision, requestKey: randomUUID(), note: 'TEST', ...(kind === 'ISSUE' ? { projectId: project.id } : {}),
   } as any);
@@ -72,9 +72,11 @@ test('Postgres inventory: atomic overspend rejection, counts, stale revision and
 test('Postgres inventory: employee/accountant boundaries, company, hidden article and safe responses', async (t) => {
   const c = await setup(t);
   const payload = { kind: 'RECEIPT', quantity: 10, revision: 1, requestKey: randomUUID() };
-  assert.equal((await c.app.inject({ method: 'POST', url: `/api/inventory/items/${c.item.id}/movements`, payload })).statusCode, 403);
-  assert.equal((await c.app.inject({ method: 'POST', url: '/api/inventory/items', payload: { articleId: c.article.id } })).statusCode, 403);
-  assert.equal((await c.app.inject({ method: 'PATCH', url: `/api/inventory/items/${c.item.id}`, payload: { shelf: 'BAD', revision: 1 } })).statusCode, 403);
+  assert.equal((await c.app.inject({ method: 'POST', url: `/api/inventory/items/${c.item.id}/movements`, payload })).statusCode, 201);
+  const extraArticle = await c.db.materialArticle.create({ data: { companyId: c.actor.companyId, name: 'TEST Employee article', unit: 'st' } });
+  assert.equal((await c.app.inject({ method: 'POST', url: '/api/inventory/items', payload: { articleId: extraArticle.id } })).statusCode, 201);
+  assert.equal((await c.app.inject({ method: 'PATCH', url: `/api/inventory/items/${c.item.id}`, payload: { shelf: 'B2', revision: (await c.stock()).revision } })).statusCode, 200);
+  assert.equal((await c.app.inject({ method: 'POST', url: `/api/inventory/items/${c.item.id}/movements`, payload: { kind: 'COUNT', quantity: 10, revision: (await c.stock()).revision, requestKey: randomUUID(), note: 'Kontrollräknat' } })).statusCode, 201);
   assert.equal((await c.app.inject({ method: 'GET', url: '/api/inventory/items', headers: { 'x-role': 'ACCOUNTANT' } })).statusCode, 403);
   await c.move('RECEIPT', 10);
   await assert.rejects(c.service.move(c.employee, c.item.id, { kind: 'ISSUE', quantity: 1, revision: (await c.stock()).revision, requestKey: randomUUID(), note: '', projectId: c.foreignProject.id }), /tillhör inte/);
@@ -83,8 +85,9 @@ test('Postgres inventory: employee/accountant boundaries, company, hidden articl
   assert.equal(output.body.includes('purchasePrice'), false);
   assert.equal(output.body.includes('defaultUnitPrice'), false);
   await c.db.materialArticle.update({ where: { id: c.article.id }, data: { employeeVisible: false } });
-  assert.deepEqual(await c.service.list(c.employee), []);
+  assert.equal((await c.service.list(c.employee)).some(row => row.id === c.item.id), false);
   await assert.rejects(c.service.history(c.employee, c.item.id, 1), /hittades inte/);
+  await assert.rejects(c.service.addItem(c.employee, { articleId: c.article.id, shelf: '' }), /aktiv materialartikel/);
 });
 
 test('Postgres inventory: returns protect ownership, invoicing, active project and remaining quantity', async (t) => {

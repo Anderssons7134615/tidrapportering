@@ -22,8 +22,8 @@ export type MovementInput = z.infer<typeof movementSchema>;
 export const inventoryItemSchema = z.object({ articleId: z.string().uuid(), shelf: z.string().trim().max(80).default('') }).strict();
 export const inventoryShelfSchema = z.object({ revision: z.number().int().positive(), shelf: z.string().trim().max(80) }).strict();
 const manager = (actor: InventoryActor) => ['ADMIN', 'SUPERVISOR'].includes(actor.role);
-function access(actor: InventoryActor, manage = false) {
-  if (!(manager(actor) || (!manage && actor.role === 'EMPLOYEE'))) throw new InventoryError('Åtkomst nekad', 403);
+function access(actor: InventoryActor) {
+  if (!(manager(actor) || actor.role === 'EMPLOYEE')) throw new InventoryError('Åtkomst nekad', 403);
 }
 const visibleArticle = (actor: InventoryActor) => actor.role === 'EMPLOYEE' ? { employeeVisible: true } : {};
 const articleSelect = { id: true, name: true, articleNumber: true, category: true, active: true, employeeVisible: true, unit: true, pipeDimensionMm: true, insulationThicknessMm: true } as const;
@@ -69,10 +69,10 @@ export function createInventoryService(db: PrismaClient) {
       })) };
     },
     async addItem(actor: InventoryActor, input: z.infer<typeof inventoryItemSchema>) {
-      access(actor, true);
+      access(actor);
       try {
         return await db.$transaction(async (tx) => {
-          const article = await tx.materialArticle.findFirst({ where: { id: input.articleId, companyId: actor.companyId, active: true } });
+          const article = await tx.materialArticle.findFirst({ where: { id: input.articleId, companyId: actor.companyId, active: true, ...visibleArticle(actor) } });
           if (!article) throw new InventoryError('Välj en aktiv materialartikel i ditt företag', 400);
           const item = await tx.inventoryItem.create({ data: { companyId: actor.companyId, articleId: article.id, unit: article.unit, shelf: input.shelf } });
           await tx.auditLog.create({ data: { userId: actor.id, action: 'CREATE', entityType: 'InventoryItem', entityId: item.id, newValue: JSON.stringify({ articleId: article.id, unit: item.unit, shelf: item.shelf }) } });
@@ -84,7 +84,7 @@ export function createInventoryService(db: PrismaClient) {
       }
     },
     async setShelf(actor: InventoryActor, id: string, input: z.infer<typeof inventoryShelfSchema>) {
-      access(actor, true);
+      access(actor);
       await itemFor(actor, id);
       await db.$transaction(async (tx) => {
         const updated = await tx.inventoryItem.updateMany({ where: { id, companyId: actor.companyId, revision: input.revision }, data: { shelf: input.shelf, revision: { increment: 1 } } });
@@ -94,7 +94,7 @@ export function createInventoryService(db: PrismaClient) {
       return { id };
     },
     async move(actor: InventoryActor, id: string, input: MovementInput) {
-      access(actor, input.kind === 'RECEIPT' || input.kind === 'COUNT');
+      access(actor);
       const hash = createHash('sha256').update(JSON.stringify({ actorId: actor.id, itemId: id, ...input })).digest('hex');
       const previous = await replay(actor, input.requestKey, hash);
       if (previous) return previous;

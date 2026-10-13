@@ -30,6 +30,7 @@ function setup({ role = 'EMPLOYEE', items = [stock], path = '/inventory?item=ite
   auth.useAuthStore.setState({ token: 'test', user: { id: 'u1', role } });
   offline.useOfflineStore.setState({ isOnline: online });
   const requests = [];
+  let currentItems = items.map(item => ({ ...item }));
   let attempts = 0;
   globalThis.fetch = async (url, options = {}) => {
     const parsed = new URL(url, 'http://localhost');
@@ -37,7 +38,15 @@ function setup({ role = 'EMPLOYEE', items = [stock], path = '/inventory?item=ite
     const body = options.body ? JSON.parse(options.body) : undefined;
     requests.push({ path: parsed.pathname, method, body });
     let data;
-    if (parsed.pathname === '/api/inventory/items') data = items;
+    if (parsed.pathname === '/api/inventory/items' && method === 'POST') {
+      const added = { ...stock, id: 'new-item', articleId: body.articleId, shelf: body.shelf, balance: 0 };
+      currentItems.push(added); data = { id: added.id };
+    }
+    else if (parsed.pathname === '/api/inventory/items') data = currentItems;
+    else if (parsed.pathname === '/api/inventory/items/item' && method === 'PATCH') {
+      currentItems = currentItems.map(item => item.id === 'item' ? { ...item, shelf: body.shelf, revision: item.revision + 1 } : item); data = { id: 'item' };
+    }
+    else if (parsed.pathname === '/api/projects/materials/articles') data = [{ ...stock.article, id: 'new-article' }];
     else if (parsed.pathname.endsWith('/history')) data = { items: history, total: history.length, page: 1 };
     else if (parsed.pathname === '/api/projects/options') data = [{ id: 'p1', code: '0042', name: 'TEST Projekt' }];
     else if (parsed.pathname.endsWith('/movements')) {
@@ -58,12 +67,11 @@ test('new warehouse is empty and never auto-imports material or starting balance
   assert.equal(requests.some((request) => request.method !== 'GET'), false);
   assert.equal(requests.some((request) => request.path.includes('/materials')), false);
 });
-test('employee can issue but cannot receive, inventory or edit shelf', async () => {
+test('employee can issue and has access to warehouse management actions', async () => {
   const { view, requests } = setup();
-  fireEvent.click(await view.findByRole('button', { name: 'Ta ut till projekt' }));
-  assert.equal(view.queryByRole('button', { name: 'Inleverans' }), null);
-  assert.equal(view.queryByRole('button', { name: 'Inventera' }), null);
-  assert.equal(view.queryByRole('button', { name: 'Ändra hyllplats' }), null);
+  await view.findByRole('button', { name: 'Ta ut till projekt' });
+  for (const name of ['Lägg till lagerartikel', 'Inleverans', 'Inventera', 'Ändra hyllplats']) assert.equal(view.getByRole('button', { name }).disabled, false);
+  fireEvent.click(view.getByRole('button', { name: 'Ta ut till projekt' }));
   const dialog = within(view.getByRole('dialog'));
   const picker = dialog.getByRole('combobox', { name: 'Projekt' });
   fireEvent.change(picker, { target: { value: '0042' } });
@@ -77,8 +85,8 @@ test('employee can issue but cannot receive, inventory or edit shelf', async () 
   assert.equal(payload.kind, 'ISSUE');
   assert.equal(payload.revision, 1);
 });
-test('count needs a reason and allows a counted quantity of zero', async () => {
-  const { view, requests } = setup({ role: 'ADMIN' });
+test('employee count needs a reason and allows a counted quantity of zero', async () => {
+  const { view, requests } = setup();
   fireEvent.click(await view.findByRole('button', { name: 'Inventera' }));
   const dialog = within(view.getByRole('dialog'));
   fireEvent.change(dialog.getByLabelText('Räknad mängd (m)'), { target: { value: '0' } });
@@ -88,8 +96,8 @@ test('count needs a reason and allows a counted quantity of zero', async () => {
   await waitFor(() => assert.equal(requests.filter((request) => request.method === 'POST').length, 1));
   assert.equal(requests.find((request) => request.method === 'POST').body.quantity, 0);
 });
-test('uncertain response preserves the same key and payload through close and resume', async () => {
-  const { view, requests } = setup({ role: 'ADMIN', failFirst: true });
+test('employee receipt preserves the same key and payload through close and resume after uncertain response', async () => {
+  const { view, requests } = setup({ failFirst: true });
   fireEvent.click(await view.findByRole('button', { name: 'Inleverans' }));
   let dialog = within(view.getByRole('dialog'));
   fireEvent.change(dialog.getByLabelText('Mängd (m)'), { target: { value: '2' } });
@@ -107,9 +115,32 @@ test('uncertain response preserves the same key and payload through close and re
   await waitFor(() => assert.equal(localStorage.getItem('tidapp-inventory-pending:u1'), null));
 });
 test('offline prevents stock writes instead of queueing stale quantities', async () => {
-  const { view } = setup({ role: 'ADMIN', online: false });
+  const { view } = setup({ online: false });
   assert.equal((await view.findByRole('button', { name: 'Ta ut till projekt' })).disabled, true);
-  assert.equal(view.getByRole('button', { name: 'Inleverans' }).disabled, true);
+  for (const name of ['Lägg till lagerartikel', 'Inleverans', 'Inventera', 'Ändra hyllplats']) assert.equal(view.getByRole('button', { name }).disabled, true);
+});
+
+test('employee adds a warehouse article from the material register with zero starting balance', async () => {
+  const { view, requests } = setup({ items: [], path: '/inventory' });
+  await view.findByText('Lagret är tomt');
+  fireEvent.click(view.getByRole('button', { name: 'Lägg till lagerartikel' }));
+  const dialog = within(view.getByRole('dialog'));
+  fireEvent.click(await dialog.findByRole('radio', { name: /TEST Rörskål/ }));
+  fireEvent.change(dialog.getByLabelText('Hyllplats (valfri)'), { target: { value: 'B2' } });
+  fireEvent.click(dialog.getByRole('button', { name: 'Lägg till', exact: true }));
+  await view.findByText('Saldo: 0 m');
+  assert.deepEqual(requests.find(request => request.method === 'POST').body, { articleId: 'new-article', shelf: 'B2' });
+  assert.equal(requests.some(request => request.path.endsWith('/movements')), false);
+});
+
+test('employee changes the shelf and sees the updated value', async () => {
+  const { view, requests } = setup();
+  fireEvent.click(await view.findByRole('button', { name: 'Ändra hyllplats' }));
+  const dialog = within(view.getByRole('dialog'));
+  fireEvent.change(dialog.getByLabelText('Hyllplats'), { target: { value: 'C3' } });
+  fireEvent.click(dialog.getByRole('button', { name: 'Spara', exact: true }));
+  await view.findByText(/Hyllplats: C3/);
+  assert.deepEqual(requests.find(request => request.method === 'PATCH').body, { revision: 1, shelf: 'C3' });
 });
 
 test('409 clears pending data, refreshes stock and blocks resending the stale request', async () => {

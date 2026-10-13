@@ -19,7 +19,7 @@ const movementTime = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Stockh
 export default function Inventory() {
   const user = useAuthStore((state) => state.user);
   const online = useOfflineStore((state) => state.isOnline);
-  const manager = user?.role === 'ADMIN' || user?.role === 'SUPERVISOR';
+  const canManageInventory = ['ADMIN', 'SUPERVISOR', 'EMPLOYEE'].includes(user?.role || '');
   const client = useQueryClient();
   const [params, setParams] = useSearchParams();
   const [search, setSearch] = useState('');
@@ -44,7 +44,7 @@ export default function Inventory() {
   const filtered = (items.data || []).filter((item) => terms.every((term) => [item.article.name, item.article.articleNumber, item.shelf, item.article.pipeDimensionMm, item.article.insulationThicknessMm].join(' ').toLocaleLowerCase('sv').includes(term)));
   const blocked = !online || Boolean(pending);
   return <AppShell>
-    <PageHeader title="Lager" description="Material i lokalen. Registrera uttag när material lämnar lagret." action={<div className="flex flex-wrap gap-2"><Button variant="secondary" disabled={!online || items.isFetching} onClick={() => void refresh()}>Uppdatera lager</Button>{manager && <Button onClick={() => setAdd(true)} disabled={blocked}>Lägg till lagerartikel</Button>}</div>} />
+    <PageHeader title="Lager" description="Material i lokalen. Registrera uttag när material lämnar lagret." action={<div className="flex flex-wrap gap-2"><Button variant="secondary" disabled={!online || items.isFetching} onClick={() => void refresh()}>Uppdatera lager</Button>{canManageInventory && <Button onClick={() => setAdd(true)} disabled={blocked}>Lägg till lagerartikel</Button>}</div>} />
     {!online && <p role="status" className="text-amber-800">Du är offline. Visat saldo kan vara gammalt. Anslut för att registrera lagerrörelser.</p>}
     {pending && <TaskSection><p role="status">En registrering väntar på bekräftelse. Återuppta den innan du registrerar något mer.</p><Button variant="secondary" disabled={!online} onClick={() => {
       const item = items.data?.find((row) => row.id === pending.itemId) || pending.item;
@@ -60,7 +60,7 @@ export default function Inventory() {
         {selected.unit !== selected.article.unit && <p className="mt-2 text-amber-800">Enheten i materialregistret har ändrats. Lagret använder {selected.unit}. Kontakta arbetsledaren.</p>}
         <div className="mt-4 flex flex-wrap gap-2">
           <Button disabled={blocked || selected.balance <= 0 || !selected.article.active || selected.unit !== selected.article.unit} onClick={() => setMovement({ item: selected, kind: 'ISSUE' })}>Ta ut till projekt</Button>
-          {manager && <>
+          {canManageInventory && <>
             <Button variant="secondary" disabled={blocked || !selected.article.active || selected.unit !== selected.article.unit} onClick={() => setMovement({ item: selected, kind: 'RECEIPT' })}>Inleverans</Button>
             <Button variant="secondary" disabled={blocked} onClick={() => setMovement({ item: selected, kind: 'COUNT' })}>Inventera</Button>
             <Button variant="secondary" disabled={blocked} onClick={() => setShelf(selected)}>Ändra hyllplats</Button>
@@ -68,7 +68,7 @@ export default function Inventory() {
         </div>
       </TaskSection>
       <History key={selected.id} item={selected} blocked={blocked} onReturn={(source) => setMovement({ item: selected, kind: 'RETURN', source })} />
-    </> : items.data?.length === 0 ? <EmptyState title="Lagret är tomt" description={manager ? 'Lägg till lagerartiklar när materiallistan är klar. Inga startsaldon har lagts in.' : 'Arbetsledaren lägger in materiallistan innan lagret kan användas.'} /> : <>
+    </> : items.data?.length === 0 ? <EmptyState title="Lagret är tomt" description="Lägg till en lagerartikel från materialregistret. Registrera sedan en inleverans eller inventering för att ange saldot." /> : <>
       {params.get('item') && <p role="status">Lagerartikeln finns inte i ditt urval. Välj en artikel i listan.</p>}
       <FormField label="Sök i lagret" controlId="inventory-search"><input id="inventory-search" type="search" className="input" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Material, dimension, artikelnummer eller hyllplats" /></FormField>
       <p className="text-sm text-graphite-600" role="status">{filtered.length} lagerartiklar</p>
