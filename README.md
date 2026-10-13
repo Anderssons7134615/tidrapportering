@@ -67,13 +67,13 @@ ALLOW_PUBLIC_REGISTRATION=false
 PUBLIC_UPLOADS_ENABLED=false
 ```
 
-Startkommandot kör:
+Railways `preDeployCommand` kör migrationerna före API-start:
 
 ```bash
-cd backend && npm run start
+npm run db:push
 ```
 
-Det kör `prisma migrate deploy` och startar API:t. Produktionsstarten seedar aldrig databasen.
+Trots det historiska scriptnamnet kör detta enbart `prisma migrate deploy` i backend. Därefter kör Railway `npm start`, som startar det byggda API:t. Produktionsstarten seedar aldrig databasen.
 
 `ALLOW_PUBLIC_REGISTRATION` är opt-in och ska normalt vara `false`. Nya användare skapas då av en administratör. `PUBLIC_UPLOADS_ENABLED` ska normalt också vara `false`, eftersom bilagor annars kan nås utan inloggning.
 

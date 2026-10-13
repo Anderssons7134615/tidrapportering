@@ -1,6 +1,14 @@
 # Säker tidskrivning – migrationsunderlag
 
-Status 2026-10-13: implementerad och provad lokalt. **Inte körd i produktion.** Push av denna ändring startar TidApps ordinarie deployment och får därför vänta på Ricks uttryckliga godkännande av denna migration enligt AGENTS.md.
+Status 2026-10-13: **driftsatt och efterkontrollerad**. Rick har uttryckligen godkänt den granskade migrationen och publiceringen. Appkod `df9a32b` är pushad till `master`; produktionsutfallet finns nedan.
+
+## Produktionsutfall 2026-10-13
+
+- Railway-deployment `3804e24b-495d-48f5-bacc-5c00b0e2d7d9` för `df9a32b` är SUCCESS. Cloudflare Pages-deployment `e386d1ee-14a3-4996-8200-c0e239e6817e` har godkänd GitHub-kontroll för samma commit.
+- Migrationen avslutades kl. 21:47:48 svensk tid, ett tillämpat steg och ingen rollback. Samtliga tidrader har giltig revision och databasskyddet för bestående kvitton finns.
+- `/api/health` och `/api/ready` svarar 200 på både API-domänerna. Tidrads-API avvisar oinloggad läsning med 401.
+- `tid.anderssonsisolering.se` och `tidrapportering.pages.dev` publicerar samma index och nya klient med operations-endpoint. Inga tidrader skrevs för driftkontrollen; inloggad produktionsprovning ingår inte i denna kontroll.
+- Utfallet finns även i backupkatalogens `stage1-deployment-verification.json`. Produktionsdatabasen hade 756 tidrader vid efterkontrollen; det är en senare ögonblicksbild än backupens 754 rader och ingen jämförelse av levande data påstås.
 
 ## Ändringen
 
@@ -26,7 +34,7 @@ Detaljer finns i backupkatalogens `production-backup-hash.json`, `restored-befor
 ## Klientkompatibilitet och utrullning
 
 1. Kontrollera aktuell Git-revision, färsk backup och Ricks godkännande innan push.
-2. Backend tillämpar migrationen före start genom befintligt `start:migrate`. Ingen `migrate dev`, `db push`, reset eller seed används.
+2. Railways `preDeployCommand` kör `npm run db:push`, som via root-scriptet anropar backendens `prisma migrate deploy`. API:t startas sedan med `npm start`. Prisma-kommandona `migrate dev` och `db push`, reset och seed används inte.
 3. Befintliga v2-offlinerader behåller sina nycklar och kan synkas. Äldre v1-rader utan säker ägare behålls för manuell kontroll.
 4. Gamla klienter kan fortfarande skapa tid genom befintlig endpoint. Ändring/radering utan revision avvisas med 428 och kräver omladdning. Ny klient mot gammal backend behåller det sparade försöket om operations-endpoint saknas; den faller inte tillbaka till ett anrop som riskerar dubbletter.
 5. Efter deployment: kontrollera migrationsstatus, backend/frontend-version, readiness och behörigheter. Prova inga skrivningar mot riktiga tidrader bara för att verifiera leveransen.

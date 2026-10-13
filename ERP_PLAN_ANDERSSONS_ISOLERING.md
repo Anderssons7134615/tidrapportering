@@ -7,8 +7,8 @@ Detta avsnitt ersätter tidigare prioriteringar nedan. Rick har godkänt en steg
 | Etapp | Avgränsning | Status |
 | --- | --- | --- |
 | 0 | Bevara kalkylens källor, kod och databas; kontrollera TidApps backup och återställning. | Lokala kopior verifierade. Färsk TidApp-backup återställd och migration provad på kopian. |
-| 1 | Tillförlitlig tidskrivning, revisionsskydd vid rättelse/attest och intern ekonomi endast för ADMIN. | Implementerad lokalt. Produktion väntar på godkännande av granskad migration. |
-| 2 | Kalkyl, fasta prislistor, offertversioner och koppling till projekt. | Inte påbörjad. Nästa utvecklingsetapp. |
+| 1 | Tillförlitlig tidskrivning, revisionsskydd vid rättelse/attest och intern ekonomi endast för ADMIN. | Driftsatt och efterkontrollerad 2026-10-13 efter Ricks godkännande. Appkod `df9a32b`; migration, Railway, Cloudflare och readiness verifierade. |
+| 2 | Kalkyl, fasta prislistor, offertversioner, koppling till projekt samt Ricks undantag från fullständiga veckor. | Inte påbörjad. Nästa utvecklingsetapp. |
 | 3 | Fakturarader, mottagning, materialpartier/FIFO, förbrukning, returer/krediter och full avstämning. | Senare, efter kalkylens grund. |
 | 4 | Enklare veckoflöden, kopiera vald dag, samlad teamattest och uppföljning. | Senare. |
 | 5 | ÄTA och frivillig mängdrapportering som arbetsledaren verifierar. | Senare. |
@@ -22,7 +22,9 @@ Kalkylens verifierade källor är `C:\Users\rick8\Documents\AnderssonKalkyl`, de
 
 Samordning är gjord med uppgiften **Ekonomiagent – Anderssons Isolering**: företagsgemensam likviditet, reskontra, lön, bank och omkostnader ligger i ekonomispåret. TidApp ansvarar för projektens operativa underlag. Gemensamma företagsavgränsade projekt-, leverantörs-, faktura- och radidentiteter ska användas. Samma faktura i Rillion och Spiris ska vara ett dokument med två källreferenser; osäkra matchningar granskas. Spiris bokföringsrader kan inte förutsättas vara materialrader.
 
-Leveransunderlag för etapp 1 finns i [migrationsgranskningen](backend/prisma/migrations/20261013190000_time_write_receipts/REVIEW.md). En produktionsmigration kräver uttryckligt godkännande enligt AGENTS.md; push väntar eftersom den startar migration/deployment. Senare etapper är planerade, inte färdigbyggda.
+Tillägg från Rick 2026-10-13 inför etapp 2: **Ricks eget konto ska kunna få rapporterad tid attesterad även när en eller flera vardagar saknar tid.** Minsta implementation är en användarinställning, avstängd som standard och aktiverad för hans verifierade konto. API:ts attestkontroll och attestknappen ska följa inställningen. Teamvyn får visa faktiska tomma dagar men ska inte beskriva dem som något Rick måste rätta före attest. Övriga medarbetare behåller kravet på fullständig vecka; företagsgränser, attesträttigheter och låsning av godkänd tid bevaras. Prova en ofullständig Rick-vecka, motsvarande vecka för en annan person samt godkänd/låst tid. Kravet är beslutat och kartlagt men ännu inte implementerat.
+
+Leveransunderlag för etapp 1 finns i [migrationsgranskningen](backend/prisma/migrations/20261013190000_time_write_receipts/REVIEW.md). Rick har uttryckligen godkänt den granskade migrationen och publiceringen. Senare etapper är planerade, inte färdigbyggda.
 
 ## Historik från 2026-10-02
 
