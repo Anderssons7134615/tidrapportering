@@ -1,6 +1,6 @@
 # Personligt undantag från fullständig vecka
 
-Status 2026-10-13: färdig och verifierad lokalt. **Inte driftsatt. Nytt uttryckligt migrationsgodkännande från Rick återstår före push.** Godkännandet av etapp 1 omfattar inte denna migration.
+Status 2026-10-13: Rick har uttryckligen godkänt denna granskade migration, publiceringen och aktivering på sitt företagskonto genom svaret ”jag godlänner”. Godkänd appkod `2816617` är pushad till master. Migration och kontoaktivering är genomförda och efterkontrollerade.
 
 ## Ändring och avgränsning
 
@@ -8,7 +8,7 @@ Migrationen lägger endast till `User.allowIncompleteWeekApproval BOOLEAN NOT NU
 
 Endast ADMIN inom samma företag kan ändra inställningen genom befintlig användarredigering. Ändring och audit sparas atomärt; gamla formulär skickar inte ett oförändrat policyvärde. Attest läser veckans ägares inställning inne i transaktionen. Tomma veckor, ej inskickade rader, företagsgränser, revisionsskydd och självattestregler gäller fortsatt. Användning av undantaget loggas med faktiska saknade vardagar. Teamvyn visar verkliga timmar och dagar men kräver inte att undantagna personer fyller tomma vardagar. Annan avvikelsekontroll kvarstår.
 
-Efter godkänd migration ska endast det verifierade företagskontot aktiveras: Rick Andersson, rick@anderssonsisolering.se, användar-id `faabb5ea-1312-4e33-996b-4650518264e6`, företag `1121ff65-f908-4670-9028-91d6d87bc396` (Anderssons Isolering i Laholm AB). Identiteten är verifierad genom skrivskyddad produktionsläsning. Kontot Rick i Test AB ska inte ändras. Aktiveringen ska auditloggas och efterkontrolleras. Ingen produktionsaktivering har gjorts.
+Efter godkänd migration ska endast det verifierade företagskontot aktiveras: Rick Andersson, rick@anderssonsisolering.se, användar-id `faabb5ea-1312-4e33-996b-4650518264e6`, företag `1121ff65-f908-4670-9028-91d6d87bc396` (Anderssons Isolering i Laholm AB). Identiteten är verifierad genom skrivskyddad produktionsläsning. Kontot Rick i Test AB ska inte ändras. Aktiveringen ska auditloggas och efterkontrolleras. Aktiveringen är genomförd kl. 22:41:42 svensk tid, med audit `42b15fd2-6f91-4eb0-a4c8-b1e820d1709a`. Separat återläsning bekräftar true endast för detta konto; samtliga övriga användare har false.
 
 ## Backup och provmigration
 
@@ -35,3 +35,10 @@ SHA-256: `c18cba15e8fd739b5c81a539892890b5be0c87a6a699d961d1e7eb2dd912a42a`. Ser
 - Slutlig läsande granskning med tidapp-critical-review och tidapp_fullstack_reviewer är godkänd utan kvarvarande P0/P1. `git diff --check` är godkänd. Kvarvarande P2 är full browserzoom enligt ovan.
 
 Kalkyl, prislistor och offertversioner i återstoden av etapp 2 ingår inte i denna leverans.
+
+
+## Produktionsutfall 2026-10-13
+
+Railway-deployment `854adf87-9dca-4949-8e26-3991cc178b67` är SUCCESS för appcommit `28166176ac9cfadc3e9149b8bceec71be9e04fef`. Cloudflare Pages-kontrollen är success för samma commit. Båda frontenddomänerna visar samma index och levererar den nya användarinställningen. API health/ready svarar 200 på båda API-domänerna; användarlistan avvisar oinloggad åtkomst med 401.
+
+Aktiveringen kördes genom Prisma i API-containerns verifierade `/app`-katalog. Samma Serializable-transaktion kontrollerade exakt en slutförd migrationsrad med ett tillämpat steg och ingen rollback, Ricks exakta identitet/företag/ADMIN/aktiv, inga andra aktiverade konton samt guarded false-till-true. Endast flaggan ändrades och audit skapades atomärt. Separat återläsning bekräftade konto, ensam aktivering och audit. Inga tidrader eller attester ändrades för provning. Bevis finns i backupkatalogens `rick-activation-proof.json` och `deployment-http-checks.json`.
