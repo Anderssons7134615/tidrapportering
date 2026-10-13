@@ -30,6 +30,7 @@ import integrationRoutes from './routes/integrations.js';
 import projectTaskRoutes from './routes/projectTasks.js';
 import supplierInvoiceRoutes from './routes/supplierInvoices.js';
 import inventoryRoutes from './routes/inventory.js';
+import projectCalculationRoutes from './routes/projectCalculations.js';
 
 
 // Fastify instance
@@ -180,6 +181,7 @@ fastify.register(userRoutes, { prefix: '/api/users' });
 fastify.register(customerRoutes, { prefix: '/api/customers' });
 fastify.register(projectRoutes, { prefix: '/api/projects' });
 fastify.register(supplierInvoiceRoutes, { prefix: '/api/supplier-invoices' });
+fastify.register(projectCalculationRoutes, { prefix: '/api/project-calculations' });
 fastify.register(inventoryRoutes, { prefix: '/api/inventory' });
 fastify.register(activityRoutes, { prefix: '/api/activities' });
 fastify.register(timeEntryRoutes, { prefix: '/api/time-entries' });

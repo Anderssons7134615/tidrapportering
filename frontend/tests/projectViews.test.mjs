@@ -5,7 +5,7 @@ import { JSDOM } from 'jsdom';
 import React from 'react';
 import { createServer } from 'vite';
 
-let dom, vite, Detail, Economy, auth, cleanup, fireEvent, render, waitFor, within, act;
+let dom, vite, Detail, Economy, Calculations, auth, cleanup, fireEvent, render, waitFor, within, act;
 let QueryClient, QueryClientProvider, MemoryRouter, Routes, Route;
 let clients = [], requests = [];
 const originalFetch = globalThis.fetch;
@@ -24,18 +24,19 @@ before(async () => {
   vite = await createServer({ root: fileURLToPath(new URL('..', import.meta.url)), server: { middlewareMode: true }, appType: 'custom', logLevel: 'silent' });
   ({ default: Detail } = await vite.ssrLoadModule('/src/pages/ProjectDetail.tsx'));
   ({ default: Economy } = await vite.ssrLoadModule('/src/pages/ProjectEconomy.tsx'));
+  ({ default: Calculations } = await vite.ssrLoadModule('/src/pages/ProjectCalculations.tsx'));
   auth = await vite.ssrLoadModule('/src/stores/authStore.ts');
 });
 afterEach(() => { cleanup(); clients.forEach((c) => c.clear()); clients = []; requests = []; globalThis.fetch = originalFetch; });
 after(async () => { await vite?.close(); dom?.window.close(); });
 
-function setup({ role = 'ADMIN', handler, economy, initialPath = '/projects/p1' } = {}) {
+function setup({ role = 'ADMIN', handler, economy, calculation = false, initialPath = '/projects/p1' } = {}) {
   auth.useAuthStore.setState({ token: 'test-token', user: { id: 'u1', name: 'Test', role } });
   globalThis.fetch = async (url, options = {}) => {
     const path = new URL(url, 'http://localhost').pathname;
     const method = options.method || 'GET';
     requests.push({ path, method });
-    const override = await handler?.(path, method);
+    const override = await handler?.(path, method, options);
     if (override instanceof Response) return override;
     const data = override ?? ({
       '/api/projects/p1': role === 'EMPLOYEE' ? { ...project, financialsVisibleToCurrentUser: false, hoursVisibleToCurrentUser: false } : project,
@@ -51,7 +52,7 @@ function setup({ role = 'ADMIN', handler, economy, initialPath = '/projects/p1' 
   };
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 300_000, gcTime: Infinity }, mutations: { retry: false, gcTime: 0 } } });
   clients.push(client);
-  const view = render(React.createElement(QueryClientProvider, { client }, React.createElement(MemoryRouter, { initialEntries: [economy ? '/economy' : initialPath] }, React.createElement(Routes, null, React.createElement(Route, { path: economy ? '/economy' : '/projects/:id', element: React.createElement(economy ? Economy : Detail) })))));
+  const view = render(React.createElement(QueryClientProvider, { client }, React.createElement(MemoryRouter, { initialEntries: [economy ? '/economy' : initialPath] }, React.createElement(Routes, null, React.createElement(Route, { path: economy ? '/economy' : '/projects/:id', element: calculation ? React.createElement(Calculations, { projectId: 'p1', projectName: '0042 · Testprojekt', active: true }) : React.createElement(economy ? Economy : Detail) })))));
   return { client, view };
 }
 
@@ -153,4 +154,76 @@ test('missing costs keep the portfolio result unknown and filters recompute the 
   await view.findByText('Inga projekt matchar sökningen');
   assert.match(view.container.textContent, /- beräknat resultat/);
   assert.doesNotMatch(view.container.textContent, /Underlag saknas/);
+});
+
+
+test('calculation is admin-only and fetched only after opening its project tab', async () => {
+  const { view } = setup({ handler: path => path === '/api/project-calculations/p1' ? [] : undefined });
+  fireEvent.click(await view.findByRole('tab', { name: 'Kalkyl' }));
+  await view.findByText('Ingen kalkyl sparad');
+  assert.equal(requests.filter(r => r.path === '/api/project-calculations/p1').length, 1);
+  cleanup(); requests = [];
+  for (const role of ['SUPERVISOR','EMPLOYEE']) {
+    const other = setup({ role });
+    await other.view.findByRole('heading', { name: 'Testprojekt' });
+    assert.equal(other.view.queryByRole('tab', { name: 'Kalkyl' }), null);
+    assert.equal(requests.some(r => r.path.includes('project-calculations')), false);
+    cleanup();
+  }
+});
+
+function calcPreview() {
+  return { fingerprint: 'a'.repeat(64), document: { id: 'source', revision: 1, name: 'Testkalkyl', customerName: 'Testkund', quoteNumber: 'TEST-1', manualBid: 90000, scope: '', terms: '', lines: [{ id: 'row', internalDescription: 'Testarbete', customerDescription: 'Testarbete', quantity: 10, workUnit: 'm', laborMinutesPerUnit: 9, timeSource: 'ownEstimate', materialCostExcluded: true, materials: [] }] },
+    totals: { materialCostWithWaste: 0, laborHours: 1.5, internalLaborCost: 469.50, directCost: 469.50, calculatedPrice: 735 }, rows: [{ id: 'row', laborHours: 1.5, materialCost: 0, calculatedPrice: 735 }] };
+}
+
+test('calculation preview never saves before confirmation; failure retains preview and retry writes only once', async () => {
+  const preview = calcPreview(); const payload = { format: 'andersson-kalkyl-v1', document: preview.document };
+  let imported = false, attempts = 0, release;
+  const { view } = setup({ calculation: true, handler: (path, method, options) => {
+    if (path === '/api/project-calculations/p1') return imported ? [{ id: 'saved', name: 'Testkalkyl', sourceRevision: 1, createdAt: '2026-10-13T12:00:00Z' }] : [];
+    if (path.endsWith('/preview')) { assert.deepEqual(JSON.parse(options.body), payload); return preview; }
+    if (path.endsWith('/import')) {
+      attempts++;
+      assert.deepEqual(JSON.parse(options.body), { calculation: payload, expectedFingerprint: preview.fingerprint, reviewed: true });
+      if (attempts === 1) return Response.json({error:'Testfel vid sparande'},{status:500});
+      return new Promise(resolve => { release = () => { imported = true; resolve({ id:'saved', duplicate:false }); }; });
+    }
+    if (path.endsWith('/saved')) return { ...preview, id:'saved', importedBy:'Testadmin', createdAt:'2026-10-13T12:00:00Z' };
+  } });
+  fireEvent.change(await view.findByLabelText('Kalkylfil (.json)'), { target: { files: [{ name:'kalkyl.json', size:100, text:async()=>JSON.stringify(payload) }] } });
+  await view.findByText('Granska: Testkalkyl');
+  assert.equal(attempts, 0);
+  const save = view.getByRole('button', { name:'Spara låst kalkylversion' });
+  assert.equal(save.disabled,true);
+  assert.ok(view.getByText('Manuellt anbud i källan'));
+  fireEvent.click(view.getByRole('checkbox'));
+  fireEvent.click(save);
+  await view.findByRole('alert');
+  assert.ok(view.getByText('Granska: Testkalkyl'));
+  await waitFor(()=>assert.equal(save.disabled,false));
+  act(()=>{ fireEvent.click(save); fireEvent.click(save); });
+  await waitFor(()=>assert.equal(attempts,2));
+  await act(async()=>release());
+  await view.findByText('Låst');
+  assert.equal(view.queryByText('Granska: Testkalkyl'),null);
+  assert.equal(requests.filter(r=>r.method!=='GET' && !r.path.startsWith('/api/project-calculations/')).length,0);
+});
+
+test('invalid JSON and late previews cannot replace a newly selected calculation', async () => {
+  let releaseFirst; const second = calcPreview(); second.document.name = 'Senast vald';
+  const { view } = setup({ calculation:true, handler:(path,method,options)=>{
+    if(path==='/api/project-calculations/p1')return [];
+    if(path.endsWith('/preview'))return JSON.parse(options.body).which===1 ? new Promise(resolve=>releaseFirst=resolve) : second;
+  }});
+  const input = await view.findByLabelText('Kalkylfil (.json)');
+  fireEvent.change(input,{target:{files:[{name:'bad.json',size:4,text:async()=>'{bad'}]}});
+  await view.findByText('Filen är inte en giltig kalkylexport.');
+  fireEvent.change(input,{target:{files:[{name:'one.json',size:10,text:async()=>'{"which":1}'}]}});
+  await waitFor(()=>assert.ok(releaseFirst));
+  fireEvent.change(input,{target:{files:[{name:'two.json',size:10,text:async()=>'{"which":2}'}]}});
+  await view.findByText('Granska: Senast vald');
+  await act(async()=>releaseFirst(calcPreview()));
+  assert.ok(view.getByText('Granska: Senast vald'));
+  assert.equal(view.queryByText('Granska: Testkalkyl'),null);
 });

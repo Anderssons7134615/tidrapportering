@@ -1,4 +1,12 @@
 import { useAuthStore } from '../stores/authStore';
+import type { CalculationPreview, SavedCalculation, CalculationListItem } from '../types/projectCalculation';
+
+export const projectCalculationsApi = {
+  list: (projectId: string) => fetchApi<CalculationListItem[]>(`/project-calculations/${encodeURIComponent(projectId)}`),
+  get: (projectId: string, id: string) => fetchApi<SavedCalculation>(`/project-calculations/${encodeURIComponent(projectId)}/${encodeURIComponent(id)}`),
+  preview: (projectId: string, calculation: unknown) => fetchApi<CalculationPreview>(`/project-calculations/${encodeURIComponent(projectId)}/preview`, { method: 'POST', body: JSON.stringify(calculation) }),
+  save: (projectId: string, calculation: unknown, expectedFingerprint: string) => fetchApi<{ id: string; duplicate: boolean }>(`/project-calculations/${encodeURIComponent(projectId)}/import`, { method: 'POST', body: JSON.stringify({ calculation, expectedFingerprint, reviewed: true }) }),
+};
 import type { TimeWriteRequest, TimeWriteAck } from '../types/timeWrite';
 import type { InventoryItem, InventoryMovement, InventoryMovementInput } from '../types/inventory';
 import type { InvoiceDraft, InvoiceList, InvoiceStatus, SupplierInvoice } from '../types/supplierInvoice';

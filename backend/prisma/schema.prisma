@@ -61,10 +61,12 @@ model Company {
   inventoryItems     InventoryItem[]
   inventoryMovements InventoryMovement[]
   timeEntryWriteRequests TimeEntryWriteRequest[]
+  projectCalculations ProjectCalculation[]
 }
 
 model User {
   id         String   @id @default(uuid())
+  importedCalculations ProjectCalculation[]
   companyId  String
   company    Company  @relation(fields: [companyId], references: [id])
   email      String   @unique
@@ -226,9 +228,31 @@ model Project {
   integrationProjectCreateOperation IntegrationProjectCreateOperation?
   supplierInvoiceAllocations SupplierInvoiceAllocation[]
   inventoryMovements InventoryMovement[]
+  calculations ProjectCalculation[]
 
   @@unique([companyId, code])
   @@unique([id, companyId])
+}
+
+// Immutable imported desktop snapshots. Never actual material consumption.
+model ProjectCalculation {
+  id String @id @default(uuid())
+  companyId String
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  projectId String
+  project Project @relation(fields: [projectId, companyId], references: [id, companyId], onDelete: Restrict)
+  createdByUserId String
+  createdByUser User @relation(fields: [createdByUserId, companyId], references: [id, companyId], onDelete: Restrict)
+  sourceId String
+  sourceRevision Int
+  schemaVersion Int @default(1)
+  fingerprint String
+  name String
+  snapshot Json
+  createdAt DateTime @default(now())
+
+  @@unique([companyId, sourceId, sourceRevision])
+  @@index([companyId, projectId, createdAt])
 }
 
 model SupplierInvoice {

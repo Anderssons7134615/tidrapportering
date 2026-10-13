@@ -8,7 +8,7 @@ Detta avsnitt ersätter tidigare prioriteringar nedan. Rick har godkänt en steg
 | --- | --- | --- |
 | 0 | Bevara kalkylens källor, kod och databas; kontrollera TidApps backup och återställning. | Lokala kopior verifierade. Färsk TidApp-backup återställd och migration provad på kopian. |
 | 1 | Tillförlitlig tidskrivning, revisionsskydd vid rättelse/attest och intern ekonomi endast för ADMIN. | Driftsatt och efterkontrollerad 2026-10-13 efter Ricks godkännande. Appkod `df9a32b`; migration, Railway, Cloudflare och readiness verifierade. |
-| 2 | Kalkyl, fasta prislistor, offertversioner, koppling till projekt samt Ricks undantag från fullständiga veckor. | Första delsteget (Ricks veckoundantag) är driftsatt och aktiverat på hans företagskonto efter godkännande 2026-10-13. Appkod `2816617`. Kalkyldelen återstår. |
+| 2 | Kalkyl, fasta prislistor, offertversioner, koppling till projekt samt Ricks undantag från fullständiga veckor. | Veckoundantaget är driftsatt och aktiverat (`2816617`). Del 2A: import av låsta desktopkalkyler är implementerad och lokalt verifierad; ny produktionsmigration väntar på uttryckligt godkännande. Kalkyleditor, prislistor och offertflöde återstår. |
 | 3 | Fakturarader, mottagning, materialpartier/FIFO, förbrukning, returer/krediter och full avstämning. | Senare, efter kalkylens grund. |
 | 4 | Enklare veckoflöden, kopiera vald dag, samlad teamattest och uppföljning. | Senare. |
 | 5 | ÄTA och frivillig mängdrapportering som arbetsledaren verifierar. | Senare. |
@@ -24,7 +24,9 @@ Samordning är gjord med uppgiften **Ekonomiagent – Anderssons Isolering**: f�
 
 Tillägg från Rick 2026-10-13 inför etapp 2: **Ricks eget konto ska kunna få rapporterad tid attesterad även när en eller flera vardagar saknar tid.** Minsta implementation är en användarinställning, avstängd som standard och aktiverad för hans verifierade konto. API:ts attestkontroll och attestknappen ska följa inställningen. Teamvyn får visa faktiska tomma dagar men ska inte beskriva dem som något Rick måste rätta före attest. Övriga medarbetare behåller kravet på fullständig vecka; företagsgränser, attesträttigheter och låsning av godkänd tid bevaras. Prova en ofullständig Rick-vecka, motsvarande vecka för en annan person samt godkänd/låst tid. Kravet är implementerat, driftsatt och aktiverat endast på Ricks verifierade företagskonto. Övriga användare har kvar fullveckokravet; se [migrationsunderlaget för veckoundantaget](backend/prisma/migrations/20261013200000_incomplete_week_approval/REVIEW.md).
 
-Leveransunderlag för etapp 1 finns i [migrationsgranskningen](backend/prisma/migrations/20261013190000_time_write_receipts/REVIEW.md). Rick har uttryckligen godkänt den granskade migrationen och publiceringen. Senare etapper är planerade, inte färdigbyggda.
+Leveransunderlag för etapp 1 finns i [migrationsgranskningen](backend/prisma/migrations/20261013190000_time_write_receipts/REVIEW.md). Rick har uttryckligen godkänt den granskade migrationen och publiceringen.
+
+Del 2A samlar en sparad kalkylrevision under projektets ADMIN-begränsade Kalkyl-flik. Förhandsgranskning, kontroll mot desktopprogrammets avrundning, låsta versioner och dubblettskydd är klara lokalt. De två verkliga sparade desktoprevisionerna har exporterats skrivskyddat och deras totalsummor stämmer exakt. Ingen automatisk projektmatchning eller produktionsimport är gjord. Källprogrammet används fortsatt för redigering. Se [migrationsunderlaget](backend/prisma/migrations/20261013230000_project_calculations/REVIEW.md) och [första importen](backend/scripts/KALKYL_IMPORT.md). Resten av etapp 2 och efterföljande etapper är inte färdigbyggda.
 
 ## Historik från 2026-10-02
 

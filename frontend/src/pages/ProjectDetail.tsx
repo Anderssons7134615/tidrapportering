@@ -14,11 +14,13 @@ import { canModifyProjectMaterial, getProjectQueryAccess } from '../utils/fronte
 import { ProjectDialog } from '../components/ProjectDialog';
 import { refreshProjectQueries } from '../utils/projectQueries';
 const InvoiceList = lazy(() => import('./Purchases').then((module) => ({ default: module.InvoiceList })));
+const ProjectCalculations = lazy(() => import('./ProjectCalculations'));
 
 const tabs = [
   { id: 'overview', label: 'Översikt' },
   { id: 'materials', label: 'Material' },
   { id: 'purchases', label: 'Inköp' },
+  { id: 'calculation', label: 'Kalkyl' },
   { id: 'hours', label: 'Tid' },
   { id: 'summary', label: 'Ekonomi' },
   { id: 'notes', label: 'Dagbok' },
@@ -140,7 +142,7 @@ export default function ProjectDetail() {
       || projectSummary?.financialsVisibleToCurrentUser
   );
   const hoursOnly = Boolean(p?.hoursVisibleToCurrentUser && !canSeeMoney);
-  const visibleTabs = tabs.filter((tab) => (tab.id !== 'summary' || canSeeMoney) && (tab.id !== 'purchases' || isAdmin));
+  const visibleTabs = tabs.filter((tab) => (tab.id !== 'summary' || canSeeMoney) && (!['purchases', 'calculation'].includes(tab.id) || isAdmin));
   const selectedMaterialArticle = activeMaterialArticles.find((article) => article.id === materialForm.articleId);
 
   const handleMaterialMutationError = (error: Error) => {
@@ -363,6 +365,7 @@ export default function ProjectDetail() {
 
       <Tabs tabs={visibleTabs} active={activeTab} onChange={setActiveTab} label="Projektinnehåll">
       {activeTab === 'purchases' && isAdmin && <Suspense fallback={<p role="status">Laddar inköp…</p>}><InvoiceList projectId={id} /></Suspense>}
+      {activeTab === 'calculation' && isAdmin && <Suspense fallback={<p role="status">Laddar kalkyl…</p>}><ProjectCalculations key={id} projectId={id} projectName={`${p.code} · ${p.name}`} active={p.active} /></Suspense>}
 
       {(activeTab === 'overview' || activeTab === 'summary') && summaryLoading && <TaskSection><p role="status">Laddar sammanställning…</p></TaskSection>}
       {activeTab === 'overview' && !summaryLoading && !summaryFailed && (
