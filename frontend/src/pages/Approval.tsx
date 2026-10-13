@@ -1,3 +1,6 @@
+import { useOfflineStore } from '../stores/offlineStore';
+import { ownsOperation } from '../services/timeWriteQueue';
+import { saveTimeWrite } from '../services/timeWriteQueue';
 import { refreshTimeQueries } from '../utils/timeQueries';
 import { Fragment, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -84,19 +87,20 @@ export default function Approval() {
   });
 
   const deleteEntryMutation = useMutation({
-    mutationFn: (id: string) => timeEntriesApi.delete(id),
-    onSuccess: () => {
-      toast.success('Tidrad borttagen');
+    mutationFn: (entry: TimeEntry) => saveTimeWrite({ operation: 'DELETE', id: entry.id, revision: entry.revision }),
+    onSuccess: (ack) => {
+      toast.success(ack ? 'Tidrad borttagen' : 'Radering sparad på enheten – väntar på synkning');
       setDeleteCandidate(null);
       invalidateApprovalData();
     },
     onError: (error: Error) => toast.error(error.message),
   });
 
+  const pendingTimeChanges = useOfflineStore(state => state.pendingEntries).some(ownsOperation);
   const pendingLocks = weekLocks?.filter((lock) => lock.status === 'SUBMITTED') || [];
   const processedLocks = weekLocks?.filter((lock) => lock.status !== 'SUBMITTED') || [];
   const pendingHours = pendingLocks.reduce((sum, lock) => sum + (lock.totalHours || 0), 0);
-  const canApproveLock = (lock: WeekLock) => lock.userId !== user?.id || user?.role === 'ADMIN';
+  const canApproveLock = (lock: WeekLock) => !pendingTimeChanges && (lock.userId !== user?.id || user?.role === 'ADMIN');
   const approvalIsOwnWeek = approvalCandidate?.userId === user?.id;
 
   const rows = useMemo(() => {
@@ -128,6 +132,7 @@ export default function Approval() {
   if (isWeekLocksError) {
     return (
       <AppShell>
+      {pendingTimeChanges && <p role="status" className="mb-4 text-sm text-amber-800">Sparade tidsändringar väntar på kvittens. Synka och kontrollera veckan innan du attesterar.</p>}
         <PageHeader title="Attestering" description="Veckor behöver kunna hämtas innan du kan granska eller attestera." />
         <QueryError
           title="Veckorna kunde inte hämtas"
@@ -140,6 +145,7 @@ export default function Approval() {
 
   return (
     <AppShell>
+      {pendingTimeChanges && <p role="status" className="mb-4 text-sm text-amber-800">Sparade tidsändringar väntar på kvittens. Synka och kontrollera veckan innan du attesterar.</p>}
       <PageHeader
         title="Attestering"
         description="Granska veckor per anställd, hitta avvikelser och godkänn när allt stämmer."
@@ -316,12 +322,12 @@ export default function Approval() {
                     <p className="text-sm text-graphite-500">Vecka {format(parseDateOnlyLocal(lock.weekStartDate), 'w', { locale: sv })} · {formatHours(lock.totalHours)}{lock.reviewedAt ? ` · Granskad ${format(parseDateOnlyLocal(lock.reviewedAt), 'd/M')}` : ''}</p>
                     {lock.comment && <p className="mt-1 text-sm text-graphite-600">{lock.comment}</p>}
                   </div>
-                  <StatusBadge label={lock.status === 'APPROVED' ? 'Godkänd' : 'Nekad'} tone={lock.status === 'APPROVED' ? 'green' : 'red'} />
+                  <StatusBadge label={lock.status === 'APPROVED' ? 'Godkänd' : lock.status === 'DRAFT' ? 'Upplåst' : 'Nekad'} tone={lock.status === 'APPROVED' ? 'green' : lock.status === 'DRAFT' ? 'gray' : 'red'} />
                 </div>
-                <button type="button" onClick={() => setUnlockCandidate(lock)} disabled={unlockMutation.isPending} className="btn-secondary">
+                {lock.status !== 'DRAFT' && <button type="button" onClick={() => setUnlockCandidate(lock)} disabled={unlockMutation.isPending} className="btn-secondary">
                   <Unlock className="h-4 w-4" />
                   Öppna vecka
-                </button>
+                </button>}
               </DataRow>
             ))}
           </DataList>
@@ -330,7 +336,7 @@ export default function Approval() {
       <ConfirmDialog
         open={Boolean(approvalCandidate)}
         onClose={() => setApprovalCandidate(null)}
-        onConfirm={() => approvalCandidate && approveMutation.mutate(approvalCandidate.id)}
+        onConfirm={() => approvalCandidate && !pendingTimeChanges && approveMutation.mutate(approvalCandidate.id)}
         title={approvalIsOwnWeek ? 'Attestera din egen vecka' : 'Godkänn vecka'}
         description={approvalCandidate ? approvalIsOwnWeek
           ? `Du attesterar din egen vecka med ${formatHours(approvalCandidate.totalHours)} rapporterad tid. Självattesten sparas i auditloggen.`
@@ -354,7 +360,7 @@ export default function Approval() {
       <ConfirmDialog
         open={Boolean(deleteCandidate)}
         onClose={() => setDeleteCandidate(null)}
-        onConfirm={() => deleteCandidate && deleteEntryMutation.mutate(deleteCandidate.id)}
+        onConfirm={() => deleteCandidate && deleteEntryMutation.mutate(deleteCandidate)}
         title="Ta bort tidraden?"
         description={deleteCandidate ? `${format(parseDateOnlyLocal(deleteCandidate.date), 'd MMMM', { locale: sv })} · ${deleteCandidate.project?.name || 'Intern tid'} · ${formatHours(deleteCandidate.hours)}` : undefined}
         confirmLabel="Ta bort tidrad"

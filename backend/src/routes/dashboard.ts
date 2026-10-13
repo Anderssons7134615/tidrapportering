@@ -82,7 +82,7 @@ const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
             },
             select: { date: true, hours: true },
           }),
-          isAdminOrSupervisor ? getCompanyProjectMetrics(prisma, request.user.companyId) : Promise.resolve([]),
+          request.user.role === 'ADMIN' ? getCompanyProjectMetrics(prisma, request.user.companyId) : Promise.resolve([]),
         ]);
 
       const dailyHours = createDailyHoursMap(period.weekStart, weeklyEntries);
@@ -116,7 +116,7 @@ const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
           monthlyBillableHours: billableMonthStats._sum.hours || 0,
           weeklyHours: weekStats._sum.hours || 0,
           weeklyBillableHours: billableWeekEntries.reduce((sum, entry) => sum + entry.hours, 0),
-          ...(isAdminOrSupervisor ? { weeklyBillableValue: billableWeekValue } : {}),
+          ...(request.user.role === 'ADMIN' ? { weeklyBillableValue: billableWeekValue } : {}),
           pendingApprovalCount: pendingApprovals.length,
           riskProjectCount: riskProjects.length,
           projectsWithoutBudgetCount: runningProjects.length,
@@ -126,7 +126,7 @@ const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
         riskProjects: riskProjects.slice(0, 6),
         projectsWithoutBudget: runningProjects.slice(0, 6),
         myPendingWeeks,
-        recentEntries: request.user.role === 'EMPLOYEE' ? recentEntries.map(toEmployeeTimeEntry) : recentEntries,
+        recentEntries: request.user.role !== 'ADMIN' ? recentEntries.map(toEmployeeTimeEntry) : recentEntries,
         dailyHours,
         period: {
           monthStart: period.monthStart,
@@ -247,7 +247,7 @@ const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
           start: metric === 'weekly-hours' ? period.weekStart : period.monthStart,
           end: metric === 'weekly-hours' ? period.weekEnd : period.monthEnd,
         },
-        entries: request.user.role === 'EMPLOYEE' ? entries.map(toEmployeeTimeEntry) : entries,
+        entries: request.user.role !== 'ADMIN' ? entries.map(toEmployeeTimeEntry) : entries,
       };
     }
   );

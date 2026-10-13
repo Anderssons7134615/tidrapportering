@@ -7,8 +7,8 @@ export type NavigationItem = { to: string; icon: LucideIcon; label: string; role
 const items: NavigationItem[] = [
   { to: '/projects', icon: FolderKanban, label: 'Projekt', roles: ['ADMIN', 'SUPERVISOR', 'EMPLOYEE'], group: 'projects' },
   { to: '/inventory', icon: Package, label: 'Lager', roles: ['ADMIN', 'SUPERVISOR', 'EMPLOYEE'], group: 'projects' },
-  { to: '/purchases', icon: Package, label: 'Inköp', roles: ['ADMIN', 'SUPERVISOR'], group: 'projects' },
-  { to: '/project-economy', icon: FileBarChart, label: 'Ekonomi', roles: ['ADMIN', 'SUPERVISOR', 'ACCOUNTANT'], group: 'projects' },
+  { to: '/purchases', icon: Package, label: 'Inköp', roles: ['ADMIN'], group: 'projects' },
+  { to: '/project-economy', icon: FileBarChart, label: 'Ekonomi', roles: ['ADMIN'], group: 'projects' },
   { to: '/', icon: Home, label: 'Översikt', roles: ['EMPLOYEE'], group: 'time' },
   { to: '/time-overview', icon: Home, label: 'Min tid', roles: ['ADMIN', 'SUPERVISOR'], group: 'time' },
   { to: '/time-entry', icon: Clock, label: 'Rapportera', roles: ['ADMIN', 'SUPERVISOR', 'EMPLOYEE'], group: 'time' },
@@ -17,7 +17,7 @@ const items: NavigationItem[] = [
   { to: '/approval', icon: CheckSquare, label: 'Attestera', roles: ['ADMIN', 'SUPERVISOR'], group: 'management' },
   { to: '/reports', icon: FileBarChart, label: 'Rapporter', roles: ['ADMIN', 'SUPERVISOR', 'ACCOUNTANT'], group: 'management' },
   { to: '/customers', icon: Building2, label: 'Kunder', roles: ['ADMIN', 'SUPERVISOR'], group: 'register' },
-  { to: '/materials', icon: Package, label: 'Material', roles: ['ADMIN', 'SUPERVISOR'], group: 'register' },
+  { to: '/materials', icon: Package, label: 'Material', roles: ['ADMIN'], group: 'register' },
   { to: '/activities', icon: Tags, label: 'Aktiviteter', roles: ['ADMIN'], group: 'register' },
   { to: '/users', icon: Users, label: 'Användare', roles: ['ADMIN'], group: 'register' },
   { to: '/settings', icon: Settings, label: 'Inställningar', roles: ['ADMIN', 'SUPERVISOR', 'EMPLOYEE', 'ACCOUNTANT'], group: 'system' },
@@ -26,9 +26,9 @@ const items: NavigationItem[] = [
 export const groupLabels: Record<NavigationGroup, string> = { projects: 'Projekt och inköp', time: 'Min tid', management: 'Tid och personal', register: 'Register', system: 'Inställningar' };
 const mobilePaths: Record<NavigationRole, string[]> = {
   EMPLOYEE: ['/', '/week', '/time-entry', '/projects', '/settings'],
-  SUPERVISOR: ['/projects', '/purchases', '/time-entry', '/approval', '/project-economy'],
+  SUPERVISOR: ['/projects', '/inventory', '/time-entry', '/approval', '/week'],
   ADMIN: ['/projects', '/purchases', '/time-entry', '/approval', '/project-economy'],
-  ACCOUNTANT: ['/reports', '/project-economy', '/settings'],
+  ACCOUNTANT: ['/reports', '/settings'],
 };
 export const roleLabel: Record<NavigationRole, string> = { ADMIN: 'Administratör', SUPERVISOR: 'Arbetsledare', ACCOUNTANT: 'Lön och ekonomi', EMPLOYEE: 'Medarbetare' };
 

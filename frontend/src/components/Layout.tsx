@@ -1,3 +1,5 @@
+import { PendingTimeWrites } from './PendingTimeWrites';
+import { ownsOperation } from '../services/timeWriteQueue';
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -24,6 +26,7 @@ export default function Layout() {
   const mobileMenuRef = useRef<HTMLElement>(null);
   const mobileHeaderRef = useRef<HTMLElement>(null);
   const syncWarningRef = useRef<HTMLDivElement>(null);
+  const pendingWritesRef = useRef<HTMLDivElement>(null);
   const mainContentRef = useRef<HTMLDivElement>(null);
   const mobileBottomNavRef = useRef<HTMLElement>(null);
   const { data: currentUser } = useQuery({
@@ -41,10 +44,10 @@ export default function Layout() {
   const { navigation: filteredNavItems, mobile: filteredBottomTabs } = navigationFor(role);
   const activePath = activeNavigationPath(location.pathname, role);
   const activeItem = filteredNavItems.find((item) => item.to === activePath);
-  const pendingEntryCount = pendingEntries.filter((entry) => entry.ownerUserId === user?.id).length;
-  const syncIssues = pendingEntries.filter((entry) => entry.ownerUserId === user?.id && entry.syncError);
+  const pendingEntryCount = pendingEntries.filter((entry) => ownsOperation(entry)).length;
+  const syncIssues = pendingEntries.filter((entry) => ownsOperation(entry) && entry.syncError);
   const legacySyncIssues = syncIssues.filter((entry) => entry.syncErrorCode === 'LEGACY_SYNC_REQUIRES_REVIEW');
-  const retryableSyncIssues = syncIssues.filter((entry) => entry.syncErrorCode !== 'LEGACY_SYNC_REQUIRES_REVIEW');
+  const retryableSyncIssues = syncIssues.filter((entry) => entry.syncErrorCode !== 'LEGACY_SYNC_REQUIRES_REVIEW' && entry.retryable !== false);
 
   const downloadSavedOfflineEntries = () => {
     const blob = new Blob([JSON.stringify(legacySyncIssues, null, 2)], { type: 'application/json' });
@@ -77,7 +80,7 @@ export default function Layout() {
   useEffect(() => {
     const menu = mobileMenuRef.current;
     if (!menu) return;
-    const background = [mobileHeaderRef.current, syncWarningRef.current, mainContentRef.current, mobileBottomNavRef.current].filter(Boolean) as HTMLElement[];
+    const background = [mobileHeaderRef.current, syncWarningRef.current, pendingWritesRef.current, mainContentRef.current, mobileBottomNavRef.current].filter(Boolean) as HTMLElement[];
 
     if (!menuOpen) {
       menu.setAttribute('inert', '');
@@ -150,7 +153,7 @@ export default function Layout() {
         <div ref={syncWarningRef} className="border-b border-amber-200 bg-amber-50 px-4 py-3" role="alert">
           <div className="mx-auto flex max-w-[96rem] flex-col gap-2 text-sm text-amber-950 sm:flex-row sm:items-center sm:justify-between">
             <p>
-              <span className="font-semibold">{syncIssues.length} offline-rad(er) kräver åtgärd.</span>{' '}
+              <span className="font-semibold">{syncIssues.length} sparade ändringar behöver följas upp.</span>{' '}
               {legacySyncIssues.length > 0
                 ? 'Äldre sparade rader synkas inte automatiskt. Hämta dem först och jämför sedan med rapporterad tid, så att inget dubbleras.'
                 : syncIssues[0]?.syncError}
@@ -171,6 +174,7 @@ export default function Layout() {
         </div>
       )}
 
+      <div ref={pendingWritesRef}><PendingTimeWrites /></div>
       <div className="app-frame">
         <aside className="app-sidebar sticky top-0 hidden h-[100dvh] w-[218px] shrink-0 flex-col lg:flex">
           <div className="flex min-h-[76px] items-center gap-2.5 px-5"><BrandMark /><span className="brand-wordmark">tidapp.</span></div>
@@ -255,7 +259,7 @@ function MobileNavLink({ item, active }: { item: NavigationItem; active: boolean
 }
 
 function TopStatus({ isOnline, pendingEntries, userName, onLogout }: { isOnline: boolean; pendingEntries: number; userName?: string; onLogout: () => void }) {
-  return <div className="top-status flex shrink-0 items-center gap-2 sm:gap-4"><span className={`inline-flex items-center gap-1.5 text-xs font-medium ${isOnline ? 'text-graphite-500' : 'text-amber-800'}`} role="status" aria-label={`${isOnline ? 'Ansluten' : 'Offline'}${pendingEntries ? `, ${pendingEntries} rader väntar på synkning` : ''}`}>
+  return <div className="top-status flex shrink-0 items-center gap-2 sm:gap-4"><span className={`inline-flex items-center gap-1.5 text-xs font-medium ${isOnline ? 'text-graphite-500' : 'text-amber-800'}`} role="status" aria-label={`${isOnline ? 'Ansluten' : 'Offline'}${pendingEntries ? `, ${pendingEntries} ändringar väntar på synkning` : ''}`}>
     {isOnline ? <Wifi size={15} aria-hidden="true" /> : <WifiOff size={15} aria-hidden="true" />}<span className="hidden md:inline">{isOnline ? 'Ansluten' : 'Offline'}</span>{pendingEntries > 0 && <span className="font-semibold text-amber-800">{pendingEntries}</span>}
   </span><span className="hidden max-w-40 truncate text-xs font-medium text-graphite-800 lg:block">{userName}</span>{userName && <span className="hidden lg:inline-flex"><IdentityMark name={userName} person /></span>}<button onClick={onLogout} className="icon-button" title="Logga ut" aria-label="Logga ut"><LogOut size={18} aria-hidden="true" /></button></div>;
 }

@@ -1,6 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
-import { assertDestructiveSeedAllowed } from '../src/lib/seedSafety.js';
+import { assertDestructiveSeedAllowed, assertNoDurableTimeHistory } from '../src/lib/seedSafety.js';
 
 const prisma = new PrismaClient();
 
@@ -26,6 +26,7 @@ const DEFAULT_ACTIVITIES = [
 
 async function main() {
   assertDestructiveSeedAllowed(process.env);
+  assertNoDurableTimeHistory(await prisma.timeEntryWriteRequest.count());
 
   console.log('🌱 Seedar databas...');
 

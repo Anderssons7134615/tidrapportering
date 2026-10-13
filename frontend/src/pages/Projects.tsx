@@ -202,8 +202,8 @@ export default function Projects() {
       {isManager && managing && <div className="flex flex-wrap gap-2 border-b border-graphite-200" aria-label="Projektvy">
         <button type="button" className={`min-h-11 px-3 text-sm font-semibold border-b-2 ${!archived && !attentionOnly ? 'border-primary-600 text-primary-700' : 'border-transparent text-graphite-600'}`} aria-pressed={!archived && !attentionOnly} disabled={changeArchive.isPending} onClick={() => { setArchived(false); setAttentionOnly(false); clearFilters(); }}>Aktiva</button>
         {!archived && <button type="button" className={`min-h-11 px-3 text-sm font-semibold border-b-2 ${attentionOnly ? 'border-primary-600 text-primary-700' : 'border-transparent text-graphite-600'}`} aria-pressed={attentionOnly} onClick={() => setAttentionOnly(!attentionOnly)}>Behöver åtgärd</button>}
-        <Link to="/project-economy" className="flex min-h-11 items-center px-3 text-sm font-semibold text-graphite-600 hover:text-primary-700">Ekonomi</Link>
-        <Link to="/purchases?status=DRAFT" className="flex min-h-11 items-center px-3 text-sm font-semibold text-graphite-600 hover:text-primary-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500">Inköp{!isError && data?.summary.invoiceDraftCount != null ? ` · ${data.summary.invoiceDraftCount} utkast i företaget` : ''}</Link>
+        {user?.role === 'ADMIN' && <Link to="/project-economy" className="flex min-h-11 items-center px-3 text-sm font-semibold text-graphite-600 hover:text-primary-700">Ekonomi</Link>}
+        {user?.role === 'ADMIN' && <Link to="/purchases?status=DRAFT" className="flex min-h-11 items-center px-3 text-sm font-semibold text-graphite-600 hover:text-primary-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500">Inköp{!isError && data?.summary.invoiceDraftCount != null ? ` · ${data.summary.invoiceDraftCount} utkast i företaget` : ''}</Link>}
         <button type="button" className={`min-h-11 px-3 text-sm font-semibold border-b-2 ${archived ? 'border-primary-600 text-primary-700' : 'border-transparent text-graphite-600'}`} aria-pressed={archived} disabled={changeArchive.isPending} onClick={() => { clearFilters(); setArchived(true); }}>Arkiverade</button>
       </div>}
       {archived && <p className="text-sm text-graphite-600">Historiken finns kvar. Återställ ett projekt när arbetet ska fortsätta.</p>}
@@ -357,6 +357,7 @@ function ProjectControlRow({ detailPath, project, open, isManager, showDone, onT
   });
   const openTaskCount = project.tasks.filter((task) => task.status !== 'DONE').length;
   const visibleTasks = project.tasks.filter((task) => showDone ? task.status === 'DONE' : task.status !== 'DONE');
+  const canSeeEconomy = useAuthStore(state => state.user?.role === 'ADMIN');
   const canExpand = project.active && (isManager || visibleTasks.length > 0);
   const rowTone = selected ? 'bg-primary-50/60' : '';
   const attentionLabel = project.overdueCount > 0
@@ -399,7 +400,7 @@ function ProjectControlRow({ detailPath, project, open, isManager, showDone, onT
             {project.nextTask ? <><p className="text-sm font-medium text-graphite-800 [overflow-wrap:anywhere]">{project.nextTask.title}</p><p className="mt-1 text-xs text-graphite-600">{project.nextTask.assignee.name} · {formatTaskDate(project.nextTask.dueDate)}</p></> : <p className="text-sm text-graphite-500">Ingen uppgift i urvalet</p>}
             {attentionLabel && project.active && <span className={`mt-1 inline-block text-xs font-semibold ${attentionTone}`}>{attentionLabel}</span>}
           </div>
-          {isManager && project.economy && <div className="flex min-w-0 flex-col gap-1 text-xs text-graphite-600 xl:pt-3">
+          {canSeeEconomy && project.economy && <div className="flex min-w-0 flex-col gap-1 text-xs text-graphite-600 xl:pt-3">
             <p className="font-medium text-graphite-500">Timmar och underlag</p>
             <span>{formatHours(project.economy.reportedHours)} rapporterat{project.economy.budgetHours != null ? ` / ${formatHours(project.economy.budgetHours)} budget` : ' · Ingen timbudget'}</span>
             {project.economy.unapprovedHours > 0 && <span className="text-amber-800">{formatHours(project.economy.unapprovedHours)} ej attesterat</span>}

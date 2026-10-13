@@ -470,7 +470,7 @@ const reportRoutes: FastifyPluginAsync = async (fastify) => {
       summary: {
         totalHours,
         billableHours,
-        ...(request.user.role === 'ACCOUNTANT'
+        ...(request.user.role !== 'ADMIN'
           ? {}
           : {
               budgetHours: project.budgetHours,

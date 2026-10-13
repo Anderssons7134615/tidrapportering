@@ -12,9 +12,8 @@ import { ensureUploadDir } from '../lib/uploads.js';
 import { deleteAttachmentFiles } from '../lib/attachments.js';
 import { requireRoles } from '../lib/authorization.js';
 import { isAccountant } from '../lib/safety.js';
-import { getTimeEntryDeletionError, toEmployeeTimeEntry } from '../lib/timeEntrySafety.js';
-import { createOfflineTimeEntryPayloadHash } from '../lib/offlineSync.js';
-import { buildWeekVacationRows } from '../lib/weekVacation.js';
+import { toEmployeeTimeEntry } from '../lib/timeEntrySafety.js';
+import { createTimeEntryWriteService, timeEntryInputSchema, writeMetadataSchema, vacationInputSchema, TimeWriteError } from '../lib/timeEntryWrites.js';
 import {
   dateOnlySchema,
   endOfUtcDay,
@@ -24,24 +23,14 @@ import {
   toDateKey,
 } from '../lib/dateOnly.js';
 
-const timeEntrySchema = z.object({
-  projectId: z.string().uuid().optional().nullable(),
-  activityId: z.string().uuid(),
-  userId: z.string().uuid().optional(),
-  date: dateOnlySchema,
-  startTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional().nullable(),
-  endTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional().nullable(),
-  hours: z.number().positive().max(24),
-  billable: z.boolean().optional(),
-  note: z.string().max(2000).optional().nullable(),
-  gpsLat: z.number().optional().nullable(),
-  gpsLng: z.number().optional().nullable(),
-});
+const timeEntrySchema = timeEntryInputSchema;
 
 const bulkSyncSchema = z.array(
   timeEntrySchema.extend({
     localId: z.string().uuid().optional(),
     id: z.string().uuid().optional(),
+    requestKey: z.string().uuid().optional(),
+    revision: z.number().int().positive().optional(),
   })
 ).max(100).superRefine((entries, ctx) => {
   entries.forEach((entry, index) => {
@@ -62,18 +51,25 @@ const bulkSyncSchema = z.array(
   });
 });
 
-const weekVacationSchema = z.object({
-  weekStart: dateOnlySchema,
-  userId: z.string().uuid().optional(),
-  hoursPerDay: z.number().positive().max(24).default(8),
-});
-
 const requireTimeWriter = requireRoles(
   ['ADMIN', 'SUPERVISOR', 'EMPLOYEE'],
   'Revisorsrollen har endast läsbehörighet'
 );
 
 const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
+  const writes = createTimeEntryWriteService(prisma);
+  const publicEntry = (entry: any, role: string) => role === 'ADMIN' ? entry : toEmployeeTimeEntry(entry);
+  const sendError = (error: unknown, reply: any) => {
+    if (error instanceof z.ZodError) return reply.status(400).send({ error: 'Ogiltig data', details: error.errors });
+    if (error instanceof TimeWriteError) return reply.status(error.statusCode).send({ error: error.message, code: error.code });
+    throw error;
+  };
+  const acknowledgement = (result: any, role: string, requestKey?: string) => ({
+    ...(result.entries[0] ? publicEntry(result.entries[0], role) : { id: result.id }),
+    requestKey, outcome: result.outcome, replayed: result.replayed,
+    resourceExists: result.resourceExists, revision: result.entries[0]?.revision ?? result.revision,
+    resultRevision: result.revision, resultIds: result.resultIds,
+  });
   // List time entries (for current user or all if admin/supervisor)
   fastify.get('/', {
     preHandler: [fastify.authenticate],
@@ -123,6 +119,7 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
         ? {
             select: {
               id: true,
+              revision: true,
               userId: true,
               projectId: true,
               activityId: true,
@@ -157,7 +154,7 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
       orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
     } as any);
 
-    return request.user.role === 'EMPLOYEE' ? entries.map(toEmployeeTimeEntry) : entries;
+    return request.user.role !== 'ADMIN' ? entries.map(toEmployeeTimeEntry) : entries;
   });
 
   // Get team week summary (admin/supervisor)
@@ -424,6 +421,7 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
         ? {
             select: {
               id: true,
+              revision: true,
               userId: true,
               projectId: true,
               activityId: true,
@@ -481,7 +479,7 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     return {
-      entries: request.user.role === 'EMPLOYEE' ? entries.map(toEmployeeTimeEntry) : entries,
+      entries: request.user.role !== 'ADMIN' ? entries.map(toEmployeeTimeEntry) : entries,
       weekLock,
       summary: {
         totalHours,
@@ -491,116 +489,35 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
     };
   });
 
-  fastify.post('/week-vacation', {
-    preHandler: [requireTimeWriter],
-  }, async (request, reply) => {
+  fastify.post('/week-vacation', { preHandler: [requireTimeWriter] }, async (request, reply) => {
     try {
-      const body = weekVacationSchema.parse(request.body);
-      const targetUserId = body.userId && ['ADMIN', 'SUPERVISOR'].includes(request.user.role)
-        ? body.userId
-        : request.user.id;
-      const rows = buildWeekVacationRows(body.weekStart, body.hoursPerDay);
-      const weekStart = rows[0].date;
+      const body = vacationInputSchema.parse(request.body);
+      const result = await writes.vacation(request.user, body);
+      return reply.status(201).send({ ...acknowledgement(result, request.user.role, body.requestKey),
+        entries: result.entries.map((entry: any) => publicEntry(entry, request.user.role)),
+        days: 5, hoursPerDay: body.hoursPerDay, totalHours: 5 * body.hoursPerDay });
+    } catch (error) { return sendError(error, reply); }
+  });
 
-      const [targetUser, vacationActivity] = await Promise.all([
-        prisma.user.findFirst({
-          where: { id: targetUserId, companyId: request.user.companyId, active: true },
-          select: { id: true },
-        }),
-        prisma.activity.findFirst({
-          where: { companyId: request.user.companyId, code: 'SEM', category: 'ABSENCE', active: true },
-          select: { id: true },
-        }),
-      ]);
-
-      if (!targetUser) {
-        return reply.status(400).send({ error: 'Användaren tillhör inte företaget eller är inaktiv' });
-      }
-      if (!vacationActivity) {
-        return reply.status(409).send({ error: 'Aktiviteten Semester (SEM) måste vara aktiv innan hela veckan kan rapporteras' });
-      }
-
-      const entries = await prisma.$transaction(async (tx) => {
-        const weekLock = await tx.weekLock.findUnique({
-          where: { userId_weekStartDate: { userId: targetUserId, weekStartDate: weekStart } },
-          select: { status: true },
-        });
-        if (weekLock?.status === 'APPROVED') {
-          throw Object.assign(new Error('Veckan är godkänd. Lås upp veckan innan den ändras.'), { statusCode: 409 });
-        }
-
-        const existingEntries = await tx.timeEntry.findMany({
-          where: {
-            userId: targetUserId,
-            date: { gte: rows[0].date, lte: rows[rows.length - 1].date },
-          },
-          select: { date: true },
-        });
-        if (existingEntries.length > 0) {
-          const dates = [...new Set(existingEntries.map((entry) => toDateKey(entry.date)))];
-          throw Object.assign(
-            new Error(`Veckan har redan rapporterad vardagstid: ${dates.join(', ')}. Befintliga rader ändrades inte.`),
-            { statusCode: 409 }
-          );
-        }
-
-        const submittedAt = new Date();
-        const createdEntries = [];
-        for (const row of rows) {
-          createdEntries.push(await tx.timeEntry.create({
-            data: {
-              userId: targetUserId,
-              activityId: vacationActivity.id,
-              date: row.date,
-              hours: row.hours,
-              billable: false,
-              status: 'SUBMITTED',
-              submittedAt,
-            },
-            include: {
-              project: { select: { id: true, name: true, code: true, site: true } },
-              activity: { select: { id: true, name: true, code: true, category: true } },
-            },
-          }));
-        }
-
-        await upsertSubmittedWeekLock(tx, targetUserId, weekStart);
-        await tx.auditLog.create({
-          data: {
-            userId: request.user.id,
-            action: 'CREATE_WEEK_VACATION',
-            entityType: 'TimeEntry',
-            entityId: createdEntries[0].id,
-            newValue: JSON.stringify({
-              targetUserId,
-              weekStart: toDateKey(weekStart),
-              hoursPerDay: body.hoursPerDay,
-              days: rows.length,
-            }),
-          },
-        });
-
-        return createdEntries;
-      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
-
-      return reply.status(201).send({
-        entries,
-        days: rows.length,
-        hoursPerDay: body.hoursPerDay,
-        totalHours: rows.length * body.hoursPerDay,
-      });
-    } catch (error: any) {
-      if (error instanceof z.ZodError) {
-        return reply.status(400).send({ error: 'Ogiltig data', details: error.errors });
-      }
-      if (error?.code === 'P2034') {
-        return reply.status(409).send({ error: 'Veckan ändrades samtidigt. Kontrollera veckan och försök igen.' });
-      }
-      if (error?.statusCode) {
-        return reply.status(error.statusCode).send({ error: error.message });
-      }
-      throw error;
-    }
+  // The v3 client uses a new endpoint so an older backend cannot silently
+  // ignore request keys and create duplicate time. Legacy v2 sync stays below.
+  fastify.post('/operations', { preHandler: [requireTimeWriter] }, async (request, reply) => {
+    const schema = z.discriminatedUnion('operation', [
+      z.object({ operation: z.literal('CREATE'), requestKey: z.string().uuid(), payload: timeEntryInputSchema }),
+      z.object({ operation: z.literal('UPDATE'), requestKey: z.string().uuid(), id: z.string().uuid(), revision: z.number().int().positive(), payload: timeEntryInputSchema.partial() }),
+      z.object({ operation: z.literal('DELETE'), requestKey: z.string().uuid(), id: z.string().uuid(), revision: z.number().int().positive() }),
+      z.object({ operation: z.literal('WEEK_VACATION'), requestKey: z.string().uuid(), payload: vacationInputSchema.omit({ requestKey: true }) }),
+    ]);
+    try {
+      const body = schema.parse(request.body);
+      const result = body.operation === 'CREATE' ? await writes.create(request.user, body.payload, body.requestKey)
+        : body.operation === 'UPDATE' ? await writes.update(request.user, body.id, body.payload, body.revision, body.requestKey)
+        : body.operation === 'DELETE' ? await writes.remove(request.user, body.id, body.revision, body.requestKey)
+        : await writes.vacation(request.user, { ...body.payload, requestKey: body.requestKey });
+      deleteAttachmentFiles(result.attachments, fastify.log);
+      return { ...acknowledgement(result, request.user.role, body.requestKey), operation: body.operation,
+        ...(body.operation === 'WEEK_VACATION' ? { days: 5, totalHours: body.payload.hoursPerDay * 5 } : {}) };
+    } catch (error) { return sendError(error, reply); }
   });
 
   // Get single entry
@@ -616,6 +533,7 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
         ? {
             select: {
               id: true,
+              revision: true,
               userId: true,
               projectId: true,
               activityId: true,
@@ -658,500 +576,54 @@ const timeEntryRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(403).send({ error: 'Åtkomst nekad' });
     }
 
-    return request.user.role === 'EMPLOYEE' ? toEmployeeTimeEntry(entry) : entry;
+    return request.user.role !== 'ADMIN' ? toEmployeeTimeEntry(entry) : entry;
   });
 
-  // Create time entry
-  fastify.post('/', {
-    preHandler: [requireTimeWriter],
-  }, async (request, reply) => {
+  // Legacy HTTP endpoints share the same transactional service as v3.
+  fastify.post('/', { preHandler: [requireTimeWriter] }, async (request, reply) => {
     try {
-      const body = timeEntrySchema.parse(request.body);
-
-      const targetUserId = body.userId && ['ADMIN', 'SUPERVISOR'].includes(request.user.role)
-        ? body.userId
-        : request.user.id;
-
-      const validation = await validateEntryReferences({
-        companyId: request.user.companyId,
-        targetUserId,
-        activityId: body.activityId,
-        projectId: body.projectId,
-      });
-
-      if (validation.error) {
-        return reply.status(400).send({ error: validation.error });
-      }
-
-      // Kontrollera om veckan är låst
-      const weekStart = getWeekStart(body.date);
-      const weekLock = await prisma.weekLock.findUnique({
-        where: {
-          userId_weekStartDate: {
-            userId: targetUserId,
-            weekStartDate: weekStart,
-          },
-        },
-      });
-
-      if (weekLock?.status === 'APPROVED') {
-        return reply.status(409).send({ error: 'Veckan är godkänd. Lås upp veckan innan den ändras.' });
-      }
-
-      const entry = await prisma.$transaction(async (tx) => {
-        const created = await tx.timeEntry.create({
-          data: {
-            ...body,
-            userId: targetUserId,
-            billable: body.billable ?? validation.activity?.billableDefault ?? true,
-            status: 'SUBMITTED',
-            submittedAt: new Date(),
-            rejectNote: null,
-          },
-          include: {
-            project: { select: { id: true, name: true, code: true, site: true } },
-            activity: { select: { id: true, name: true, code: true } },
-          },
-        });
-
-        await upsertSubmittedWeekLock(tx, targetUserId, weekStart);
-
-        await tx.auditLog.create({
-          data: {
-            userId: request.user.id,
-            action: 'CREATE',
-            entityType: 'TimeEntry',
-            entityId: created.id,
-            newValue: JSON.stringify({ date: created.date, hours: created.hours, projectId: created.projectId }),
-          },
-        });
-
-        if (created.projectId) {
-          await enqueueTimeEntryChanged(tx, {
-            companyId: request.user.companyId,
-            projectId: created.projectId,
-            entityId: created.id,
-            action: 'CREATE',
-            payload: {
-              date: created.date.toISOString(),
-              hours: created.hours,
-              userId: created.userId,
-            },
-          });
-        }
-
-        return created;
-      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
-
-      return reply.status(201).send(entry);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        return reply.status(400).send({ error: 'Ogiltig data', details: error.errors });
-      }
-      throw error;
-    }
+      const { requestKey, revision: _revision, ...body } = timeEntryInputSchema.merge(writeMetadataSchema).parse(request.body);
+      const result = await writes.create(request.user, body, requestKey);
+      return reply.status(201).send(acknowledgement(result, request.user.role, requestKey));
+    } catch (error) { return sendError(error, reply); }
   });
 
-  // Bulk sync (for offline support)
-  fastify.post('/sync', {
-    preHandler: [requireTimeWriter],
-  }, async (request, reply) => {
+  fastify.post('/sync', { preHandler: [requireTimeWriter] }, async (request, reply) => {
     try {
       const entries = bulkSyncSchema.parse(request.body);
-      const results: any[] = [];
-
+      const results = [];
       for (const entry of entries) {
-        const { localId, id, ...data } = entry;
-        const existing = id
-          ? await prisma.timeEntry.findFirst({
-              where: { id, user: { companyId: request.user.companyId } },
-            })
-          : null;
-
-        if (id && !existing) {
-          results.push({ localId, id, error: 'Tidrad hittades inte' });
-          continue;
-        }
-
-        const isManager = ['ADMIN', 'SUPERVISOR'].includes(request.user.role);
-        if (existing && !isManager && existing.userId !== request.user.id) {
-          results.push({ localId, id, error: 'Åtkomst nekad' });
-          continue;
-        }
-        if (existing?.status === 'APPROVED') {
-          results.push({ localId, id, error: 'Veckan måste låsas upp innan raden ändras' });
-          continue;
-        }
-
-        const targetUserId = isManager && data.userId
-          ? data.userId
-          : (existing?.userId || request.user.id);
-
-        // A completed offline create must replay before validating today's
-        // references or lock status. Those may have changed after a response
-        // was lost, but the original time row must still be acknowledged.
-        if (!id && localId) {
-          const replayPayload = {
-            ...data,
-            userId: targetUserId,
-            billable: data.billable as boolean,
-          };
-          const replayPayloadHash = createOfflineTimeEntryPayloadHash(replayPayload);
-          const replay = await prisma.timeEntry.findFirst({
-            where: { offlineActorUserId: request.user.id, offlineLocalId: localId },
-            select: { id: true, offlinePayloadHash: true },
-          });
-          if (replay) {
-            if (replay.offlinePayloadHash !== replayPayloadHash) {
-              results.push({
-                localId,
-                id: replay.id,
-                outcome: 'REJECTED',
-                code: 'OFFLINE_IDEMPOTENCY_CONFLICT',
-                error: 'Offline-id:t har redan använts för en annan tidrad',
-              });
-            } else {
-              results.push({ localId, id: replay.id, outcome: 'REPLAYED', replayed: true });
-            }
-            continue;
-          }
-        }
-
-        const validation = await validateEntryReferences({
-          companyId: request.user.companyId,
-          targetUserId,
-          activityId: data.activityId,
-          projectId: data.projectId,
-          allowInactiveUser: existing?.userId === targetUserId,
-          allowInactiveActivity: existing?.activityId === data.activityId,
-          allowInactiveProject: existing?.projectId === (data.projectId || null),
-        });
-
-        if (validation.error) {
-          results.push({ localId, error: validation.error });
-          continue;
-        }
-
-        // Kontrollera om veckan är låst
-        const weekStart = getWeekStart(data.date);
-        const weekLock = await prisma.weekLock.findUnique({
-          where: {
-            userId_weekStartDate: {
-              userId: targetUserId,
-              weekStartDate: weekStart,
-            },
-          },
-        });
-
-        if (weekLock?.status === 'APPROVED') {
-          results.push({ localId, error: 'Veckan måste låsas upp innan den ändras' });
-          continue;
-        }
-
-        const safeData = {
-          ...data,
-          userId: targetUserId,
-          billable: data.billable ?? validation.activity?.billableDefault ?? true,
-        };
-        const offlinePayloadHash = !id && localId
-          ? createOfflineTimeEntryPayloadHash(safeData)
-          : null;
-
-        if (id) {
-          const updated = await prisma.$transaction(async (tx) => {
-            const row = await tx.timeEntry.update({
-              where: { id },
-              data: {
-                ...safeData,
-                billable: data.billable ?? validation.activity?.billableDefault ?? true,
-                status: 'SUBMITTED',
-                submittedAt: new Date(),
-                approvedAt: null,
-                approverId: null,
-                rejectNote: null,
-              },
-            });
-
-            await upsertSubmittedWeekLock(tx, targetUserId, weekStart);
-
-            const originalWeekStart = getWeekStart(existing!.date);
-            if (existing!.userId !== targetUserId || originalWeekStart.getTime() !== weekStart.getTime()) {
-              await reconcileWeekLock(tx, existing!.userId, originalWeekStart);
-            }
-
-            const affectedProjectIds = new Set<string>();
-            if (existing!.projectId) affectedProjectIds.add(existing!.projectId);
-            if (row.projectId) affectedProjectIds.add(row.projectId);
-
-            for (const projectId of affectedProjectIds) {
-              await enqueueTimeEntryChanged(tx, {
-                companyId: request.user.companyId,
-                projectId,
-                entityId: row.id,
-                action: 'SYNC',
-                payload: {
-                  oldProjectId: existing!.projectId,
-                  newProjectId: row.projectId,
-                  hours: row.hours,
-                },
-              });
-            }
-
-            return row;
-          }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
-
-          results.push({ localId, id: updated.id, outcome: 'UPDATED' });
-        } else {
-          try {
-          const created = await prisma.$transaction(async (tx) => {
-            const row = await tx.timeEntry.create({
-              data: {
-                ...safeData,
-                offlineActorUserId: request.user.id,
-                offlineLocalId: localId,
-                offlinePayloadHash,
-                status: 'SUBMITTED',
-                submittedAt: new Date(),
-                rejectNote: null,
-              },
-            });
-
-            await upsertSubmittedWeekLock(tx, targetUserId, weekStart);
-
-            if (row.projectId) {
-              await enqueueTimeEntryChanged(tx, {
-                companyId: request.user.companyId,
-                projectId: row.projectId,
-                entityId: row.id,
-                action: 'SYNC',
-                payload: {
-                  hours: row.hours,
-                  date: row.date.toISOString(),
-                },
-              });
-            }
-
-            return row;
-          }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
-
-          results.push({ localId, id: created.id, outcome: 'CREATED' });
-          } catch (error) {
-            if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002' || !localId || !offlinePayloadHash) {
-              throw error;
-            }
-
-            const replay = await prisma.timeEntry.findFirst({
-              where: { offlineActorUserId: request.user.id, offlineLocalId: localId },
-              select: { id: true, offlinePayloadHash: true },
-            });
-            if (!replay) throw error;
-            if (replay.offlinePayloadHash !== offlinePayloadHash) {
-              results.push({
-                localId,
-                id: replay.id,
-                outcome: 'REJECTED',
-                code: 'OFFLINE_IDEMPOTENCY_CONFLICT',
-                error: 'Offline-id:t har redan använts för en annan tidrad',
-              });
-            } else {
-              results.push({ localId, id: replay.id, outcome: 'REPLAYED', replayed: true });
-            }
-          }
+        const { localId, id, revision, requestKey, ...data } = entry;
+        try {
+          const result = id ? await writes.update(request.user, id, data, revision, requestKey || localId)
+            : await writes.create(request.user, data, requestKey || localId);
+          results.push({ localId, id: result.id, revision: result.revision, outcome: result.outcome, replayed: result.replayed, resourceExists: result.resourceExists });
+        } catch (error) {
+          if (!(error instanceof TimeWriteError)) throw error;
+          results.push({ localId, id, outcome: 'REJECTED', code: error.code, error: error.message });
         }
       }
-
       return { results };
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        return reply.status(400).send({ error: 'Ogiltig data', details: error.errors });
-      }
-      throw error;
-    }
+    } catch (error) { return sendError(error, reply); }
   });
 
-  // Update time entry
-  fastify.put('/:id', {
-    preHandler: [requireTimeWriter],
-  }, async (request, reply) => {
+  fastify.put('/:id', { preHandler: [requireTimeWriter] }, async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
-      const body = timeEntrySchema.partial().parse(request.body);
-
-      const entry = await prisma.timeEntry.findFirst({
-        where: { id, user: { companyId: request.user.companyId } },
-      });
-      if (!entry) {
-        return reply.status(404).send({ error: 'Tidrad hittades inte' });
-      }
-
-      // Kontrollera behörighet
-      if (request.user.role === 'EMPLOYEE' && entry.userId !== request.user.id) {
-        return reply.status(403).send({ error: 'Åtkomst nekad' });
-      }
-
-      // Kontrollera status
-      if (entry.status === 'APPROVED') {
-        return reply.status(409).send({ error: 'Veckan måste låsas upp innan raden ändras' });
-      }
-
-      const targetUserId = body.userId && ['ADMIN', 'SUPERVISOR'].includes(request.user.role)
-        ? body.userId
-        : entry.userId;
-      const effectiveActivityId = body.activityId ?? entry.activityId;
-      const effectiveProjectId = body.projectId !== undefined ? body.projectId : entry.projectId;
-      const effectiveDate = body.date ?? entry.date;
-      const destinationWeekStart = getWeekStart(effectiveDate);
-
-      const destinationLock = await prisma.weekLock.findUnique({
-        where: {
-          userId_weekStartDate: {
-            userId: targetUserId,
-            weekStartDate: destinationWeekStart,
-          },
-        },
-      });
-      if (destinationLock?.status === 'APPROVED') {
-        return reply.status(409).send({ error: 'Målveckan måste låsas upp innan raden flyttas' });
-      }
-
-      const validation = await validateEntryReferences({
-        companyId: request.user.companyId,
-        targetUserId,
-        activityId: effectiveActivityId,
-        projectId: effectiveProjectId,
-        allowInactiveUser: targetUserId === entry.userId,
-        allowInactiveActivity: effectiveActivityId === entry.activityId,
-        allowInactiveProject: effectiveProjectId === entry.projectId,
-      });
-
-      if (validation.error) {
-        return reply.status(400).send({ error: validation.error });
-      }
-
-      const updateBody = {
-        ...body,
-        userId: targetUserId,
-      };
-      const oldValue = { date: entry.date, hours: entry.hours, note: entry.note };
-
-      const updatedEntry = await prisma.$transaction(async (tx) => {
-        const updated = await tx.timeEntry.update({
-          where: { id },
-          data: {
-            ...updateBody,
-            status: 'SUBMITTED',
-            submittedAt: new Date(),
-            approvedAt: null,
-            approverId: null,
-            rejectNote: null,
-          },
-          include: {
-            project: { select: { id: true, name: true, code: true, site: true } },
-            activity: { select: { id: true, name: true, code: true } },
-          },
-        });
-
-        const updatedWeekStart = getWeekStart(updated.date);
-        await upsertSubmittedWeekLock(tx, updated.userId, updatedWeekStart);
-
-        const originalWeekStart = getWeekStart(entry.date);
-        if (entry.userId !== updated.userId || originalWeekStart.getTime() !== updatedWeekStart.getTime()) {
-          await reconcileWeekLock(tx, entry.userId, originalWeekStart);
-        }
-
-        await tx.auditLog.create({
-          data: {
-            userId: request.user.id,
-            action: 'UPDATE',
-            entityType: 'TimeEntry',
-            entityId: id,
-            oldValue: JSON.stringify(oldValue),
-            newValue: JSON.stringify(updateBody),
-          },
-        });
-
-        const affectedProjectIds = new Set<string>();
-        if (entry.projectId) affectedProjectIds.add(entry.projectId);
-        if (updated.projectId) affectedProjectIds.add(updated.projectId);
-
-        for (const projectId of affectedProjectIds) {
-            await enqueueTimeEntryChanged(tx, {
-            companyId: request.user.companyId,
-            projectId,
-            entityId: id,
-            action: 'UPDATE',
-            payload: {
-              oldProjectId: entry.projectId,
-              newProjectId: updated.projectId,
-              hours: updated.hours,
-              date: updated.date.toISOString(),
-            },
-          });
-        }
-
-        return updated;
-      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
-
-      return updatedEntry;
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        return reply.status(400).send({ error: 'Ogiltig data', details: error.errors });
-      }
-      throw error;
-    }
+      const { requestKey, revision, ...body } = timeEntryInputSchema.partial().merge(writeMetadataSchema).parse(request.body);
+      const result = await writes.update(request.user, id, body, revision, requestKey);
+      return acknowledgement(result, request.user.role, requestKey);
+    } catch (error) { return sendError(error, reply); }
   });
 
-  // Delete time entry
-  fastify.delete('/:id', {
-    preHandler: [requireTimeWriter],
-  }, async (request, reply) => {
-    const { id } = request.params as { id: string };
-
+  fastify.delete('/:id', { preHandler: [requireTimeWriter] }, async (request, reply) => {
     try {
-      const entry = await prisma.$transaction(async (tx) => {
-        const current = await tx.timeEntry.findFirst({
-          where: { id, user: { companyId: request.user.companyId } },
-          include: { attachments: { select: { path: true } } },
-        });
-        if (!current) throw Object.assign(new Error('Tidrad hittades inte'), { statusCode: 404 });
-        if (request.user.role === 'EMPLOYEE' && current.userId !== request.user.id) {
-          throw Object.assign(new Error('Åtkomst nekad'), { statusCode: 403 });
-        }
-        const deletionError = getTimeEntryDeletionError(current.status);
-        if (deletionError) throw Object.assign(new Error(deletionError), { statusCode: 409 });
-
-        await tx.timeEntry.delete({ where: { id } });
-        await reconcileWeekLock(tx, current.userId, getWeekStart(current.date));
-        await tx.auditLog.create({
-          data: {
-            userId: request.user.id,
-            action: 'DELETE',
-            entityType: 'TimeEntry',
-            entityId: id,
-            oldValue: JSON.stringify({ date: current.date, hours: current.hours }),
-          },
-        });
-        if (current.projectId) {
-          await enqueueTimeEntryChanged(tx, {
-            companyId: request.user.companyId,
-            projectId: current.projectId,
-            entityId: id,
-            action: 'DELETE',
-            payload: { date: current.date.toISOString(), hours: current.hours, userId: current.userId },
-          });
-        }
-        return current;
-      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
-      deleteAttachmentFiles(entry.attachments, fastify.log);
-    } catch (error: any) {
-      if (error?.code === 'P2034') {
-        return reply.status(409).send({ error: 'Tidraden ändrades samtidigt. Kontrollera veckan och försök igen.' });
-      }
-      if (error?.statusCode) return reply.status(error.statusCode).send({ error: error.message });
-      throw error;
-    }
-
-    return { message: 'Tidrad borttagen' };
+      const { id } = request.params as { id: string };
+      const { requestKey, revision } = writeMetadataSchema.parse(request.body ?? {});
+      const result = await writes.remove(request.user, id, revision, requestKey);
+      deleteAttachmentFiles(result.attachments, fastify.log);
+      return { ...acknowledgement(result, request.user.role, requestKey), message: 'Tidrad borttagen' };
+    } catch (error) { return sendError(error, reply); }
   });
 
   // Upload attachment
@@ -1316,122 +788,6 @@ async function assertEntryEditable(tx: any, id: string) {
   if (current.status === 'APPROVED') {
     throw Object.assign(new Error('Veckan måste låsas upp innan bilagor ändras'), { statusCode: 409 });
   }
-}
-
-async function upsertSubmittedWeekLock(tx: any, userId: string, weekStartDate: Date) {
-  const existing = await tx.weekLock.findUnique({
-    where: { userId_weekStartDate: { userId, weekStartDate } },
-  });
-  if (existing?.status === 'APPROVED') {
-    throw Object.assign(new Error('Veckan godkändes medan ändringen sparades. Lås upp veckan och försök igen.'), { statusCode: 409 });
-  }
-
-  await tx.timeEntry.updateMany({
-    where: {
-      userId,
-      date: { gte: weekStartDate, lte: getWeekEnd(weekStartDate) },
-      status: 'REJECTED',
-    },
-    data: {
-      status: 'SUBMITTED',
-      submittedAt: new Date(),
-      approvedAt: null,
-      approverId: null,
-      rejectNote: null,
-    },
-  });
-
-  if (existing) {
-    return tx.weekLock.update({
-      where: { id: existing.id },
-      data: {
-        status: 'SUBMITTED',
-        submittedAt: new Date(),
-        comment: null,
-        reviewedAt: null,
-        reviewerId: null,
-      },
-    });
-  }
-
-  return tx.weekLock.create({
-    data: {
-      userId,
-      weekStartDate,
-      status: 'SUBMITTED',
-    },
-  });
-}
-
-async function reconcileWeekLock(tx: any, userId: string, weekStartDate: Date) {
-  const remainingCount = await tx.timeEntry.count({
-    where: {
-      userId,
-      date: { gte: weekStartDate, lte: getWeekEnd(weekStartDate) },
-    },
-  });
-
-  if (remainingCount === 0) {
-    await tx.weekLock.deleteMany({ where: { userId, weekStartDate } });
-    return;
-  }
-
-  await upsertSubmittedWeekLock(tx, userId, weekStartDate);
-}
-
-async function validateEntryReferences({
-  companyId,
-  targetUserId,
-  activityId,
-  projectId,
-  allowInactiveUser = false,
-  allowInactiveActivity = false,
-  allowInactiveProject = false,
-}: {
-  companyId: string;
-  targetUserId: string;
-  activityId?: string;
-  projectId?: string | null;
-  allowInactiveUser?: boolean;
-  allowInactiveActivity?: boolean;
-  allowInactiveProject?: boolean;
-}) {
-  const [targetUser, activity, project] = await Promise.all([
-    prisma.user.findFirst({
-      where: { id: targetUserId, companyId },
-      select: { id: true, active: true },
-    }),
-    activityId
-      ? prisma.activity.findFirst({
-          where: { id: activityId, companyId },
-          select: { id: true, active: true, billableDefault: true, category: true },
-        })
-      : Promise.resolve(null),
-    projectId
-      ? prisma.project.findFirst({
-          where: { id: projectId, companyId },
-          select: { id: true, active: true },
-        })
-      : Promise.resolve(null),
-  ]);
-
-  if (!targetUser || (!targetUser.active && !allowInactiveUser)) {
-    return { error: 'Användaren tillhör inte företaget eller är inaktiv', activity: null };
-  }
-
-  if (activityId && (!activity || (!activity.active && !allowInactiveActivity))) {
-    return { error: 'Aktiviteten tillhör inte företaget eller är inaktiv', activity: null };
-  }
-
-  if (projectId && (!project || (!project.active && !allowInactiveProject))) {
-    return { error: 'Projektet tillhör inte företaget eller är inaktivt', activity: null };
-  }
-
-  if (activity && !projectId && !['ABSENCE', 'INTERNAL'].includes(activity.category)) {
-    return { error: 'Projekt krävs för vald aktivitet', activity: null };
-  }
-
-  return { error: null, activity };
 }
 
 function getSafeExtension(originalName: string, mimeType: string): string | null {

@@ -60,6 +60,7 @@ model Company {
   supplierInvoices   SupplierInvoice[]
   inventoryItems     InventoryItem[]
   inventoryMovements InventoryMovement[]
+  timeEntryWriteRequests TimeEntryWriteRequest[]
 }
 
 model User {
@@ -88,6 +89,7 @@ model User {
   createdSupplierInvoices SupplierInvoice[] @relation("SupplierInvoiceCreator")
   confirmedSupplierInvoices SupplierInvoice[] @relation("SupplierInvoiceReviewer")
   inventoryMovements InventoryMovement[]
+  timeEntryWriteRequests TimeEntryWriteRequest[]
 
   @@index([companyId, active])
   @@unique([id, companyId])
@@ -482,6 +484,7 @@ model Activity {
 
 model TimeEntry {
   id          String    @id @default(uuid())
+  revision    Int       @default(1)
   userId      String
   user        User      @relation(fields: [userId], references: [id])
   projectId   String?
@@ -520,6 +523,24 @@ model TimeEntry {
   @@index([projectId, date])
   @@index([status, date])
   @@unique([offlineActorUserId, offlineLocalId])
+}
+
+// Successful requests only. No relation to TimeEntry: receipts survive deletion
+// so a delayed retry cannot recreate previously removed work.
+model TimeEntryWriteRequest {
+  id          String   @id @default(uuid())
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  actorUserId String
+  actor       User     @relation(fields: [actorUserId, companyId], references: [id, companyId], onDelete: Restrict)
+  requestKey  String
+  operation   String
+  payloadHash String
+  resultIds   String[]
+  revision    Int?
+  createdAt   DateTime @default(now())
+
+  @@unique([companyId, actorUserId, requestKey])
 }
 
 model Attachment {

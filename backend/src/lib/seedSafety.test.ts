@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { assertDestructiveSeedAllowed } from './seedSafety.js';
+import { assertDestructiveSeedAllowed, assertNoDurableTimeHistory } from './seedSafety.js';
 
 test('destructive seed is blocked in production even with an override', () => {
   assert.throws(() => assertDestructiveSeedAllowed({ NODE_ENV: 'production', ALLOW_DESTRUCTIVE_SEED: 'true' }), /endast tillåtet/);
@@ -10,4 +10,9 @@ test('destructive seed is blocked in production even with an override', () => {
 test('destructive seed requires an explicit local acknowledgement', () => {
   assert.throws(() => assertDestructiveSeedAllowed({ NODE_ENV: 'development' }), /ALLOW_DESTRUCTIVE_SEED/);
   assert.doesNotThrow(() => assertDestructiveSeedAllowed({ NODE_ENV: 'development', ALLOW_DESTRUCTIVE_SEED: 'true' }));
+});
+
+test('seed refuses a database with durable receipts before destructive work', () => {
+  assert.throws(() => assertNoDurableTimeHistory(1), /ny tom lokal testdatabas/);
+  assert.doesNotThrow(() => assertNoDurableTimeHistory(0));
 });

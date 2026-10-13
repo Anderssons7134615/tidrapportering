@@ -5,7 +5,7 @@ import { JSDOM } from 'jsdom';
 import React from 'react';
 import { createServer } from 'vite';
 
-let dom, vite, Team, TimeEntry, Approval, DashboardDetail, Layout, auth, offline, projectsApi, refreshTimeQueries, formatHours;
+let writes, dom, vite, Team, TimeEntry, WeekView, Approval, DashboardDetail, Layout, auth, offline, projectsApi, refreshTimeQueries, formatHours;
 let render, cleanup, fireEvent, waitFor, within, act, QueryClient, QueryClientProvider, createMemoryRouter, RouterProvider;
 const clients = [], originalFetch = globalThis.fetch;
 const user = { id: 'u1', name: 'Testperson', companyId: 'c1', companyName: 'Testbolag', role: 'ADMIN', active: true };
@@ -28,12 +28,14 @@ before(async () => {
   vite = await createServer({ root: fileURLToPath(new URL('..', import.meta.url)), server: { middlewareMode: true }, appType: 'custom', logLevel: 'silent' });
   ({ default: Team } = await vite.ssrLoadModule('/src/pages/TeamWeekOverview.tsx'));
   ({ default: TimeEntry } = await vite.ssrLoadModule('/src/pages/TimeEntry.tsx'));
+  ({ default: WeekView } = await vite.ssrLoadModule('/src/pages/WeekView.tsx'));
   ({ default: Approval } = await vite.ssrLoadModule('/src/pages/Approval.tsx'));
   ({ default: DashboardDetail } = await vite.ssrLoadModule('/src/pages/DashboardDetail.tsx'));
   ({ projectsApi } = await vite.ssrLoadModule('/src/services/api.ts'));
   ({ default: Layout } = await vite.ssrLoadModule('/src/components/Layout.tsx'));
   auth = await vite.ssrLoadModule('/src/stores/authStore.ts');
   offline = await vite.ssrLoadModule('/src/stores/offlineStore.ts');
+  writes = await vite.ssrLoadModule('/src/services/timeWriteQueue.ts');
   ({ refreshTimeQueries } = await vite.ssrLoadModule('/src/utils/timeQueries.ts'));
   ({ formatHours } = await vite.ssrLoadModule('/src/utils/format.ts'));
 });
@@ -180,8 +182,9 @@ test('existing offline v2 rows and inventory retry payload survive shell mount a
   const stock = JSON.stringify({ itemId: 'stock1', input: { kind: 'ISSUE', quantity: 2, projectId: 'p1', idempotencyKey: 'synthetic-stable-id' } });
   localStorage.setItem('tidapp-inventory-pending:u1', stock);
   await offline.useOfflineStore.persist.rehydrate();
+  offline.useOfflineStore.setState({ isOnline: false });
   const { view } = setup(() => React.createElement('h1', null, 'Testvy'), { shell: true });
-  assert.ok(view.getAllByLabelText('Offline, 1 rader väntar på synkning').length);
+  assert.ok(view.getAllByLabelText('Offline, 1 ändringar väntar på synkning').length);
   fireEvent.click(view.getByRole('button', { name: 'Meny', exact: true }));
   fireEvent.keyDown(document, { key: 'Escape' });
   cleanup();
@@ -194,15 +197,19 @@ test('existing offline v2 rows and inventory retry payload survive shell mount a
 test('partial offline response removes only confirmed own rows and refreshes review and payroll', async () => {
   const pendingEntries = ['created', 'rejected', 'missing', 'another-owner'].map(localId => ({ localId, ownerUserId: localId === 'another-owner' ? 'u2' : user.id, date: '2026-10-05', hours: 7.25, projectId: 'p1', activityId: 'a1', billable: true, createdAt: '2026-10-05T15:00:00Z' }));
   offline.useOfflineStore.setState({ pendingEntries, isOnline: true });
-  let sent;
+  const sent = [];
   const cache = client();
   [...timeKeys, ...projectKeys].forEach(key => cache.setQueryData(key, {}));
   setup(() => React.createElement('h1', null, 'Synktest'), { shell: true, cache, handler: (url, options) => {
-    assert.equal(url.pathname, '/api/time-entries/sync'); sent = JSON.parse(options.body);
-    return { results: [{ localId: 'created', outcome: 'CREATED' }, { localId: 'rejected', outcome: 'REJECTED', code: 'WEEK_APPROVED', error: 'Veckan är attesterad' }] };
+    assert.equal(url.pathname, '/api/time-entries/operations'); const body = JSON.parse(options.body); sent.push(body.requestKey);
+    if (body.requestKey === 'created') return { requestKey: body.requestKey, outcome: 'CREATED', resultIds: ['server-created'] };
+    if (body.requestKey === 'rejected') return Response.json({ code: 'WEEK_APPROVED', error: 'Veckan är attesterad' }, { status: 409 });
+    return {};
+
   } });
   await waitFor(() => assert.equal(offline.useOfflineStore.getState().pendingEntries.length, 3), { timeout: 4000 });
-  assert.deepEqual(sent.map(entry => entry.localId), ['created', 'rejected', 'missing']);
+  await waitFor(() => assert.equal(offline.useOfflineStore.getState().pendingEntries.find(entry => entry.localId === 'missing').syncErrorCode, 'SYNC_RESPONSE_INCOMPLETE'), { timeout: 5000 });
+  assert.deepEqual(sent, ['created', 'rejected', 'missing']);
   const remaining = offline.useOfflineStore.getState().pendingEntries;
   assert.equal(remaining.find(entry => entry.localId === 'rejected').syncErrorCode, 'WEEK_APPROVED');
   assert.equal(remaining.find(entry => entry.localId === 'missing').syncErrorCode, 'SYNC_RESPONSE_INCOMPLETE');
@@ -254,4 +261,211 @@ test('confirming an approval invalidates a previously cached payroll report and 
   await waitFor(() => assert.equal(approved, true));
   assert.equal(cache.getQueryState(['report', 'payroll', '2026-10']).isInvalidated, true);
   assert.equal(cache.getQueryState(['week', '2026-10-05']).isInvalidated, true);
+});
+
+
+test('journal is durable before network and reload retries the identical key after a lost response', async () => {
+  auth.useAuthStore.setState({ user, token: 'synthetic-test' });
+  offline.useOfflineStore.setState({ isOnline: true });
+  const operation = { operation: 'CREATE', payload: { date: '2026-10-05', userId: user.id, projectId: 'p1', activityId: 'a1', hours: 8, billable: true } };
+  const sent = [];
+  globalThis.fetch = async (_url, options) => {
+    const request = JSON.parse(options.body); sent.push(request);
+    const persisted = JSON.parse(localStorage.getItem('tidapp-offline')).state.pendingEntries;
+    assert.equal(persisted[0].localId, request.requestKey);
+    assert.deepEqual(persisted[0].write, operation);
+    throw new Error('SYNTHETIC response lost after server commit');
+  };
+  await assert.rejects(writes.saveTimeWrite(operation));
+  assert.equal(offline.useOfflineStore.getState().pendingEntries.length, 1);
+  await offline.useOfflineStore.persist.rehydrate();
+  const row = offline.useOfflineStore.getState().pendingEntries[0];
+  assert.equal(row.retryable, true); assert.equal(row.mayHaveCommitted, true);
+  globalThis.fetch = async (_url, options) => {
+    const request = JSON.parse(options.body); sent.push(request);
+    return Response.json({ requestKey: request.requestKey, outcome: 'REPLAYED', resultIds: ['e1'], resourceExists: true });
+  };
+  await writes.dispatchTimeWrite(row);
+  assert.deepEqual(sent[1], sent[0]);
+  assert.equal(offline.useOfflineStore.getState().pendingEntries.length, 0);
+});
+
+test('local storage failure prevents transport and leaves journal untouched', async () => {
+  auth.useAuthStore.setState({ user, token: 'synthetic-test' });
+  offline.useOfflineStore.setState({ isOnline: true });
+  const prototype = Object.getPrototypeOf(localStorage), original = prototype.setItem;
+  let called = false; globalThis.fetch = async () => { called = true; throw new Error('must not send'); };
+  prototype.setItem = () => { throw new Error('SYNTHETIC storage full'); };
+  try {
+    await assert.rejects(writes.saveTimeWrite({ operation: 'DELETE', id: 'e1', revision: 1 }), /storage full/);
+    assert.equal(called, false); assert.equal(offline.useOfflineStore.getState().pendingEntries.length, 0);
+  } finally { prototype.setItem = original; }
+});
+
+test('delete and vacation survive offline reload; another owner cannot dispatch them', async () => {
+  auth.useAuthStore.setState({ user, token: 'synthetic-test' });
+  offline.useOfflineStore.setState({ isOnline: false });
+  const deletion = { operation: 'DELETE', id: 'e1', revision: 4 };
+  assert.equal(await writes.saveTimeWrite(deletion), null);
+  assert.equal(await writes.saveTimeWrite(deletion), null);
+  assert.equal(await writes.saveTimeWrite({ operation: 'WEEK_VACATION', payload: { weekStart: '2026-10-05', userId: user.id, hoursPerDay: 8 } }), null);
+  await offline.useOfflineStore.persist.rehydrate();
+  const rows = offline.useOfflineStore.getState().pendingEntries;
+  assert.equal(rows.length, 2); assert.equal(rows[0].write.revision, 4);
+  auth.useAuthStore.setState({ user: { ...user, id: 'someone-else' } });
+  let called = false; globalThis.fetch = async () => { called = true; };
+  await assert.rejects(writes.dispatchTimeWrite(rows[0]), /annat konto/);
+  assert.equal(called, false); assert.equal(offline.useOfflineStore.getState().pendingEntries.length, 2);
+});
+
+test('rejected edit keeps the draft across refetch and adopts a new revision only on explicit recovery', async () => {
+  offline.useOfflineStore.setState({ isOnline: true });
+  let revision = 1, posts = 0;
+  const row = { id: 'e1', revision, userId: user.id, date: '2026-10-05', projectId: project.id, activityId: activity.id, hours: 8, billable: true, note: 'Original', status: 'SUBMITTED' };
+  const { view, cache, router } = setup(TimeEntry, { path: '/time-entry?id=e1', handler: (url, options) => {
+    if (url.pathname === '/api/projects/options') return [project];
+    if (url.pathname === '/api/activities') return [activity];
+    if (url.pathname === '/api/users') return [user];
+    if (url.pathname === '/api/time-entries/e1') return { ...row, revision, hours: revision === 1 ? 8 : 6 };
+    if (url.pathname === '/api/time-entries/operations') { posts++; const body = JSON.parse(options.body); assert.equal(body.revision, 1); assert.equal(body.payload.hours, 7.25); return Response.json({ code: 'REVISION_CONFLICT', error: 'Tidraden har ändrats' }, { status: 409 }); }
+  } });
+  const hours = await view.findByRole('textbox', { name: 'Antal timmar' });
+  fireEvent.change(hours, { target: { value: '7,25' } });
+  fireEvent.submit(hours.closest('form'));
+  await view.findByRole('button', { name: 'Behåll mina uppgifter och hämta senaste version' });
+  assert.equal(hours.value, '7,25'); assert.equal(posts, 1);
+  revision = 2;
+  await act(async () => { await cache.invalidateQueries({ queryKey: ['timeEntry', 'e1'] }); });
+  assert.equal(hours.value, '7,25'); assert.equal(router.state.location.pathname, '/time-entry');
+  fireEvent.click(view.getByRole('button', { name: 'Behåll mina uppgifter och hämta senaste version' }));
+  await waitFor(() => assert.equal(offline.useOfflineStore.getState().pendingEntries.length, 0));
+  assert.equal(hours.value, '7,25');
+});
+
+test('saved create can be reopened after reload without sending a new operation', async () => {
+  auth.useAuthStore.setState({ user, token: 'synthetic-test' });
+  offline.useOfflineStore.setState({ isOnline: false });
+  const row = writes.enqueueTimeWrite({ operation: 'CREATE', payload: { date: '2026-10-05', userId: user.id, projectId: project.id, activityId: activity.id, hours: 7.25, billable: true, note: 'Sparat utkast' } });
+  await offline.useOfflineStore.persist.rehydrate();
+  const { view } = setup(TimeEntry, { path: `/time-entry?pending=${row.localId}`, handler: url => {
+    if (url.pathname === '/api/projects/options') return [project];
+    if (url.pathname === '/api/activities') return [activity];
+    if (url.pathname === '/api/users') return [user];
+    if (url.pathname === '/api/time-entries') return [];
+  } });
+  const hours = await view.findByRole('textbox', { name: 'Antal timmar' });
+  assert.equal(hours.value, '7,25'); assert.equal(hours.closest('form').querySelector('fieldset').disabled, true);
+  assert.equal(offline.useOfflineStore.getState().pendingEntries[0].localId, row.localId);
+});
+
+
+test('an approved-week conflict keeps the persisted draft when recovery cannot unlock it', async () => {
+  offline.useOfflineStore.setState({ isOnline: true });
+  let status = 'SUBMITTED';
+  const row = { id: 'e1', revision: 1, userId: user.id, date: '2026-10-05', projectId: project.id, activityId: activity.id, hours: 8, billable: true, note: 'Original', status };
+  const { view } = setup(TimeEntry, { path: '/time-entry?id=e1', handler: (url) => {
+    if (url.pathname === '/api/projects/options') return [project];
+    if (url.pathname === '/api/activities') return [activity];
+    if (url.pathname === '/api/users') return [user];
+    if (url.pathname === '/api/time-entries/e1') return { ...row, status, revision: status === 'APPROVED' ? 2 : 1 };
+    if (url.pathname === '/api/time-entries/operations') { status = 'APPROVED'; return Response.json({ code: 'WEEK_APPROVED', error: 'Veckan är godkänd' }, { status: 409 }); }
+  } });
+  const hours = await view.findByRole('textbox', { name: 'Antal timmar' });
+  fireEvent.change(hours, { target: { value: '7,25' } }); fireEvent.submit(hours.closest('form'));
+  fireEvent.click(await view.findByRole('button', { name: 'Kontrollera om veckan är upplåst' }));
+  await waitFor(() => assert.equal(offline.useOfflineStore.getState().pendingEntries.length, 1));
+  assert.equal(hours.value, '7,25');
+  assert.equal(JSON.parse(localStorage.getItem('tidapp-offline')).state.pendingEntries[0].write.payload.hours, 7.25);
+});
+
+test('unlocked weeks are labelled as unlocked and cannot be unlocked again', async () => {
+  const { view } = setup(Approval, { path: '/approval', handler: url => {
+    if (url.pathname === '/api/week-locks') return [{ id: 'w1', userId: 'u2', user: { id: 'u2', name: 'Testkollega' }, status: 'DRAFT', weekStartDate: '2026-10-05', totalHours: 40 }];
+  } });
+  await view.findByText('Upplåst');
+  assert.equal(view.queryByText('Nekad'), null);
+  assert.equal(view.queryByRole('button', { name: 'Öppna vecka' }), null);
+});
+
+test('an unlocked or rejected own week can be submitted again without changing its time', async () => {
+  for (const initial of ['DRAFT', 'REJECTED']) {
+    offline.useOfflineStore.setState({ isOnline: true, pendingEntries: [] });
+    let status = initial, submits = 0;
+    const { view } = setup(WeekView, { path: '/week?date=2026-10-05', handler: (url, options) => {
+      if (url.pathname === '/api/time-entries/week/2026-10-05') return { entries: [], summary: { totalHours: 40 }, weekLock: { status, userId: user.id } };
+      if (url.pathname === '/api/week-locks/submit') { assert.equal(options.method, 'POST'); assert.deepEqual(JSON.parse(options.body), { weekStartDate: '2026-10-05' }); submits++; status = 'SUBMITTED'; return { status }; }
+    } });
+    fireEvent.click(await view.findByRole('button', { name: 'Skicka in veckan igen' }));
+    await view.findByText('Inskickad');
+    assert.equal(submits, 1); assert.equal(view.queryByRole('button', { name: 'Skicka in veckan igen' }), null);
+    cleanup();
+  }
+});
+
+test('week resubmission waits for pending changes and cannot submit another persons week', async () => {
+  auth.useAuthStore.setState({ user, token: 'synthetic-test' });
+  offline.useOfflineStore.setState({ isOnline: false });
+  writes.enqueueTimeWrite({ operation: 'DELETE', id: 'e1', revision: 4 });
+  offline.useOfflineStore.setState({ isOnline: true });
+  const handler = url => { assert.equal(url.pathname, '/api/time-entries/week/2026-10-05'); return { entries: [], summary: { totalHours: 40 }, weekLock: { status: 'DRAFT' } }; };
+  const first = setup(WeekView, { path: '/week?date=2026-10-05', handler });
+  assert.equal((await first.view.findByRole('button', { name: 'Skicka in veckan igen' })).disabled, true);
+  cleanup();
+  const second = setup(WeekView, { path: '/week?date=2026-10-05&userId=u2', handler });
+  await second.view.findByText('Upplåst');
+  assert.equal(second.view.queryByRole('button', { name: 'Skicka in veckan igen' }), null);
+});
+
+test('switching between persisted drafts on the same route shows the selected draft', async () => {
+  auth.useAuthStore.setState({ user, token: 'synthetic-test' });
+  offline.useOfflineStore.setState({ isOnline: false });
+  const first = writes.enqueueTimeWrite({ operation: 'CREATE', payload: { date: '2026-10-05', userId: user.id, projectId: project.id, activityId: activity.id, hours: 7.25, billable: true } });
+  const second = writes.enqueueTimeWrite({ operation: 'CREATE', payload: { date: '2026-10-06', userId: user.id, projectId: project.id, activityId: activity.id, hours: 3, billable: true } });
+  const { view, router } = setup(TimeEntry, { path: `/time-entry?pending=${first.localId}`, handler: url => {
+    if (url.pathname === '/api/projects/options') return [project];
+    if (url.pathname === '/api/activities') return [activity];
+    if (url.pathname === '/api/users') return [user];
+    if (url.pathname === '/api/time-entries') return [];
+  } });
+  assert.equal((await view.findByRole('textbox', { name: 'Antal timmar' })).value, '7,25');
+  await act(() => router.navigate(`/time-entry?pending=${second.localId}`));
+  assert.equal(view.getByRole('textbox', { name: 'Antal timmar' }).value, '3');
+  assert.equal(offline.useOfflineStore.getState().pendingEntries.length, 2);
+});
+
+test('separate identical time reports keep separate durable request keys', async () => {
+  auth.useAuthStore.setState({ user, token: 'synthetic-test' });
+  offline.useOfflineStore.setState({ isOnline: false });
+  const write = { operation: 'CREATE', payload: { date: '2026-10-05', userId: user.id, projectId: project.id, activityId: activity.id, hours: 4, billable: true } };
+  const first = writes.enqueueTimeWrite(write);
+  const second = writes.enqueueTimeWrite(write);
+  assert.notEqual(first.localId, second.localId);
+  await offline.useOfflineStore.persist.rehydrate();
+  assert.equal(offline.useOfflineStore.getState().pendingEntries.length, 2);
+  const sent = [];
+  globalThis.fetch = async (_url, options) => { const body = JSON.parse(options.body); sent.push(body.requestKey); return Response.json({ requestKey: body.requestKey, outcome: 'CREATED', resultIds: [body.requestKey] }); };
+  await writes.dispatchTimeWrite(first); await writes.dispatchTimeWrite(second);
+  assert.deepEqual(sent, [first.localId, second.localId]);
+  assert.equal(offline.useOfflineStore.getState().pendingEntries.length, 0);
+});
+
+test('rapid submits of one time form reuse its request key', async () => {
+  offline.useOfflineStore.setState({ isOnline: true });
+  let requests = 0;
+  const { view } = setup(TimeEntry, { path: '/time-entry?date=2026-10-05', handler: url => {
+    if (url.pathname === '/api/projects/options') return [project];
+    if (url.pathname === '/api/activities') return [activity];
+    if (url.pathname === '/api/users') return [user];
+    if (url.pathname === '/api/time-entries') return [];
+    if (url.pathname === '/api/time-entries/operations') { requests++; throw new Error('SYNTHETIC connection lost'); }
+  } });
+  const picker = await view.findByRole('combobox', { name: 'Projekt' });
+  fireEvent.focus(picker); fireEvent.change(picker, { target: { value: 'Montageprojekt' } });
+  fireEvent.click(await view.findByRole('option', { name: /0042 · Montageprojekt/ }));
+  fireEvent.click(view.getByRole('button', { name: 'Montage', exact: true }));
+  const hours = view.getByRole('textbox', { name: 'Antal timmar' });
+  fireEvent.change(hours, { target: { value: '4' } });
+  act(() => { fireEvent.submit(hours.closest('form')); fireEvent.submit(hours.closest('form')); });
+  await waitFor(() => assert.equal(requests, 1));
+  assert.equal(offline.useOfflineStore.getState().pendingEntries.length, 1);
 });

@@ -27,6 +27,11 @@ const getMissingRequiredWeekdays = (weekStartDate: Date, entries: Array<{ date: 
   return getRequiredWeekdayKeys(weekStartDate).filter((key) => (hoursByDate.get(key) || 0) <= 0);
 };
 
+async function changeEntry(tx: Prisma.TransactionClient, entry: { id: string; revision: number; status: string }, data: Prisma.TimeEntryUncheckedUpdateManyInput) {
+  const result = await tx.timeEntry.updateMany({ where: { id: entry.id, revision: entry.revision, status: entry.status }, data: { ...data, revision: { increment: 1 } } });
+  if (result.count !== 1) throw Object.assign(new Error('Tidraden ändrades under granskningen. Hämta veckan igen.'), { statusCode: 409 });
+}
+
 const weekLockRoutes: FastifyPluginAsync = async (fastify) => {
   // List week locks (pending approval for admin/supervisor)
   fastify.get('/', {
@@ -135,56 +140,16 @@ const weekLockRoutes: FastifyPluginAsync = async (fastify) => {
       const body = schema.parse(request.body);
       const weekStartDate = getWeekStart(body.weekStartDate);
 
-      // Kontrollera att det finns tidrader för veckan
       const weekEnd = getWeekEndUtc(weekStartDate);
-
-      const entryCount = await prisma.timeEntry.count({
-        where: {
-          userId: request.user.id,
-          date: {
-            gte: weekStartDate,
-            lte: weekEnd,
-          },
-        },
-      });
-
-      if (entryCount === 0) {
-        return reply.status(400).send({ error: 'Inga tidrader finns för veckan' });
-      }
-
-      // Kontrollera om det redan finns ett lås
-      const existing = await prisma.weekLock.findUnique({
-        where: {
-          userId_weekStartDate: {
-            userId: request.user.id,
-            weekStartDate,
-          },
-        },
-      });
-
-      if (existing) {
-        if (existing.status === 'APPROVED') {
-          return reply.status(400).send({ error: 'Veckan är redan godkänd' });
-        }
-        if (existing.status === 'SUBMITTED') {
-          return reply.status(400).send({ error: 'Veckan är redan inskickad' });
-        }
-      }
-
       const weekLock = await prisma.$transaction(async (tx) => {
-        await tx.timeEntry.updateMany({
-          where: {
-            userId: request.user.id,
-            date: { gte: weekStartDate, lte: weekEnd },
-            status: { in: ['DRAFT', 'REJECTED'] },
-          },
-          data: {
-            status: 'SUBMITTED',
-            submittedAt: new Date(),
-            approvedAt: null,
-            approverId: null,
-            rejectNote: null,
-          },
+        const existing = await tx.weekLock.findUnique({ where: { userId_weekStartDate: { userId: request.user.id, weekStartDate } } });
+        if (existing?.status === 'APPROVED') throw Object.assign(new Error('Veckan är redan godkänd'), { statusCode: 409 });
+        if (existing?.status === 'SUBMITTED') throw Object.assign(new Error('Veckan är redan inskickad'), { statusCode: 409 });
+        const entries = await tx.timeEntry.findMany({ where: { userId: request.user.id, date: { gte: weekStartDate, lte: weekEnd } }, select: { id: true, revision: true, status: true } });
+        if (!entries.length) throw Object.assign(new Error('Inga tidrader finns för veckan'), { statusCode: 400 });
+        if (entries.some(entry => entry.status === 'APPROVED')) throw Object.assign(new Error('Godkända tidrader måste låsas upp före ändring'), { statusCode: 409 });
+        for (const entry of entries.filter(entry => ['DRAFT', 'REJECTED'].includes(entry.status))) await changeEntry(tx, entry, {
+          status: 'SUBMITTED', submittedAt: new Date(), approvedAt: null, approverId: null, rejectNote: null,
         });
 
         const lock = await tx.weekLock.upsert({
@@ -222,7 +187,8 @@ const weekLockRoutes: FastifyPluginAsync = async (fastify) => {
       }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
       return weekLock;
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.code === 'P2034') return reply.status(409).send({ error: 'Veckan ändrades samtidigt. Hämta veckan igen.' });
       if (error instanceof z.ZodError) {
         return reply.status(400).send({ error: 'Ogiltig data', details: error.errors });
       }
@@ -294,15 +260,10 @@ const weekLockRoutes: FastifyPluginAsync = async (fastify) => {
         }
 
         const approvedAt = new Date();
-        await Promise.all(entries.map((entry) => tx.timeEntry.update({
-          where: { id: entry.id },
-          data: {
-            status: 'APPROVED',
-            approvedAt,
-            approverId: request.user.id,
-            ...captureFinancialSnapshot(entry, approvedAt),
-          },
-        })));
+        for (const entry of entries) await changeEntry(tx, entry, {
+          status: 'APPROVED', approvedAt, approverId: request.user.id,
+          ...captureFinancialSnapshot(entry, approvedAt),
+        });
 
         await tx.auditLog.create({
           data: {
@@ -359,19 +320,11 @@ const weekLockRoutes: FastifyPluginAsync = async (fastify) => {
       const weekEnd = getWeekEndUtc(weekLock.weekStartDate);
 
       const updatedLock = await prisma.$transaction(async (tx) => {
-        const [entryCount, nonSubmittedCount] = await Promise.all([
-          tx.timeEntry.count({
-            where: { userId: weekLock.userId, date: { gte: weekLock.weekStartDate, lte: weekEnd } },
-          }),
-          tx.timeEntry.count({
-            where: {
-              userId: weekLock.userId,
-              date: { gte: weekLock.weekStartDate, lte: weekEnd },
-              status: { not: 'SUBMITTED' },
-            },
-          }),
-        ]);
-        if (entryCount === 0 || nonSubmittedCount > 0) {
+        const entries = await tx.timeEntry.findMany({
+          where: { userId: weekLock.userId, date: { gte: weekLock.weekStartDate, lte: weekEnd } },
+          select: { id: true, revision: true, status: true },
+        });
+        if (!entries.length || entries.some(entry => entry.status !== 'SUBMITTED')) {
           throw Object.assign(new Error('Veckans tidrader är inte i ett attesterbart läge'), { statusCode: 409 });
         }
 
@@ -388,19 +341,8 @@ const weekLockRoutes: FastifyPluginAsync = async (fastify) => {
           throw Object.assign(new Error('Veckan har redan ändrats av någon annan'), { statusCode: 409 });
         }
 
-        await tx.timeEntry.updateMany({
-          where: {
-            userId: weekLock.userId,
-            date: {
-              gte: weekLock.weekStartDate,
-              lte: weekEnd,
-            },
-            status: 'SUBMITTED',
-          },
-          data: {
-            status: 'REJECTED',
-            rejectNote: body.comment,
-          },
+        for (const entry of entries) await changeEntry(tx, entry, {
+          status: 'REJECTED', rejectNote: body.comment,
         });
 
         await tx.auditLog.create({
@@ -444,50 +386,30 @@ const weekLockRoutes: FastifyPluginAsync = async (fastify) => {
     if (!weekLock) {
       return reply.status(404).send({ error: 'Veckolås hittades inte' });
     }
+    if (weekLock.status === 'DRAFT') return reply.status(409).send({ error: 'Veckan är redan upplåst' });
 
     const weekEnd = getWeekEndUtc(weekLock.weekStartDate);
 
-    await prisma.$transaction(async (tx) => {
-      await tx.timeEntry.updateMany({
-        where: {
-          userId: weekLock.userId,
-          date: {
-            gte: weekLock.weekStartDate,
-            lte: weekEnd,
-          },
-        },
-        data: {
-          status: 'DRAFT',
-          submittedAt: null,
-          approvedAt: null,
-          approverId: null,
-          rejectNote: null,
-          approvedHourlyCostSnapshot: null,
-          approvedBillingRateSnapshot: null,
-          financialSnapshotCapturedAt: null,
-        },
-      });
-
-      await tx.weekLock.update({
-        where: { id },
-        data: {
-          status: 'DRAFT',
-          comment: null,
-          reviewedAt: null,
-          reviewerId: null,
-        },
-      });
-
-      await tx.auditLog.create({
-        data: {
-          userId: request.user.id,
-          action: 'UNLOCK',
-          entityType: 'WeekLock',
-          entityId: id,
-          oldValue: JSON.stringify({ status: weekLock.status }),
-        },
-      });
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    try {
+      await prisma.$transaction(async (tx) => {
+        const transition = await tx.weekLock.updateMany({ where: { id, status: weekLock.status }, data: {
+          status: 'DRAFT', comment: null, reviewedAt: null, reviewerId: null,
+        } });
+        if (transition.count !== 1) throw Object.assign(new Error('Veckan har redan ändrats av någon annan'), { statusCode: 409 });
+        const entries = await tx.timeEntry.findMany({
+          where: { userId: weekLock.userId, date: { gte: weekLock.weekStartDate, lte: weekEnd } },
+          select: { id: true, revision: true, status: true },
+        });
+        for (const entry of entries) await changeEntry(tx, entry, {
+          status: 'DRAFT', submittedAt: null, approvedAt: null, approverId: null, rejectNote: null,
+          approvedHourlyCostSnapshot: null, approvedBillingRateSnapshot: null, financialSnapshotCapturedAt: null,
+        });
+        await tx.auditLog.create({ data: { userId: request.user.id, action: 'UNLOCK', entityType: 'WeekLock', entityId: id, oldValue: JSON.stringify({ status: weekLock.status }) } });
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    } catch (error: any) {
+      if (error?.code === 'P2034') return reply.status(409).send({ error: 'Veckan ändrades samtidigt. Hämta veckan igen.' });
+      throw error;
+    }
 
     return { message: 'Veckan upplåst' };
   });

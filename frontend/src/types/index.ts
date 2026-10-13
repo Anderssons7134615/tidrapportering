@@ -193,6 +193,7 @@ export interface MaterialArticle {
 }
 
 export interface ProjectMaterial {
+  lockedForChanges?: boolean;
   inventoryMovementId?: string | null;
   id: string;
   projectId: string;
@@ -318,6 +319,7 @@ export interface Activity {
 }
 
 export interface TimeEntry {
+  revision: number;
   id: string;
   userId: string;
   user?: { id: string; name: string };
@@ -385,7 +387,7 @@ export interface WeekLock {
   userId: string;
   user?: { id: string; name: string; email: string };
   weekStartDate: string;
-  status: 'SUBMITTED' | 'APPROVED' | 'REJECTED';
+  status: 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED';
   comment?: string;
   submittedAt: string;
   reviewedAt?: string;

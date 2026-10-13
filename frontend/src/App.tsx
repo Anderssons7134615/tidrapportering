@@ -151,16 +151,16 @@ export default function App() {
         />
         <Route
           path="project-economy"
-          element={<ReportRoute><PageLoader><ProjectEconomy /></PageLoader></ReportRoute>}
+          element={<AdminOnlyRoute><PageLoader><ProjectEconomy /></PageLoader></AdminOnlyRoute>}
         />
-        <Route path="purchases" element={<AdminRoute><PageLoader><Purchases /></PageLoader></AdminRoute>} />
-        <Route path="purchases/:id" element={<AdminRoute><PageLoader><PurchaseDetail /></PageLoader></AdminRoute>} />
+        <Route path="purchases" element={<AdminOnlyRoute><PageLoader><Purchases /></PageLoader></AdminOnlyRoute>} />
+        <Route path="purchases/:id" element={<AdminOnlyRoute><PageLoader><PurchaseDetail /></PageLoader></AdminOnlyRoute>} />
         <Route
           path="materials"
           element={
-            <AdminRoute>
+            <AdminOnlyRoute>
               <PageLoader><Materials /></PageLoader>
-            </AdminRoute>
+            </AdminOnlyRoute>
           }
         />
         <Route

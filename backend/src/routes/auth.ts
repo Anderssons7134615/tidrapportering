@@ -1,7 +1,7 @@
 import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
-import { prisma } from '../index.js';
+import { prisma } from '../lib/prisma.js';
 import { withoutHourlyCost } from '../lib/safety.js';
 
 const loginSchema = z.object({
@@ -224,7 +224,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
       companyId: user.companyId,
       companyName: user.company.name,
     };
-    return ['EMPLOYEE', 'ACCOUNTANT'].includes(user.role) ? withoutHourlyCost(response) : response;
+    return user.role !== 'ADMIN' ? withoutHourlyCost(response) : response;
   });
 
   // Change password

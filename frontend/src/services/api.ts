@@ -1,4 +1,5 @@
 import { useAuthStore } from '../stores/authStore';
+import type { TimeWriteRequest, TimeWriteAck } from '../types/timeWrite';
 import type { InventoryItem, InventoryMovement, InventoryMovementInput } from '../types/inventory';
 import type { InvoiceDraft, InvoiceList, InvoiceStatus, SupplierInvoice } from '../types/supplierInvoice';
 import type {
@@ -361,6 +362,7 @@ export const activitiesApi = {
 
 // Time Entries
 export const timeEntriesApi = {
+  write: (operation: TimeWriteRequest) => fetchApi<TimeWriteAck>('/time-entries/operations', { method: 'POST', body: JSON.stringify(operation) }),
   list: (params?: { from?: string; to?: string; userId?: string; projectId?: string; status?: string }) => {
     const searchParams = new URLSearchParams();
     if (params?.from) searchParams.set('from', params.from);

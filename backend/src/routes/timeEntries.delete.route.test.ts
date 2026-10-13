@@ -11,15 +11,15 @@ test('delete checks approved status inside the serializable transaction', async 
   let deleted = false;
   (prisma as any).$transaction = async (callback: any) => callback({
     timeEntry: {
-      findFirst: async () => ({ id: 'entry-1', userId: employee.id, projectId: null, date: new Date('2026-08-10T00:00:00.000Z'), hours: 8, status: 'APPROVED', attachments: [] }),
-      delete: async () => { deleted = true; },
+      findFirst: async () => ({ id: 'entry-1', userId: employee.id, projectId: null, date: new Date('2026-08-10T00:00:00.000Z'), hours: 8, status: 'APPROVED', revision: 1, attachments: [] }),
+      deleteMany: async () => { deleted = true; },
     },
   });
   const app = Fastify();
   app.decorate('authenticate', async (request: any) => { request.user = employee; });
   await app.register(timeEntryRoutes, { prefix: '/api/time-entries' });
   try {
-    const response = await app.inject({ method: 'DELETE', url: '/api/time-entries/entry-1' });
+    const response = await app.inject({ method: 'DELETE', url: '/api/time-entries/entry-1', payload: { revision: 1 } });
     assert.equal(response.statusCode, 409);
     assert.equal(deleted, false);
   } finally {

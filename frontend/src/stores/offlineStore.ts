@@ -1,8 +1,15 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { OfflineSyncEntry } from '../types';
+import type { TimeWriteOperation } from '../types/timeWrite';
 
 export interface PendingEntry extends OfflineSyncEntry {
+  ownerCompanyId?: string;
+  write?: TimeWriteOperation;
+  retryAt?: number;
+  attempts?: number;
+  retryable?: boolean;
+  mayHaveCommitted?: boolean;
   syncError?: string;
   syncErrorCode?: string;
   createdAt: string;
@@ -12,6 +19,8 @@ interface OfflineState {
   pendingEntries: PendingEntry[];
   isOnline: boolean;
   addPendingEntry: (entry: Omit<PendingEntry, 'localId' | 'createdAt'>) => void;
+  addOperation: (entry: Omit<PendingEntry, 'localId' | 'createdAt'>) => PendingEntry;
+  updateOperation: (id: string, patch: Partial<Pick<PendingEntry, 'syncError' | 'syncErrorCode' | 'retryAt' | 'attempts' | 'retryable' | 'mayHaveCommitted'>>) => void;
   removePendingEntries: (localIds: string[]) => void;
   markPendingEntriesFailed: (failures: Array<{ localId: string; error: string; code?: string }>) => void;
   retryPendingEntries: (localIds?: string[]) => void;
@@ -23,6 +32,16 @@ export const useOfflineStore = create<OfflineState>()(
     (set) => ({
       pendingEntries: [],
       isOnline: navigator.onLine,
+      addOperation: (entry) => {
+        const row = { ...entry, localId: crypto.randomUUID(), createdAt: new Date().toISOString() };
+        // Persist BEFORE sending. Storage failure must leave the form intact.
+        const state = useOfflineStore.getState();
+        const pendingEntries = [...state.pendingEntries, row];
+        localStorage.setItem('tidapp-offline', JSON.stringify({ version: 3, state: { pendingEntries, isOnline: state.isOnline } }));
+        set({ pendingEntries });
+        return row;
+      },
+      updateOperation: (id, patch) => set(state => ({ pendingEntries: state.pendingEntries.map(row => row.localId === id ? { ...row, ...patch } : row) })),
       addPendingEntry: (entry) =>
         set((state) => ({
           pendingEntries: [
@@ -52,8 +71,8 @@ export const useOfflineStore = create<OfflineState>()(
       retryPendingEntries: (localIds) =>
         set((state) => ({
           pendingEntries: state.pendingEntries.map((entry) => (
-            (!localIds || localIds.includes(entry.localId)) && entry.syncErrorCode !== 'LEGACY_SYNC_REQUIRES_REVIEW'
-              ? { ...entry, syncError: undefined, syncErrorCode: undefined }
+            (!localIds || localIds.includes(entry.localId)) && entry.retryable !== false && entry.syncErrorCode !== 'LEGACY_SYNC_REQUIRES_REVIEW'
+              ? { ...entry, syncError: undefined, syncErrorCode: undefined, retryAt: undefined }
               : entry
           )),
         })),
@@ -61,7 +80,9 @@ export const useOfflineStore = create<OfflineState>()(
     }),
     {
       name: 'tidapp-offline',
-      version: 2,
+      version: 3,
+      partialize: (state) => ({ pendingEntries: state.pendingEntries }),
+      merge: (persisted, current) => ({ ...current, ...(persisted as Partial<OfflineState>), isOnline: navigator.onLine }),
       migrate: (persistedState: any, version) => {
         if (version < 2 && Array.isArray(persistedState?.pendingEntries) && persistedState.pendingEntries.length > 0) {
           return {

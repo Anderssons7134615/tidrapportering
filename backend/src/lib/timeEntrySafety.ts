@@ -1,5 +1,6 @@
 type EmployeeTimeEntryInput = {
   id: string;
+  revision?: number;
   userId: string;
   projectId?: string | null;
   activityId: string;
@@ -28,6 +29,7 @@ type EmployeeTimeEntryInput = {
 export function toEmployeeTimeEntry(entry: EmployeeTimeEntryInput) {
   return {
     id: entry.id, userId: entry.userId, projectId: entry.projectId ?? null, activityId: entry.activityId,
+    revision: entry.revision,
     date: entry.date, startTime: entry.startTime ?? null, endTime: entry.endTime ?? null,
     hours: entry.hours, billable: entry.billable, note: entry.note ?? null, status: entry.status,
     submittedAt: entry.submittedAt ?? null, approvedAt: entry.approvedAt ?? null,

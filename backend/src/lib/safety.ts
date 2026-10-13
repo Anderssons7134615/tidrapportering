@@ -73,7 +73,7 @@ export function canViewProjectHours(role: string, employeeCanSeeResults: boolean
 }
 
 export function canViewProjectFinancials(role: string) {
-  return ['ADMIN', 'SUPERVISOR'].includes(role);
+  return role === 'ADMIN';
 }
 
 type ApprovedHoursPrisma = {
@@ -198,6 +198,7 @@ export function toPublicProjectMaterial(item: ProjectMaterialInput, canViewFinan
 
   return {
     ...publicMaterial,
+    lockedForChanges: _invoiceStatus === 'INVOICED',
     purchasePrice: canViewFinancials ? item.purchasePrice : null,
     unitPrice: null,
     lineTotal: canViewFinancials ? lineTotal : null,

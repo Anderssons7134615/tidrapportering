@@ -2,7 +2,7 @@ import { FastifyPluginAsync } from 'fastify';
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
-import { prisma } from '../index.js';
+import { prisma } from '../lib/prisma.js';
 import { requireRoles } from '../lib/authorization.js';
 import { permanentDeletionDisabledMessage, withoutHourlyCost } from '../lib/safety.js';
 
@@ -45,7 +45,7 @@ const userRoutes: FastifyPluginAsync = async (fastify) => {
       orderBy: { name: 'asc' },
     });
 
-    return request.user.role === 'ACCOUNTANT' ? users.map(withoutHourlyCost) : users;
+    return request.user.role !== 'ADMIN' ? users.map(withoutHourlyCost) : users;
   });
 
   // Get user by ID
@@ -77,7 +77,7 @@ const userRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(404).send({ error: 'Användare hittades inte' });
     }
 
-    return ['EMPLOYEE', 'ACCOUNTANT'].includes(request.user.role) ? withoutHourlyCost(user) : user;
+    return request.user.role !== 'ADMIN' ? withoutHourlyCost(user) : user;
   });
 
   // Create user (same company)

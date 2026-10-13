@@ -13,6 +13,13 @@ const customerSchema = z.object({
   defaultRate: z.number().optional().nullable(),
 });
 
+const operationalCustomerSchema = customerSchema.omit({ defaultRate: true }).strict();
+function publicCustomer(customer: any, role: string) {
+  if (role === 'ADMIN') return customer;
+  const { defaultRate, projects, ...safe } = customer;
+  return { ...safe, ...(projects ? { projects: projects.map(({ fixedPrice, defaultRate, billingModel, budgetHours, ...project }: any) => project) } : {}) };
+}
+
 const requireAdminOrSupervisor = requireRoles(['ADMIN', 'SUPERVISOR']);
 
 export function createCustomerRoutes(db: typeof prisma = prisma): FastifyPluginAsync {
@@ -36,7 +43,7 @@ export function createCustomerRoutes(db: typeof prisma = prisma): FastifyPluginA
       orderBy: { name: 'asc' },
     });
 
-    return customers;
+    return customers.map(customer => publicCustomer(customer, request.user.role));
   });
 
   // Get customer by ID
@@ -58,7 +65,7 @@ export function createCustomerRoutes(db: typeof prisma = prisma): FastifyPluginA
       return reply.status(404).send({ error: 'Kund hittades inte' });
     }
 
-    return customer;
+    return publicCustomer(customer, request.user.role);
   });
 
   // Create customer
@@ -66,7 +73,7 @@ export function createCustomerRoutes(db: typeof prisma = prisma): FastifyPluginA
     preHandler: [requireAdminOrSupervisor],
   }, async (request, reply) => {
     try {
-      const body = customerSchema.parse(request.body);
+      const body = (request.user.role === 'ADMIN' ? customerSchema : operationalCustomerSchema).parse(request.body);
 
       const customer = await db.customer.create({
         data: { ...body, companyId: request.user.companyId },
@@ -83,7 +90,7 @@ export function createCustomerRoutes(db: typeof prisma = prisma): FastifyPluginA
         },
       });
 
-      return reply.status(201).send(customer);
+      return reply.status(201).send(publicCustomer(customer, request.user.role));
     } catch (error) {
       if (error instanceof z.ZodError) {
         return reply.status(400).send({ error: 'Ogiltig data', details: error.errors });
@@ -98,7 +105,7 @@ export function createCustomerRoutes(db: typeof prisma = prisma): FastifyPluginA
   }, async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
-      const body = customerSchema.partial().parse(request.body);
+      const body = (request.user.role === 'ADMIN' ? customerSchema.partial() : operationalCustomerSchema.partial()).parse(request.body);
 
       const customer = await db.customer.findUnique({ where: { id } });
       if (!customer || customer.companyId !== request.user.companyId) {
@@ -122,7 +129,7 @@ export function createCustomerRoutes(db: typeof prisma = prisma): FastifyPluginA
         },
       });
 
-      return updatedCustomer;
+      return publicCustomer(updatedCustomer, request.user.role);
     } catch (error) {
       if (error instanceof z.ZodError) {
         return reply.status(400).send({ error: 'Ogiltig data', details: error.errors });

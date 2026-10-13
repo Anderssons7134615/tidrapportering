@@ -13,7 +13,7 @@ const querySchema = z.object({
   projectId: z.string().min(1).max(100).optional(),
 }).strict();
 const revisionSchema = z.object({ revision: z.number().int().positive() });
-const requireManager = requireRoles(['ADMIN', 'SUPERVISOR']);
+const requireManager = requireRoles(['ADMIN']);
 
 export function createSupplierInvoiceRoutes(db: typeof prisma = prisma, service = createInvoiceService(db)): FastifyPluginAsync {
   return async (fastify) => {

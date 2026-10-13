@@ -56,8 +56,9 @@ export default function ProjectDetail() {
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const { user } = useAuthStore();
+  const isAdmin = user?.role === 'ADMIN';
   const isManager = user?.role === 'ADMIN' || user?.role === 'SUPERVISOR';
-  const [activeTab, setActiveTab] = useState(isManager && searchParams.get('tab') === 'purchases' ? 'purchases' : 'overview');
+  const [activeTab, setActiveTab] = useState(isAdmin && searchParams.get('tab') === 'purchases' ? 'purchases' : 'overview');
   const [editingProject, setEditingProject] = useState(false);
   const [materialForm, setMaterialForm] = useState<MaterialForm>(emptyMaterialForm);
   const [editingMaterial, setEditingMaterial] = useState<ProjectMaterial | null>(null);
@@ -133,13 +134,13 @@ export default function ProjectDetail() {
   const activeMaterialArticles = (materialArticles || []) as MaterialArticle[];
   const projectSummary = summary as ProjectSummary | undefined;
   const updates = (projectUpdates || []) as ProjectUpdate[];
-  const canSeeMoney = Boolean(
+  const canSeeMoney = isAdmin && Boolean(
     p?.financialsVisibleToCurrentUser
       || materialsResponse?.costVisibleToCurrentUser
       || projectSummary?.financialsVisibleToCurrentUser
   );
   const hoursOnly = Boolean(p?.hoursVisibleToCurrentUser && !canSeeMoney);
-  const visibleTabs = tabs.filter((tab) => (tab.id !== 'summary' || canSeeMoney) && (tab.id !== 'purchases' || isManager));
+  const visibleTabs = tabs.filter((tab) => (tab.id !== 'summary' || canSeeMoney) && (tab.id !== 'purchases' || isAdmin));
   const selectedMaterialArticle = activeMaterialArticles.find((article) => article.id === materialForm.articleId);
 
   const handleMaterialMutationError = (error: Error) => {
@@ -361,7 +362,7 @@ export default function ProjectDetail() {
       </div>
 
       <Tabs tabs={visibleTabs} active={activeTab} onChange={setActiveTab} label="Projektinnehåll">
-      {activeTab === 'purchases' && isManager && <Suspense fallback={<p role="status">Laddar inköp…</p>}><InvoiceList projectId={id} /></Suspense>}
+      {activeTab === 'purchases' && isAdmin && <Suspense fallback={<p role="status">Laddar inköp…</p>}><InvoiceList projectId={id} /></Suspense>}
 
       {(activeTab === 'overview' || activeTab === 'summary') && summaryLoading && <TaskSection><p role="status">Laddar sammanställning…</p></TaskSection>}
       {activeTab === 'overview' && !summaryLoading && !summaryFailed && (
@@ -433,7 +434,7 @@ export default function ProjectDetail() {
               <h2 className="section-title">Registrera material</h2>
               <p className="mt-1 text-sm text-slate-500">Sök fram artikeln, ange antal och spara. Datumet är förvalt till idag.</p>
             </div>
-            {isManager && p.active && (
+            {isAdmin && p.active && (
               <div className="flex flex-wrap gap-2">
                 <input
                   ref={fileInputRef}
@@ -499,7 +500,7 @@ export default function ProjectDetail() {
                 title="Materialregistret är tomt"
                 description={isManager ? 'Importera prislistan under Material innan material kan registreras på projekt.' : 'Be en arbetsledare importera företagets materialregister.'}
               />
-              {isManager && <Link to="/materials" className="text-link mt-3 inline-flex">Öppna materialregistret</Link>}
+              {isAdmin && <Link to="/materials" className="text-link mt-3 inline-flex">Öppna materialregistret</Link>}
             </div>
           ) : p.active ? (
             <form onSubmit={onMaterialSubmit} className="material-entry-form">
@@ -1094,6 +1095,7 @@ function MaterialsTable({
               currentUserId,
               createdByUserId: item.createdByUserId,
               invoiceStatus: item.invoiceStatus,
+              lockedForChanges: item.lockedForChanges,
               inventoryMovementId: item.inventoryMovementId,
             });
             return (

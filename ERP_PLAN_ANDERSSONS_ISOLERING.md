@@ -1,5 +1,31 @@
 # Plan för Anderssons Isolering
 
+## Aktuell ordning och genomförande 2026-10-13
+
+Detta avsnitt ersätter tidigare prioriteringar nedan. Rick har godkänt en stegvis sammanslagning av Anderssons Kalkyl och TidApp. Bygg enkelt i befintliga appen, en etapp i taget. Använd `app-product-review` för produktkritik och projektets egna leveransregler. Impeccable används inte.
+
+| Etapp | Avgränsning | Status |
+| --- | --- | --- |
+| 0 | Bevara kalkylens källor, kod och databas; kontrollera TidApps backup och återställning. | Lokala kopior verifierade. Färsk TidApp-backup återställd och migration provad på kopian. |
+| 1 | Tillförlitlig tidskrivning, revisionsskydd vid rättelse/attest och intern ekonomi endast för ADMIN. | Implementerad lokalt. Produktion väntar på godkännande av granskad migration. |
+| 2 | Kalkyl, fasta prislistor, offertversioner och koppling till projekt. | Inte påbörjad. Nästa utvecklingsetapp. |
+| 3 | Fakturarader, mottagning, materialpartier/FIFO, förbrukning, returer/krediter och full avstämning. | Senare, efter kalkylens grund. |
+| 4 | Enklare veckoflöden, kopiera vald dag, samlad teamattest och uppföljning. | Senare. |
+| 5 | ÄTA och frivillig mängdrapportering som arbetsledaren verifierar. | Senare. |
+| 6 | QR för lager samt separat färdigställande av arbete och ekonomiskt avslut. | Senare. Arkivering förblir separat. |
+
+Etapp 1 använder en gemensam skrivfunktion i backend och den befintliga lokala kön i frontend. Skapa, ändra, radera och semestervecka får en bestående begäransnyckel. Tappat svar kan återförsökas utan dubblett. Avvisade ändringar ligger kvar synligt; en gammal vy får inte skriva över en nyare version. Upplåst/nekad vecka kan skickas in igen utan att timmar ändras.
+
+Arbetsledaren behåller projekt, kunder, operativa materialuppgifter, lager, tid och attest. Interna priser, kostnader, fakturor och ekonomiexporter kräver ADMIN även i API. Revisorns avgränsade löneunderlag finns kvar. En neutral uppgift om att en materialrad är låst får visas där den behövs för att förstå redigeringsspärren; ekonomiska uppgifter följer inte med.
+
+Kalkylens verifierade källor är `C:\Users\rick8\Documents\AnderssonKalkyl`, den lokala SQLite-databasen under `AppData\Local\se.anderssonsisolering.kalkyl\database` och `OneDrive\Andersson\03 Ekonomi\Kalkyler\Huvudkalkyl.xlsx`. Desktopprogrammet används under övergången och blir sedan läsarkiv. TidApp blir huvudkälla för fasta priser, med granskad Excel-import/export. Källorna ska inte ändras av importprov. Kalkylens avrundningsregler ska först jämföras mot kända resultat innan beräkningskod flyttas.
+
+Samordning är gjord med uppgiften **Ekonomiagent – Anderssons Isolering**: företagsgemensam likviditet, reskontra, lön, bank och omkostnader ligger i ekonomispåret. TidApp ansvarar för projektens operativa underlag. Gemensamma företagsavgränsade projekt-, leverantörs-, faktura- och radidentiteter ska användas. Samma faktura i Rillion och Spiris ska vara ett dokument med två källreferenser; osäkra matchningar granskas. Spiris bokföringsrader kan inte förutsättas vara materialrader.
+
+Leveransunderlag för etapp 1 finns i [migrationsgranskningen](backend/prisma/migrations/20261013190000_time_write_receipts/REVIEW.md). En produktionsmigration kräver uttryckligt godkännande enligt AGENTS.md; push väntar eftersom den startar migration/deployment. Senare etapper är planerade, inte färdigbyggda.
+
+## Historik från 2026-10-02
+
 Datum: 2026-10-02. Status: projektöversikt, ekonomi och fakturadel driftsatta till och med `f1bdd65`, efter godkänd migration och återställningsprovad kod- och databasbackup. Kompletteringen nedan gör utkast och bekräftade inköp synliga i projektöversikten respektive ekonomin. En riktig Bevego-PDF har lästs lokalt; automatisk fälttolkning är otillräcklig för det provade formatet och kräver manuell komplettering. Inloggad produktionspilot återstår. Kartläggningens historiska utgångsläge var `923c4af`.
 
 ## Rekommendation
@@ -48,7 +74,7 @@ Använd namnet **Anderssons Isolering** i apphuvud, inloggning, sidtitel och ins
 
 Designriktningen är en ljus, saklig ekonomiarbetsyta inspirerad av användarens Visma eEkonomi-referens: vänstermeny på dator, sökbara listor, tydliga kolumner och en huvudsaklig handling per vy. Behåll Anderssons gröna accent. Status ska gå att förstå i text. Stora dekorativa kort och onödiga effekter tillför inget här.
 
-Impeccable är valt som befintligt designstöd, särskilt dess planeringsflöde. Projektets PRODUCT.md och DESIGN.md är fortsatt grund. Inget nytt designplugin behöver installeras för första etappen. Detaljskiss och UI-kontroll ingår i respektive kodleverans.
+Projektets aktuella PRODUCT.md och DESIGN.md är grund för gränssnittet. Produktgranskning görs med `app-product-review`; Impeccable används inte. UI-kontroll ingår i respektive kodleverans.
 
 | Roll | Först efter inloggning | Viktigaste ingångar |
 | --- | --- | --- |

@@ -133,7 +133,7 @@ test('customer choices select only active company customer ids and names', async
   } finally { await app.close(); }
 });
 
-for (const role of ['ADMIN', 'SUPERVISOR']) test(`${role} retains full project creation`, async () => {
+for (const role of ['ADMIN']) test(`${role} retains full project creation`, async () => {
   const { app, rows } = await setupCreation();
   try {
     const response = await app.inject({ method: 'POST', url: '/api/projects', headers: { 'x-test-role': role }, payload: { name: 'Jobb', code: 'X1', defaultRate: 700, budgetHours: 10, employeeCanSeeResults: true } });
@@ -233,5 +233,20 @@ for (const operation of ['edit', 'archive', 'restore']) test(`${operation} rolls
     assert.equal(response.statusCode, 500);
     assert.deepEqual(row(), before);
     assert.equal(events.length, 0);
+  } finally { await app.close(); }
+});
+
+
+test('supervisor can create operational projects but cannot send financial fields', async () => {
+  const { app, rows } = await setupCreation();
+  try {
+    for (const field of ['fixedPrice', 'defaultRate', 'budgetHours', 'billingModel']) {
+      const response = await app.inject({ method: 'POST', url: '/api/projects', headers: { 'x-test-role': 'SUPERVISOR' }, payload: { name: 'Jobb', code: 'S1', [field]: field === 'billingModel' ? 'FIXED' : 12345 } });
+      assert.equal(response.statusCode, 400);
+    }
+    assert.equal(rows.length, 0);
+    const response = await app.inject({ method: 'POST', url: '/api/projects', headers: { 'x-test-role': 'SUPERVISOR' }, payload: { name: 'Jobb', code: 'S1', employeeCanSeeResults: true } });
+    assert.equal(response.statusCode, 201);
+    assert.equal(response.json().defaultRate, null);
   } finally { await app.close(); }
 });

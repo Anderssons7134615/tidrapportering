@@ -42,16 +42,16 @@ function setup({ role = 'ADMIN', path = '/projects', pending = [] } = {}) {
 test('navigation keeps the exact role boundaries and manager purchases on mobile', () => {
   const expectations = {
     ADMIN: ['/projects', '/inventory', '/purchases', '/project-economy', '/time-overview', '/time-entry', '/week', '/team-week', '/approval', '/reports', '/customers', '/materials', '/activities', '/users', '/settings'],
-    SUPERVISOR: ['/projects', '/inventory', '/purchases', '/project-economy', '/time-overview', '/time-entry', '/week', '/team-week', '/approval', '/reports', '/customers', '/materials', '/settings'],
+    SUPERVISOR: ['/projects', '/inventory', '/time-overview', '/time-entry', '/week', '/team-week', '/approval', '/reports', '/customers', '/settings'],
     EMPLOYEE: ['/projects', '/inventory', '/', '/time-entry', '/week', '/settings'],
-    ACCOUNTANT: ['/project-economy', '/reports', '/settings'],
+    ACCOUNTANT: ['/reports', '/settings'],
   };
   for (const [role, expected] of Object.entries(expectations)) {
     const { view, sidebar, drawer } = setup({ role });
     assert.deepEqual([...sidebar.querySelectorAll('nav a')].map((link) => link.getAttribute('href')), expected);
     assert.deepEqual([...drawer.querySelectorAll('nav a')].map((link) => link.getAttribute('href')), expected);
     const mobile = within(view.getByRole('navigation', { name: 'Snabbnavigation' })).getAllByRole('link').map((link) => link.getAttribute('href'));
-    assert.deepEqual(mobile, role === 'EMPLOYEE' ? ['/', '/week', '/time-entry', '/projects', '/settings'] : role === 'ACCOUNTANT' ? ['/reports', '/project-economy', '/settings'] : ['/projects', '/purchases', '/time-entry', '/approval', '/project-economy']);
+    assert.deepEqual(mobile, role === 'EMPLOYEE' ? ['/', '/week', '/time-entry', '/projects', '/settings'] : role === 'ACCOUNTANT' ? ['/reports', '/settings'] : role === 'SUPERVISOR' ? ['/projects', '/inventory', '/time-entry', '/approval', '/week'] : ['/projects', '/purchases', '/time-entry', '/approval', '/project-economy']);
     cleanup();
   }
 });
@@ -115,7 +115,7 @@ test('offline rows remain owned, visible and inert behind the open drawer', () =
   const own = { ownerUserId: 'u1', localId: 'local', syncError: 'Behöver kontrolleras', syncErrorCode: 'LEGACY_SYNC_REQUIRES_REVIEW' };
   const { view } = setup({ pending: [own, { ...own, ownerUserId: 'other', localId: 'other' }] });
   const alert = view.getByRole('alert');
-  assert.match(alert.textContent, /1 offline-rad/);
+  assert.match(alert.textContent, /1 sparade ändringar/);
   assert.ok(within(alert).getByRole('button', { name: 'Hämta sparade rader' }));
   fireEvent.click(view.getByRole('button', { name: 'Meny', exact: true }));
   assert.equal(alert.hasAttribute('inert'), true);

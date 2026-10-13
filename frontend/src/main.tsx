@@ -8,6 +8,7 @@ import { MotionConfig } from 'framer-motion';
 import '@fontsource/ibm-plex-mono/latin-400.css';
 import '@fontsource/ibm-plex-mono/latin-600.css';
 import App from './App';
+import { useAuthStore } from './stores/authStore';
 import AppErrorBoundary from './components/AppErrorBoundary';
 import { appRoutes } from './appRoutes';
 import './index.css';
@@ -73,6 +74,13 @@ const queryClient = new QueryClient({
       retry: 1,
     },
   },
+});
+
+const authScope = (state: ReturnType<typeof useAuthStore.getState>) => `${state.user?.companyId}:${state.user?.id}:${state.user?.role}`;
+useAuthStore.subscribe((state, previous) => {
+  if (authScope(state) !== authScope(previous) || (!state.token && previous.token)) {
+    queryClient.clear();
+  }
 });
 
 // Keep the existing route tree; the data router supplies reliable navigation

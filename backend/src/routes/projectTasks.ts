@@ -18,7 +18,7 @@ const taskStatuses = ['TODO', 'IN_PROGRESS', 'WAITING', 'DONE'] as const;
 const taskPriorities = ['LOW', 'NORMAL', 'HIGH'] as const;
 const workRoles = ['ADMIN', 'SUPERVISOR', 'EMPLOYEE'] as const;
 const managerRoles = ['ADMIN', 'SUPERVISOR'] as const;
-const portfolioRoles = ['ADMIN', 'SUPERVISOR', 'ACCOUNTANT'] as const;
+const portfolioRoles = ['ADMIN'] as const;
 
 const taskCreateSchema = z.object({
   title: z.string().trim().min(2).max(160),
@@ -104,7 +104,7 @@ export function createProjectTaskRoutes(db: typeof prisma = prisma): FastifyPlug
       return reply.status(403).send({ error: 'Endast arbetsledare kan visa arkiverade projekt' });
     }
     const companyId = request.user.companyId;
-    const canReadEconomy = managerRoles.includes(request.user.role as typeof managerRoles[number]);
+    const canReadEconomy = request.user.role === 'ADMIN';
     const taskScope = getProjectTaskScope(request.user);
     const searchQuery = query.q ? escapePrismaLikePattern(query.q) : undefined;
     const projects = await db.project.findMany({
@@ -306,7 +306,7 @@ export function createProjectTaskRoutes(db: typeof prisma = prisma): FastifyPlug
   fastify.get('/project-portfolio', { preHandler: [requireRoles(portfolioRoles)] }, async (request) => {
     const companyId = request.user.companyId;
     const projects = await db.project.findMany({ where: { companyId, active: true }, include: { customer: { select: { id: true, name: true, defaultRate: true } } }, orderBy: { code: 'asc' } });
-    const canReadPurchases = managerRoles.includes(request.user.role as typeof managerRoles[number]);
+    const canReadPurchases = request.user.role === 'ADMIN';
     const [economies, purchases] = await Promise.all([
       loadProjectEconomies(db, companyId, projects),
       canReadPurchases && projects.length ? db.supplierInvoiceAllocation.groupBy({

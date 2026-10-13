@@ -1,10 +1,10 @@
 import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
-import { prisma } from '../index.js';
+import { prisma } from '../lib/prisma.js';
 import { getProjectMetrics } from '../lib/projectMetrics.js';
 
 function requireSyncRole(role: string) {
-  return ['ADMIN', 'SUPERVISOR'].includes(role);
+  return role === 'ADMIN';
 }
 
 const errorSchema = z.object({
@@ -16,7 +16,7 @@ const obsidianSyncRoutes: FastifyPluginAsync = async (fastify) => {
 
   fastify.get('/events', async (request, reply) => {
     if (!requireSyncRole(request.user.role)) {
-      return reply.status(403).send({ error: 'Endast admin/arbetsledare kan synka Obsidian' });
+      return reply.status(403).send({ error: 'Endast admin kan synka Obsidian' });
     }
 
     const { limit } = request.query as { limit?: string };
@@ -36,7 +36,7 @@ const obsidianSyncRoutes: FastifyPluginAsync = async (fastify) => {
 
   fastify.post('/events/:id/ack', async (request, reply) => {
     if (!requireSyncRole(request.user.role)) {
-      return reply.status(403).send({ error: 'Endast admin/arbetsledare kan synka Obsidian' });
+      return reply.status(403).send({ error: 'Endast admin kan synka Obsidian' });
     }
 
     const { id } = request.params as { id: string };
@@ -58,7 +58,7 @@ const obsidianSyncRoutes: FastifyPluginAsync = async (fastify) => {
 
   fastify.post('/events/:id/error', async (request, reply) => {
     if (!requireSyncRole(request.user.role)) {
-      return reply.status(403).send({ error: 'Endast admin/arbetsledare kan synka Obsidian' });
+      return reply.status(403).send({ error: 'Endast admin kan synka Obsidian' });
     }
 
     const { id } = request.params as { id: string };
@@ -80,7 +80,7 @@ const obsidianSyncRoutes: FastifyPluginAsync = async (fastify) => {
 
   fastify.get('/projects/:id/snapshot', async (request, reply) => {
     if (!requireSyncRole(request.user.role)) {
-      return reply.status(403).send({ error: 'Endast admin/arbetsledare kan synka Obsidian' });
+      return reply.status(403).send({ error: 'Endast admin kan synka Obsidian' });
     }
 
     const { id } = request.params as { id: string };

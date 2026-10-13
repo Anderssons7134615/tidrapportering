@@ -1,3 +1,6 @@
+import { ownsOperation, saveTimeWrite } from '../services/timeWriteQueue';
+import { useAuthStore } from '../stores/authStore';
+import { useOfflineStore } from '../stores/offlineStore';
 import { refreshTimeQueries } from '../utils/timeQueries';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -7,10 +10,9 @@ import { sv } from 'date-fns/locale';
 import { AnimatePresence, motion, PanInfo, useMotionValue, useTransform } from 'framer-motion';
 import { CalendarRange, CheckCircle, ChevronLeft, ChevronRight, PencilLine, Trash2, XCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { timeEntriesApi } from '../services/api';
+import { timeEntriesApi, weekLocksApi } from '../services/api';
 import { WeekViewSkeleton } from '../components/ui/Skeleton';
 import { useHaptic } from '../hooks/useHaptic';
-import { useOfflineStore } from '../stores/offlineStore';
 import type { TimeEntry } from '../types';
 import { AppShell, Button, ConfirmDialog, Dialog, FormField, StatusBadge } from '../components/ui/design';
 import { QueryError } from '../components/ui/QueryError';
@@ -141,10 +143,12 @@ function SwipeableEntry({
 }
 
 export default function WeekView() {
+  const user = useAuthStore(state => state.user);
+  const { isOnline, pendingEntries } = useOfflineStore();
+  const hasPendingWrites = pendingEntries.some(row => ownsOperation(row));
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const { trigger: haptic } = useHaptic();
-  const { isOnline } = useOfflineStore();
   const [pendingDelete, setPendingDelete] = useState<TimeEntry | null>(null);
   const [vacationDialogOpen, setVacationDialogOpen] = useState(false);
   const [vacationHours, setVacationHours] = useState('8');
@@ -164,12 +168,29 @@ export default function WeekView() {
     queryFn: () => timeEntriesApi.getWeek(weekStartStr, userIdParam || undefined),
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: (entry: TimeEntry) => timeEntriesApi.delete(entry.id),
+  const submitMutation = useMutation({
+    mutationFn: () => {
+      if (useOfflineStore.getState().pendingEntries.some(row => ownsOperation(row))) {
+        throw new Error('Synka dina väntande tidsändringar innan du skickar in veckan.');
+      }
+      return weekLocksApi.submit(weekStartStr);
+    },
     onSuccess: () => {
+      toast.success('Veckan är inskickad för attest');
+      void refreshTimeQueries(queryClient);
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+      void refetch();
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (entry: TimeEntry) => saveTimeWrite({ operation: 'DELETE', id: entry.id, revision: entry.revision }),
+    onSuccess: (ack) => {
       setPendingDelete(null);
       haptic('light');
-      toast.success('Tidrad borttagen');
+      toast.success(ack ? 'Tidrad borttagen' : 'Radering sparad på enheten – väntar på synkning');
       void refreshTimeQueries(queryClient);
     },
     onError: (error: Error) => {
@@ -179,15 +200,15 @@ export default function WeekView() {
   });
 
   const vacationMutation = useMutation({
-    mutationFn: (hoursPerDay: number) => timeEntriesApi.createWeekVacation({
+    mutationFn: (hoursPerDay: number) => saveTimeWrite({ operation: 'WEEK_VACATION', payload: {
       weekStart: weekStartStr,
       hoursPerDay,
-      ...(userIdParam ? { userId: userIdParam } : {}),
-    }),
+      userId: userIdParam || user!.id,
+    } }),
     onSuccess: (result) => {
       setVacationDialogOpen(false);
       haptic('light');
-      toast.success(`Semester rapporterad: ${result.totalHours.toLocaleString('sv-SE')} h`);
+      toast.success(result ? `Semester rapporterad: ${result.totalHours?.toLocaleString('sv-SE')} h` : 'Semester sparad på enheten – väntar på synkning');
       void refreshTimeQueries(queryClient);
     },
     onError: (error: Error) => {
@@ -219,9 +240,7 @@ export default function WeekView() {
   const parsedVacationHours = Number(vacationHours);
   const vacationHoursValid = Number.isFinite(parsedVacationHours) && parsedVacationHours > 0 && parsedVacationHours <= 24;
   const vacationTotalHours = vacationHoursValid ? parsedVacationHours * 5 : 0;
-  const vacationDisabledReason = !isOnline
-    ? 'Semester för hela veckan kräver internetanslutning.'
-    : isLocked
+  const vacationDisabledReason = isLocked
       ? 'Veckan är godkänd och måste låsas upp först.'
       : hasWeekdayEntries
         ? 'Veckan har redan rapporterad tid på en vardag.'
@@ -259,6 +278,8 @@ export default function WeekView() {
     if (!data?.weekLock) return null;
 
     switch (data.weekLock.status) {
+      case 'DRAFT':
+        return <span className="badge-gray">Upplåst</span>;
       case 'SUBMITTED':
         return <span className="badge-yellow">Inskickad</span>;
       case 'APPROVED':
@@ -323,6 +344,17 @@ export default function WeekView() {
           <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3">
             <p className="text-sm font-medium text-red-700">Kommentar:</p>
             <p className="text-sm text-red-600">{data.weekLock.comment}</p>
+          </div>
+        )}
+
+        {(!userIdParam || userIdParam === user?.id) && ['DRAFT', 'REJECTED'].includes(data?.weekLock?.status || '') && (
+          <div className="mt-4 space-y-2">
+            <p className="text-sm text-graphite-600">Kontrollera veckans tid och skicka in den igen när den stämmer.</p>
+            <Button type="button" variant="primary" isLoading={submitMutation.isPending}
+              disabledReason={!isOnline ? 'Anslut till nätet för att skicka in veckan.' : hasPendingWrites ? 'Synka dina väntande tidsändringar först.' : null}
+              onClick={() => submitMutation.mutate()}>
+              Skicka in veckan igen
+            </Button>
           </div>
         )}
 
@@ -397,7 +429,7 @@ export default function WeekView() {
                           onDelete={() => setPendingDelete(entry)}
                           isDeleting={deleteMutation.isPending}
                           editUrl={getEntryEditUrl(entry.id)}
-                          canDelete={isOnline}
+                          canDelete={true}
                         />
                       </motion.div>
                     ))}

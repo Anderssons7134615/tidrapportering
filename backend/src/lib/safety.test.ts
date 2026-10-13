@@ -27,7 +27,7 @@ test('employee project visibility means approved project hours, never financials
   assert.equal(canViewProjectHours('SUPERVISOR', false), true);
   assert.equal(canViewProjectFinancials('EMPLOYEE'), false);
   assert.equal(canViewProjectFinancials('ACCOUNTANT'), false);
-  assert.equal(canViewProjectFinancials('SUPERVISOR'), true);
+  assert.equal(canViewProjectFinancials('SUPERVISOR'), false);
 });
 
 test('employee project totals aggregate only approved entries', async () => {

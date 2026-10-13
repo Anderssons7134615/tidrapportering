@@ -380,7 +380,7 @@
   }
 
   .desktop-header {
-    @apply sticky top-0 z-30 hidden min-h-14 items-center justify-between gap-4 border-b border-graphite-200 bg-white px-7 py-2 lg:flex lg:rounded-t-2xl xl:px-8;
+    @apply sticky top-0 z-30 hidden min-h-14 flex-wrap items-center justify-between gap-4 border-b border-graphite-200 bg-white px-7 py-2 lg:flex lg:rounded-t-2xl xl:px-8;
   }
 
   .sidebar-identity {

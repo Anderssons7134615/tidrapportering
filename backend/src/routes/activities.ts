@@ -1,6 +1,6 @@
 import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
-import { prisma } from '../index.js';
+import { prisma } from '../lib/prisma.js';
 import { requireRoles } from '../lib/authorization.js';
 import { withoutActivityRate } from '../lib/safety.js';
 
@@ -31,7 +31,7 @@ const activityRoutes: FastifyPluginAsync = async (fastify) => {
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
     });
 
-    return ['EMPLOYEE', 'ACCOUNTANT'].includes(request.user.role) ? activities.map(withoutActivityRate) : activities;
+    return request.user.role !== 'ADMIN' ? activities.map(withoutActivityRate) : activities;
   });
 
   // Get activity by ID
@@ -48,7 +48,7 @@ const activityRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(404).send({ error: 'Aktivitet hittades inte' });
     }
 
-    return ['EMPLOYEE', 'ACCOUNTANT'].includes(request.user.role) ? withoutActivityRate(activity) : activity;
+    return request.user.role !== 'ADMIN' ? withoutActivityRate(activity) : activity;
   });
 
   // Create activity

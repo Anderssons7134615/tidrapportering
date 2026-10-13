@@ -1,5 +1,5 @@
 import { refreshTimeQueries } from '../utils/timeQueries';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { format } from 'date-fns';
@@ -9,6 +9,7 @@ import toast from 'react-hot-toast';
 import { activitiesApi, projectsApi, timeEntriesApi, usersApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
 import { useOfflineStore } from '../stores/offlineStore';
+import { enqueueTimeWrite, dispatchTimeWrite, ownsOperation } from '../services/timeWriteQueue';
 import { useHaptic } from '../hooks/useHaptic';
 import { AppShell, Button, DataList, DataRow, FormField, PageHeader, ReviewSummary, TaskSection } from '../components/ui/design';
 import { QueryError } from '../components/ui/QueryError';
@@ -21,7 +22,16 @@ function readReferenceCache<T>(key: string): T | undefined {
   if (!key) return undefined;
   try {
     const value = localStorage.getItem(key);
-    return value ? JSON.parse(value) as T : undefined;
+    if (!value) return undefined;
+    const data = JSON.parse(value);
+    // These offline choices never need prices, rates or payroll costs, even
+    // when a pre-upgrade cache was populated by an administrator.
+    if (!Array.isArray(data)) return undefined;
+    return data.map(item => {
+      if (key.includes('projects')) return { id: item.id, code: item.code, name: item.name, customer: item.customer ? { id: item.customer.id, name: item.customer.name } : null };
+      const { hourlyCost, rateOverride, ...safe } = item;
+      return safe;
+    }) as T;
   } catch {
     return undefined;
   }
@@ -37,11 +47,16 @@ function writeReferenceCache(key: string, value: unknown) {
 }
 
 export default function TimeEntry() {
+  const [searchParams] = useSearchParams();
+  return <TimeEntryForm key={`${searchParams.get('id') || ''}:${searchParams.get('pending') || ''}`} />;
+}
+
+function TimeEntryForm() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { user } = useAuthStore();
-  const { isOnline, addPendingEntry } = useOfflineStore();
+  const { isOnline, pendingEntries, removePendingEntries } = useOfflineStore();
   const { trigger: haptic } = useHaptic();
   const canReportForOthers = user?.role === 'ADMIN' || user?.role === 'SUPERVISOR';
   const entryId = searchParams.get('id');
@@ -58,6 +73,31 @@ export default function TimeEntry() {
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
   const [saved, setSaved] = useState(false);
+  const hydratedId = useRef<string | null>(null);
+  const [baseRevision, setBaseRevision] = useState<number>();
+  const [operationKey, setOperationKey] = useState<string | null>(searchParams.get('pending'));
+  const activeWrite = useRef<ReturnType<typeof enqueueTimeWrite> | null>(null);
+  const abandonedAttempts = useRef(new Set<string>());
+  const observedOperations = useRef(new Set<string>());
+  const pending = pendingEntries.find(row => ownsOperation(row) && (row.localId === operationKey || (entryId && row.write && 'id' in row.write && row.write.id === entryId)));
+  useEffect(() => { if (pending) observedOperations.current.add(pending.localId); }, [pending]);
+  const restoredCreate = useRef<string | null>(null);
+  useEffect(() => {
+    if (pending?.write?.operation !== 'CREATE' || restoredCreate.current === pending.localId) return;
+    restoredCreate.current = pending.localId;
+    const draft = pending.write.payload;
+    setDate(draft.date); setProjectId(draft.projectId || ''); setActivityId(draft.activityId);
+    setSelectedUserId(draft.userId || user?.id || ''); setHours(String(draft.hours).replace('.', ','));
+    setNote(draft.note || ''); setBillable(draft.billable); setStartTime(draft.startTime || ''); setEndTime(draft.endTime || '');
+  }, [pending, user?.id]);
+  const loadEntry = (entry: NonNullable<typeof existingEntry>) => {
+    hydratedId.current = entry.id;
+    setBaseRevision(entry.revision);
+    setDate(toDateInputValue(entry.date)); setProjectId(entry.projectId || '');
+    setActivityId(entry.activityId); setSelectedUserId(entry.userId);
+    setHours(String(entry.hours).replace('.', ',')); setNote(entry.note || '');
+    setBillable(entry.billable); setStartTime(entry.startTime || ''); setEndTime(entry.endTime || '');
+  };
   const [recentProjectIds, setRecentProjectIds] = useState<string[]>(() => {
     try {
       return JSON.parse(localStorage.getItem('tidapp-recent-projects') || '[]');
@@ -133,28 +173,35 @@ export default function TimeEntry() {
   });
 
   useEffect(() => {
-    if (!existingEntry) return;
-    setDate(toDateInputValue(existingEntry.date));
-    setProjectId(existingEntry.projectId || '');
-    setActivityId(existingEntry.activityId);
-    setSelectedUserId(existingEntry.userId);
-    setHours(String(existingEntry.hours).replace('.', ','));
-    setNote(existingEntry.note || '');
-    setBillable(existingEntry.billable);
-    setStartTime(existingEntry.startTime || '');
-    setEndTime(existingEntry.endTime || '');
-  }, [existingEntry]);
+    // Restore the saved draft after reload, including a rejected update.
+    if (pending?.write?.operation === 'UPDATE') {
+      if (hydratedId.current === `pending-${pending.localId}`) return;
+      hydratedId.current = `pending-${pending.localId}`;
+      const draft = pending.write.payload;
+      setOperationKey(pending.localId); setBaseRevision(pending.write.revision);
+      setDate(draft.date || (existingEntry ? toDateInputValue(existingEntry.date) : ''));
+      setProjectId(draft.projectId || ''); setActivityId(draft.activityId || existingEntry?.activityId || '');
+      setSelectedUserId(draft.userId || existingEntry?.userId || '');
+      setHours(String(draft.hours ?? existingEntry?.hours ?? '').replace('.', ','));
+      setNote(draft.note || ''); setBillable(draft.billable ?? existingEntry?.billable ?? false);
+      setStartTime(draft.startTime || ''); setEndTime(draft.endTime || '');
+      return;
+    }
+    if (!existingEntry || hydratedId.current === existingEntry.id) return;
+    loadEntry(existingEntry);
+  }, [existingEntry, pending]);
 
   useEffect(() => writeReferenceCache(projectsCacheKey, projects), [projects, projectsCacheKey]);
-  useEffect(() => writeReferenceCache(activitiesCacheKey, activities), [activities, activitiesCacheKey]);
-  useEffect(() => writeReferenceCache(usersCacheKey, users), [users, usersCacheKey]);
+  useEffect(() => writeReferenceCache(activitiesCacheKey, activities?.map(({ rateOverride, ...activity }) => activity)), [activities, activitiesCacheKey]);
+  useEffect(() => writeReferenceCache(usersCacheKey, users?.map(({ hourlyCost, ...person }) => person)), [users, usersCacheKey]);
 
   useEffect(() => {
+    if (pending) return;
     const activity = activities?.find((item) => item.id === activityId);
     if (!activity) return;
     if (isEditMode && existingEntry?.activityId === activityId) return;
     setBillable(activity.billableDefault);
-  }, [activityId, activities, isEditMode, existingEntry?.activityId]);
+  }, [activityId, activities, isEditMode, existingEntry?.activityId, pending]);
 
   const groupedActivities = useMemo(() => {
     return activities?.reduce((acc, activity) => {
@@ -175,40 +222,38 @@ export default function TimeEntry() {
     localStorage.setItem('tidapp-recent-projects', JSON.stringify(next));
   };
 
-  const createMutation = useMutation({
-    mutationFn: (data: any) => timeEntriesApi.create(data),
-    onSuccess: () => {
+  const saveMutation = useMutation({
+    mutationFn: async (data: any) => {
+      const row = pending || activeWrite.current || enqueueTimeWrite(isEditMode
+        ? { operation: 'UPDATE', id: entryId!, revision: baseRevision!, payload: data }
+        : { operation: 'CREATE', payload: data });
+      activeWrite.current = row;
+      setOperationKey(row.localId);
+      return isOnline ? dispatchTimeWrite(row) : null;
+    },
+    onSuccess: (ack) => {
       haptic('success');
-      toast.success('Tid sparad');
+      toast.success(ack ? (isEditMode ? 'Tidrad uppdaterad' : 'Tid sparad') : 'Sparad på enheten – väntar på synkning');
       rememberProject(projectId);
-      setSaved(true);
-      setTimeout(() => setSaved(false), 1800);
       invalidate();
-      if (returnTo) return navigate(returnTo);
-      setHours('');
-      setNote('');
-      setStartTime('');
-      setEndTime('');
+      if (!ack) return navigate(defaultReturnUrl);
+      activeWrite.current = null;
+      setOperationKey(null);
+      if (isEditMode || returnTo) return navigate(defaultReturnUrl);
+      setSaved(true); setTimeout(() => setSaved(false), 1800);
+      setHours(''); setNote(''); setStartTime(''); setEndTime('');
     },
-    onError: (error: Error) => {
-      haptic('error');
-      toast.error(error.message);
-    },
+    onError: (error: Error) => { haptic('error'); toast.error(error.message); },
   });
 
-  const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: any }) => timeEntriesApi.update(id, data),
-    onSuccess: () => {
-      haptic('success');
-      toast.success('Tidrad uppdaterad');
-      invalidate();
-      navigate(defaultReturnUrl);
-    },
-    onError: (error: Error) => {
-      haptic('error');
-      toast.error(error.message);
-    },
-  });
+  useEffect(() => {
+    // A background replay can confirm an earlier timed-out foreground save.
+    if (!operationKey || pending || !observedOperations.current.has(operationKey) || abandonedAttempts.current.has(operationKey)) return;
+    activeWrite.current = null;
+    setOperationKey(null); setHours(''); setNote(''); setStartTime(''); setEndTime('');
+    toast.success('Servern har bekräftat sparandet');
+    if (isEditMode) navigate(defaultReturnUrl);
+  }, [operationKey, pending, isEditMode, navigate, defaultReturnUrl]);
 
   const categoryLabels: Record<string, string> = {
     WORK: 'Arbete',
@@ -228,7 +273,7 @@ export default function TimeEntry() {
     [!hours || !Number.isFinite(hoursNumber) || hoursNumber <= 0, 'Ange antal timmar större än 0'],
     [hoursNumber > 24, 'En tidrad kan högst vara 24 timmar'],
   ]);
-  const isSaving = createMutation.isPending || updateMutation.isPending;
+  const isSaving = saveMutation.isPending;
   const canEditEntry = existingEntry?.status !== 'APPROVED';
   const recentProjects = projects
     ?.filter((project) => recentProjectIds.includes(project.id))
@@ -265,40 +310,24 @@ export default function TimeEntry() {
       date,
       projectId: projectId || null,
       activityId,
-      userId: canReportForOthers ? selectedUserId || undefined : undefined,
+      userId: canReportForOthers ? selectedUserId || user!.id : user!.id,
       hours: hoursNumber,
       billable,
-      startTime: startTime || undefined,
-      endTime: endTime || undefined,
-      note: note || undefined,
+      startTime: startTime || null,
+      endTime: endTime || null,
+      note: note || null,
     };
 
     haptic('medium');
-    if (isEditMode) {
-      if (!isOnline) return toast.error('Redigering kräver uppkoppling');
-      updateMutation.mutate({ id: entryId!, data: entryData });
-      rememberProject(projectId);
-      return;
-    }
-
-    if (isOnline) createMutation.mutate(entryData);
-    else {
-      addPendingEntry({ ...entryData, ownerUserId: user!.id });
-      rememberProject(projectId);
-      haptic('success');
-      toast.success('Sparad offline - synkas när du är online');
-      setHours('');
-      setNote('');
-      setStartTime('');
-      setEndTime('');
-    }
+    if (isSaving || pending) return;
+    saveMutation.mutate(entryData);
   };
 
-  if (isEditMode && isLoadingEntry) {
+  if (isEditMode && isLoadingEntry && !pending) {
     return <div className="task-section flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-graphite-500" /></div>;
   }
 
-  if (isEditMode && isExistingEntryError) {
+  if (isEditMode && isExistingEntryError && !existingEntry && !pending) {
     return (
       <AppShell>
         <QueryError
@@ -310,7 +339,7 @@ export default function TimeEntry() {
     );
   }
 
-  if (isEditMode && existingEntry && !canEditEntry) {
+  if (isEditMode && existingEntry && !canEditEntry && !pending) {
     return <div className="task-section text-sm text-graphite-600">Godkända tidrader kan inte ändras.</div>;
   }
 
@@ -338,7 +367,26 @@ export default function TimeEntry() {
           </ReviewSummary>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-5 pb-16 lg:pb-0">
+        {pending && <TaskSection title="Sparandet ligger kvar på enheten">
+          <p role="status" className="text-sm">{pending.syncError || 'Väntar på kvittens från servern. Skicka inte en ny kopia.'}</p>
+          <div className="mt-3 flex flex-wrap gap-3">
+            {pending.retryable !== false && <Button type="button" disabled={!isOnline || isSaving} onClick={() => saveMutation.mutate({})}>Kontrollera sparandet</Button>}
+            {pending.retryable === false && !pending.mayHaveCommitted && <Button type="button" onClick={async () => {
+              if (isEditMode) {
+                const result = await refetchExistingEntry();
+                if (!result.data || result.isError) return toast.error('Kunde inte hämta den senaste versionen. Dina uppgifter finns kvar.');
+                if (result.data.status === 'APPROVED') return toast.error('Veckan är fortfarande godkänd. Be en attestant låsa upp den. Dina sparade uppgifter ligger kvar.');
+                // Keep the user's draft; explicitly adopt only the new revision.
+                setBaseRevision(result.data.revision);
+                hydratedId.current = result.data.id;
+              }
+              abandonedAttempts.current.add(pending.localId);
+              activeWrite.current = null;
+              setOperationKey(null); removePendingEntries([pending.localId]);
+            }}>{pending.syncErrorCode === 'WEEK_APPROVED' ? 'Kontrollera om veckan är upplåst' : 'Behåll mina uppgifter och hämta senaste version'}</Button>}
+          </div>
+        </TaskSection>}
+        <form onSubmit={handleSubmit} className="space-y-5 pb-16 lg:pb-0"><fieldset disabled={Boolean(pending) || isSaving} className="space-y-5">
           {!isEditMode && (
             <TaskSection className="time-entry-section space-y-4" aria-label="Snabbval">
               <div className="border-b border-graphite-200 pb-4">
@@ -488,7 +536,7 @@ export default function TimeEntry() {
               {saved ? <><Check className="h-5 w-5" /> Sparad!</> : <>{isEditMode ? <PencilLine className="h-5 w-5" /> : <Save className="h-5 w-5" />}{isEditMode ? 'Uppdatera tidrad' : 'Spara tidrad'}</>}
             </Button>
           </TaskSection>
-        </form>
+        </fieldset></form>
 
         {!isEditMode && !!dailyEntries?.length && (
           <TaskSection title="Redan rapporterat den här dagen">

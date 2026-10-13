@@ -99,6 +99,7 @@ const projectMaterialPatchSchema = z.object({
 }).refine((value) => Object.keys(value).length > 0, { message: 'Inga ändringar skickades' });
 
 
+const requireAdmin = requireRoles(['ADMIN']);
 const requireAdminOrSupervisor = requireRoles(['ADMIN', 'SUPERVISOR']);
 const requireProjectCreator = requireRoles(['ADMIN', 'SUPERVISOR', 'EMPLOYEE']);
 const requireProjectAccess = async (request: any, reply: any) => {
@@ -386,7 +387,7 @@ return async (fastify) => {
       orderBy: [{ active: 'desc' }, { name: 'asc' }],
     });
 
-    if (canManageMaterials(request.user.role) || request.user.role === 'ACCOUNTANT') {
+    if (request.user.role === 'ADMIN') {
       return articles;
     }
 
@@ -396,12 +397,14 @@ return async (fastify) => {
       purchasePrice: _purchasePrice,
       defaultUnitPrice: _defaultUnitPrice,
       markupPercent: _markupPercent,
+      priceSource: _priceSource,
+      priceUpdatedAt: _priceUpdatedAt,
       ...article
     }) => article);
   });
 
   fastify.get('/materials/articles.xlsx', {
-    preHandler: [requireAdminOrSupervisor],
+    preHandler: [requireAdmin],
   }, async (request, reply) => {
     const articles = await prisma.materialArticle.findMany({
       where: { companyId: request.user.companyId },
@@ -463,7 +466,7 @@ return async (fastify) => {
   });
 
   fastify.get('/materials/template.xlsx', {
-    preHandler: [requireAdminOrSupervisor],
+    preHandler: [requireAdmin],
   }, async (_request, reply) => {
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'Arbetsyta';
@@ -535,7 +538,7 @@ return async (fastify) => {
   });
 
   fastify.post('/materials/articles/import-preview', {
-    preHandler: [requireAdminOrSupervisor],
+    preHandler: [requireAdmin],
   }, async (request, reply) => {
     const file = await (request as any).file();
     if (!file) return reply.status(400).send({ error: 'Importfil saknas' });
@@ -578,7 +581,7 @@ return async (fastify) => {
   });
 
   fastify.post('/materials/articles/import.xlsx', {
-    preHandler: [requireAdminOrSupervisor],
+    preHandler: [requireAdmin],
   }, async (request, reply) => {
     const file = await (request as any).file();
     if (!file) return reply.status(400).send({ error: 'Importfil saknas' });
@@ -657,7 +660,7 @@ return async (fastify) => {
   });
 
   fastify.post('/materials/articles', {
-    preHandler: [requireAdminOrSupervisor],
+    preHandler: [requireAdmin],
   }, async (request, reply) => {
     try {
       const body = materialArticleSchema.parse(request.body);
@@ -716,7 +719,7 @@ return async (fastify) => {
   });
 
   fastify.put('/materials/articles/:articleId', {
-    preHandler: [requireAdminOrSupervisor],
+    preHandler: [requireAdmin],
   }, async (request, reply) => {
     try {
       const { articleId } = request.params as { articleId: string };
@@ -778,7 +781,7 @@ return async (fastify) => {
   });
 
   fastify.delete('/materials/articles/:articleId', {
-    preHandler: [requireAdminOrSupervisor],
+    preHandler: [requireAdmin],
   }, async (request, reply) => {
     const { articleId } = request.params as { articleId: string };
 
@@ -958,7 +961,7 @@ return async (fastify) => {
   });
 
   fastify.post('/:id/materials/import.xlsx', {
-    preHandler: [requireAdminOrSupervisor],
+    preHandler: [requireAdmin],
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const project = await prisma.project.findUnique({ where: { id } });
@@ -1197,7 +1200,7 @@ return async (fastify) => {
       orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
     });
 
-    const mappedItems = items.map((item) => mapMaterialForRole(item, canView, canManageMaterials(request.user.role)));
+    const mappedItems = items.map((item) => mapMaterialForRole(item, canView, canViewProjectFinancials(request.user.role)));
 
     return {
       costVisibleToCurrentUser: canView,
@@ -1305,7 +1308,7 @@ return async (fastify) => {
         },
       });
 
-      return reply.status(201).send(mapMaterialForRole(material, canViewProjectFinancials(request.user.role), canManageMaterials(request.user.role)));
+      return reply.status(201).send(mapMaterialForRole(material, canViewProjectFinancials(request.user.role), canViewProjectFinancials(request.user.role)));
     } catch (error) {
       if (error instanceof z.ZodError) {
         return reply.status(400).send({ error: 'Ogiltig data', details: error.errors });
@@ -1368,8 +1371,8 @@ return async (fastify) => {
           body.unitPrice !== undefined ||
           body.invoiceStatus !== undefined ||
           body.invoiceReference !== undefined;
-        if (touchesFinancials && !isManager) {
-          throw Object.assign(new Error('Endast admin eller arbetsledare kan ändra pris, artikel eller fakturastatus'), { statusCode: 403 });
+        if (touchesFinancials && request.user.role !== 'ADMIN') {
+          throw Object.assign(new Error('Endast admin kan ändra pris, artikel eller fakturastatus'), { statusCode: 403 });
         }
         if (body.invoiceStatus === 'INVOICED' && !(body.invoiceReference?.trim() || material.invoiceReference?.trim())) {
           throw Object.assign(new Error(materialMutationErrors.invoiceReferenceRequired.message), {
@@ -1445,7 +1448,7 @@ return async (fastify) => {
         },
       });
 
-      return mapMaterialForRole(updated, canViewProjectFinancials(request.user.role), canManageMaterials(request.user.role));
+      return mapMaterialForRole(updated, canViewProjectFinancials(request.user.role), canViewProjectFinancials(request.user.role));
     } catch (error) {
       if (error instanceof z.ZodError) {
         return reply.status(400).send({ error: 'Ogiltig data', details: error.errors });
@@ -1578,7 +1581,7 @@ return async (fastify) => {
 
   // Manager summary by employee for project
   fastify.get('/:id/manager-summary', {
-    preHandler: [requireAdminOrSupervisor],
+    preHandler: [requireAdmin],
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const { from, to } = request.query as { from?: string; to?: string };
@@ -1715,7 +1718,7 @@ return async (fastify) => {
     try {
       const body: z.infer<typeof createProjectSchema> = request.user.role === 'EMPLOYEE'
         ? employeeCreateProjectSchema.parse(request.body)
-        : createProjectSchema.parse(request.body);
+        : (request.user.role === 'ADMIN' ? createProjectSchema : createProjectSchema.omit({ budgetHours: true, fixedPrice: true, billingModel: true, defaultRate: true }).strict()).parse(request.body);
       if (!await customerBelongsToCompany(prisma, body.customerId, request.user.companyId, request.user.role === 'EMPLOYEE')) {
         return reply.status(400).send({ error: 'Kunden finns inte eller är inte tillgänglig i ditt företag' });
       }
@@ -1804,7 +1807,7 @@ return async (fastify) => {
   }, async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
-      const body = projectSchema.partial().parse(request.body);
+      const body = (request.user.role === 'ADMIN' ? projectSchema.partial() : projectSchema.omit({ budgetHours: true, fixedPrice: true, billingModel: true, defaultRate: true }).partial().strict()).parse(request.body);
 
       const project = await prisma.project.findUnique({ where: { id } });
       if (!project || project.companyId !== request.user.companyId) {
@@ -1870,7 +1873,7 @@ return async (fastify) => {
         return updatedProject;
       });
 
-      return updatedProject;
+      return sanitizeProjectForRole(updatedProject, canViewProjectFinancials(request.user.role));
     } catch (error) {
       if (error instanceof z.ZodError) {
         return reply.status(400).send({ error: 'Ogiltig data', details: error.errors });
@@ -1929,12 +1932,12 @@ return async (fastify) => {
     const { id } = request.params as { id: string };
     const project = await prisma.project.findFirst({ where: { id, companyId: request.user.companyId } });
     if (!project) return reply.status(404).send({ error: 'Projekt hittades inte' });
-    if (project.active) return project;
+    if (project.active) return sanitizeProjectForRole(project, canViewProjectFinancials(request.user.role));
     return prisma.$transaction(async (tx) => {
       const restored = await tx.project.update({ where: { id }, data: { active: true }, include: { customer: { select: { id: true, name: true } } } });
       await tx.auditLog.create({ data: { userId: request.user.id, action: 'UPDATE', entityType: 'Project', entityId: id, oldValue: JSON.stringify({ active: false }), newValue: JSON.stringify({ active: true }) } });
       await enqueueProjectChanged(tx, { companyId: request.user.companyId, projectId: id, entityId: id, action: 'UPDATE', payload: { code: restored.code, name: restored.name, changedFields: ['active'] } });
-      return restored;
+      return sanitizeProjectForRole(restored, canViewProjectFinancials(request.user.role));
     });
   });
 

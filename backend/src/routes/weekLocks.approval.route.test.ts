@@ -29,7 +29,7 @@ test('admin can approve own submitted week while supervisor self approval stays 
     userId: lock.userId,
     date: new Date(Date.UTC(2026, 7, 17 + index)),
     hours: 8,
-    status: 'SUBMITTED',
+    status: 'SUBMITTED', revision: 1,
     user: { hourlyCost: 500 },
     activity: { rateOverride: 850 },
     project: { defaultRate: null, customer: null },
@@ -49,7 +49,7 @@ test('admin can approve own submitted week while supervisor self approval stays 
     return callback({
       timeEntry: {
         findMany: async () => entries,
-        update: async (args: any) => { entryUpdates.push(args); return args.data; },
+        updateMany: async (args: any) => { entryUpdates.push(args); return { count: 1 }; },
       },
       weekLock: {
         updateMany: async (args: any) => { lockUpdate = args; return { count: 1 }; },
@@ -70,6 +70,8 @@ test('admin can approve own submitted week while supervisor self approval stays 
     assert.deepEqual(lockUpdate.where, { id: 'lock-1', status: 'SUBMITTED' });
     assert.equal(lockUpdate.data.reviewerId, 'reviewer-1');
     assert.equal(entryUpdates.length, 5);
+    assert.deepEqual(entryUpdates[0].where, { id: 'entry-1', revision: 1, status: 'SUBMITTED' });
+    assert.deepEqual(entryUpdates[0].data.revision, { increment: 1 });
     assert.equal(entryUpdates.every((update) => update.data.status === 'APPROVED' && update.data.approverId === 'reviewer-1'), true);
     assert.deepEqual(auditValue, { status: 'APPROVED', selfApproval: true });
 
