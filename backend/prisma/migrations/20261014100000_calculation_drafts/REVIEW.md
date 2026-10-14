@@ -1,6 +1,6 @@
 # Kalkyleditor – granskad produktionsmigration
 
-Status 2026-10-14: implementerad och lokalt verifierad. Denna nya migration väntar på Ricks uttryckliga godkännande före push/publicering. Godkännandet för importbryggan omfattade den tidigare migrationen.
+Status 2026-10-14: Rick har uttryckligen godkänt denna granskade migration och publiceringen med svaret ”Jag godkänner”. Appkod och SQL är oförändrade sedan slutgranskningen av `f00ab93`; förnyad läsande före-pushkontroll är godkänd. Publicering sker genom normal push till master och efterkontrolleras mot driftplattformarna.
 
 ## Ändring och skydd
 
@@ -11,6 +11,8 @@ Endast ADMIN kan skapa, läsa, redigera och låsa. Sparning kontrollerar förvä
 Servern använder den befintliga frysta V1-beräkningen. Artikelregistrets inköpspris kopieras vid val; saknat inköpspris kräver manuell inmatning. Försäljningspris används aldrig som inköpspris. Utkastets priser uppdateras inte automatiskt från registret. Kopiering behåller komplexa rader, material och beräkningsunderlag, men nollställer offertnummer och offertdatum/giltighet. Låsning betyder tekniskt låst kalkyl, inte att en offert har skickats. Projektbudget, tid, inköp, faktisk materialåtgång och desktopdatabas ändras inte.
 
 ## Backup och återställningsprov
+
+Förnyad backup inför den godkända publiceringen: `C:\Users\rick8\AppData\Local\TidAppBackups\editor-approved-20261014-192510\production-before.dump`, 834 737 byte. SHA-256 `9b35b5e9b86b5a184c37c91e603b14c7cf02979f0b7d2b3c4edcfb81b9a6ba23`. Serverns och den lokala filens hash matchar och arkivets innehållsförteckning är läsbar med pg_restore. Efterkontroll sparas i samma katalog. Återställningsprovet nedan avser den tidigare backupen och samma oförändrade migrationsfil.
 
 Färsk skrivskyddad produktionsbackup: `C:\Users\rick8\AppData\Local\TidAppBackups\editor-before-20261014-190128\production-before.dump`, 834 737 byte. SHA-256 `184b7510a8beafbab821057c857bbdda12d803b4c9b11642e74ed217b6f9565a`. Serverns och den lokala filens hash matchar.
 
