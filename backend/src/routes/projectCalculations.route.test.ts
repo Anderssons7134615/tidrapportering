@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import Fastify from 'fastify';
 import { createProjectCalculationRoutes } from './projectCalculations.js';
 import { calculationFixture } from '../lib/projectCalculationFixture.js';
+import { createCalculationEditorRoutes } from './calculationEditor.js';
 
 test('every calculation endpoint rejects non-admin before accessing any database data', async () => {
   const noData = new Proxy({}, { get() { throw new Error('Do not query internal estimates'); } });
@@ -12,8 +13,9 @@ test('every calculation endpoint rejects non-admin before accessing any database
     req.user = { id: 'user', companyId: 'company', role: req.headers['x-role'] };
   });
   await app.register(createProjectCalculationRoutes(noData as any));
+  await app.register(createCalculationEditorRoutes(noData as any));
   try {
-    for (const role of [undefined, 'EMPLOYEE', 'SUPERVISOR', 'ACCOUNTANT']) for (const [method, url] of [['GET', '/p'], ['GET', '/p/c'], ['POST', '/p/preview'], ['POST', '/p/import']] as const) {
+    for (const role of [undefined, 'EMPLOYEE', 'SUPERVISOR', 'ACCOUNTANT']) for (const [method, url] of [['GET', '/p'], ['GET', '/p/c'], ['POST', '/p/preview'], ['POST', '/p/import'], ['GET', '/p/editor'], ['GET', '/p/editor/id'], ['POST', '/p/editor/id/preview'], ['PUT', '/p/editor/id'], ['POST', '/p/editor/id/lock']] as const) {
       assert.equal((await app.inject({ method, url, headers: role ? { 'x-role': role } : {} })).statusCode, role ? 403 : 401);
     }
   } finally { await app.close(); }

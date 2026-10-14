@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { projectCalculationsApi } from '../services/api';
@@ -49,6 +50,7 @@ export default function ProjectCalculations({ projectId, projectName, active }: 
   const sequence = useRef(0);
   const saving = useRef(false);
   const list = useQuery({ queryKey: ['project-calculations', projectId], queryFn: () => projectCalculationsApi.list(projectId) });
+  const drafts = useQuery({ queryKey: ['calculation-drafts', projectId], queryFn: () => projectCalculationsApi.drafts(projectId) });
   const currentId = selected || list.data?.[0]?.id;
   const detail = useQuery({ queryKey: ['project-calculation', projectId, currentId], queryFn: () => projectCalculationsApi.get(projectId, currentId!), enabled: Boolean(currentId) });
   const save = useMutation({
@@ -73,9 +75,16 @@ export default function ProjectCalculations({ projectId, projectName, active }: 
   if (list.isLoading) return <p role="status">Laddar kalkyler…</p>;
   if (list.isError) return <QueryError title="Kalkylerna kunde inte hämtas" onRetry={() => void list.refetch()} />;
   return <div className="space-y-5">
+    <TaskSection title="Gör kalkylen i TidApp">
+      <p className="mb-4 text-sm">Skapa arbetsmoment, välj material och räkna på jobbet här. Spara ett utkast och lås kalkylversionen när den är klar.</p>
+      {active && <Link className="btn-primary inline-flex" to={`/projects/${projectId}/calculations/${crypto.randomUUID()}`}>Ny kalkyl</Link>}
+      {drafts.isLoading && <p role="status">Laddar utkast…</p>}
+      {drafts.isError && <QueryError title="Utkasten kunde inte hämtas" onRetry={() => void drafts.refetch()} />}
+      {Boolean(drafts.data?.length) && <ul className="mt-4 divide-y divide-graphite-100">{drafts.data!.map(draft => <li key={draft.id} className="flex flex-wrap items-center justify-between gap-3 py-3"><span>{draft.name} <span className="text-xs text-graphite-600">· Utkast · {formatDate(draft.updatedAt)}</span></span><Link className="btn-secondary inline-flex" to={`/projects/${projectId}/calculations/${draft.id}`}>Öppna utkast</Link></li>)}</ul>}
+    </TaskSection>
     <TaskSection title="Importera från Anderssons Kalkyl">
       <p className="mb-2 text-sm font-medium">Projekt: {projectName}</p>
-      <p className="mb-3 text-sm text-graphite-600">Välj en exporterad kalkylfil. Du får granska innehållet innan något sparas. Kalkylen redigeras fortfarande i Anderssons Kalkyl.</p>
+      <p className="mb-3 text-sm text-graphite-600">Har du en äldre desktopkalkyl? Välj en exporterad fil och granska innehållet. Därefter kan du kopiera versionen och fortsätta arbeta i TidApp.</p>
       {active ? <FormField label="Kalkylfil (.json)" controlId="calculation-file"><input id="calculation-file" className="input py-2" type="file" accept=".json,application/json" disabled={save.isPending} onChange={e => { void choose(e.target.files?.[0]); e.target.value = ''; }} /></FormField> : <p>Projektet är inaktivt. Sparade kalkylversioner kan läsas.</p>}
       {reading && <p role="status" className="mt-3">Kontrollerar kalkylen…</p>}
       {error && <p role="alert" className="mt-3 text-red-700">{error}</p>}
@@ -86,11 +95,11 @@ export default function ProjectCalculations({ projectId, projectName, active }: 
         <div className="flex flex-wrap gap-2"><button className="btn-primary" disabled={!reviewed || save.isPending} onClick={() => { if (!reviewed || saving.current) return; saving.current = true; setError(''); save.mutate(preview); }}>{save.isPending ? 'Sparar…' : 'Spara låst kalkylversion'}</button><button className="btn-secondary" disabled={save.isPending} onClick={() => { setPreview(null); setReviewed(false); setError(''); }}>Avbryt</button></div>
       </div>}
     </TaskSection>
-    {!list.data?.length ? <EmptyState title="Ingen kalkyl sparad" description="Importera en kalkyl för att samla projektets kalkylunderlag här." /> : <TaskSection title="Importerad kalkylversion">
+    {!list.data?.length ? <EmptyState title="Ingen kalkyl sparad" description="Låsta kalkylversioner visas här. Börja med Ny kalkyl eller importera en äldre kalkyl." /> : <TaskSection title="Låsta kalkylversioner">
       <FormField label="Sparad version" controlId="calculation-version"><select id="calculation-version" className="input" value={currentId || ''} onChange={e => setSelected(e.target.value)}>{list.data.map(item => <option key={item.id} value={item.id}>{item.name} · källversion {item.sourceRevision} · {formatDate(item.createdAt)}</option>)}</select></FormField>
       {detail.isLoading && <p role="status">Laddar version…</p>}
       {detail.isError && <QueryError title="Versionen kunde inte hämtas" onRetry={() => void detail.refetch()} />}
-      {detail.data && <div className="mt-4"><StatusBadge label="Låst" tone="slate" /><p className="my-2 text-xs text-graphite-600">Importerad {formatDate(detail.data.createdAt)} av {detail.data.importedBy}. Källa: Anderssons Kalkyl.</p><CalculationDetails value={detail.data} /></div>}
+      {detail.data && <div className="mt-4"><StatusBadge label="Låst" tone="slate" /><p className="my-2 text-xs text-graphite-600">Sparad {formatDate(detail.data.createdAt)} av {detail.data.importedBy}. Källa: {detail.data.document.id.startsWith('tidapp-') ? 'TidApp' : 'Anderssons Kalkyl'}.</p><CalculationDetails value={detail.data} />{active && <Link className="btn-secondary mt-4 inline-flex" to={`/projects/${projectId}/calculations/${crypto.randomUUID()}?copy=${detail.data.id}`}>Kopiera till nytt utkast</Link>}</div>}
     </TaskSection>}
   </div>;
 }

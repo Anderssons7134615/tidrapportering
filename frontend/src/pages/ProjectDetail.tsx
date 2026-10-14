@@ -60,7 +60,7 @@ export default function ProjectDetail() {
   const { user } = useAuthStore();
   const isAdmin = user?.role === 'ADMIN';
   const isManager = user?.role === 'ADMIN' || user?.role === 'SUPERVISOR';
-  const [activeTab, setActiveTab] = useState(isAdmin && searchParams.get('tab') === 'purchases' ? 'purchases' : 'overview');
+  const [activeTab, setActiveTab] = useState(isAdmin && ['purchases', 'calculation'].includes(searchParams.get('tab') || '') ? searchParams.get('tab')! : 'overview');
   const [editingProject, setEditingProject] = useState(false);
   const [materialForm, setMaterialForm] = useState<MaterialForm>(emptyMaterialForm);
   const [editingMaterial, setEditingMaterial] = useState<ProjectMaterial | null>(null);

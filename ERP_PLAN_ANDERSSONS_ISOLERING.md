@@ -8,7 +8,7 @@ Detta avsnitt ersätter tidigare prioriteringar nedan. Rick har godkänt en steg
 | --- | --- | --- |
 | 0 | Bevara kalkylens källor, kod och databas; kontrollera TidApps backup och återställning. | Lokala kopior verifierade. Färsk TidApp-backup återställd och migration provad på kopian. |
 | 1 | Tillförlitlig tidskrivning, revisionsskydd vid rättelse/attest och intern ekonomi endast för ADMIN. | Driftsatt och efterkontrollerad 2026-10-13 efter Ricks godkännande. Appkod `df9a32b`; migration, Railway, Cloudflare och readiness verifierade. |
-| 2 | Kalkyl, fasta prislistor, offertversioner, koppling till projekt samt Ricks undantag från fullständiga veckor. | Veckoundantaget är driftsatt och aktiverat (`2816617`). Del 2A: import av låsta desktopkalkyler är implementerad och verifierad (`a755c0a`); migration och publicering godkända av Rick 2026-10-14. Kalkyleditor, prislistor och offertflöde återstår. |
+| 2 | Kalkyl, fasta prislistor, offertversioner, koppling till projekt samt Ricks undantag från fullständiga veckor. | Veckoundantaget är driftsatt och aktiverat (`2816617`). Del 2A: importbryggan är driftsatt (`a755c0a`, godkännande `f9ddbea`). Del 2B: kalkyleditorn är implementerad och lokalt verifierad; ny produktionsmigration väntar på godkännande. Prislistor och offertflöde återstår. |
 | 3 | Fakturarader, mottagning, materialpartier/FIFO, förbrukning, returer/krediter och full avstämning. | Senare, efter kalkylens grund. |
 | 4 | Enklare veckoflöden, kopiera vald dag, samlad teamattest och uppföljning. | Senare. |
 | 5 | ÄTA och frivillig mängdrapportering som arbetsledaren verifierar. | Senare. |
@@ -26,7 +26,9 @@ Tillägg från Rick 2026-10-13 inför etapp 2: **Ricks eget konto ska kunna få 
 
 Leveransunderlag för etapp 1 finns i [migrationsgranskningen](backend/prisma/migrations/20261013190000_time_write_receipts/REVIEW.md). Rick har uttryckligen godkänt den granskade migrationen och publiceringen.
 
-Del 2A samlar en sparad kalkylrevision under projektets ADMIN-begränsade Kalkyl-flik. Förhandsgranskning, kontroll mot desktopprogrammets avrundning, låsta versioner och dubblettskydd är klara lokalt. De två verkliga sparade desktoprevisionerna har exporterats skrivskyddat och deras totalsummor stämmer exakt. Ingen automatisk projektmatchning eller produktionsimport är gjord. Källprogrammet används fortsatt för redigering. Se [migrationsunderlaget](backend/prisma/migrations/20261013230000_project_calculations/REVIEW.md) och [första importen](backend/scripts/KALKYL_IMPORT.md). Resten av etapp 2 och efterföljande etapper är inte färdigbyggda.
+Del 2A samlar en sparad kalkylrevision under projektets ADMIN-begränsade Kalkyl-flik och är publicerad. De två verkliga sparade desktoprevisionerna har exporterats skrivskyddat och deras totalsummor stämmer exakt. Ingen automatisk projektmatchning eller produktionsimport är gjord. Se [migrationsunderlaget](backend/prisma/migrations/20261013230000_project_calculations/REVIEW.md) och [första importen](backend/scripts/KALKYL_IMPORT.md).
+
+Del 2B, 2026-10-14: skapa, redigera, spara och återöppna kalkylutkast direkt i TidApp, med arbetsmoment, flera material per moment, artikelregistrets inköpspris eller manuellt pris, montagetid, timpriser, påslag och spill. Servern räknar enligt samma V1-regler som importen. En färdig version låses; fortsatt arbete sker i en kopia. Produktionsmigration/publicering återstår efter uttryckligt godkännande av [det granskade underlaget](backend/prisma/migrations/20261014100000_calculation_drafts/REVIEW.md). [Första jobbtestet](backend/scripts/KALKYL_EDITOR_PILOT.md) är förberett. Desktopprogrammet behöver inte ändras för denna editor. Fasta prislistor, offert-PDF, budgetöverföring och efterföljande etapper är separata senare steg.
 
 ## Historik från 2026-10-02
 

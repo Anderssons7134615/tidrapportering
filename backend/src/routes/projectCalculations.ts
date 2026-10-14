@@ -45,6 +45,7 @@ export function createProjectCalculationRoutes(db = prisma): FastifyPluginAsync 
       const companyId = request.user.companyId;
       const body = importBody.parse(request.body);
       const preview = inspectCalculationV1(body.calculation);
+      if (preview.document.id.startsWith('tidapp-')) throw new CalculationError('TidApps kalkyler sparas via kalkyleditorn.');
       if (body.expectedFingerprint !== preview.fingerprint) throw new CalculationError('Filen ändrades efter granskningen. Granska den igen.', 409);
       const identity = { companyId, sourceId: preview.document.id, sourceRevision: preview.document.revision };
       const existing = async (client: Pick<typeof db, 'projectCalculation'>) => {

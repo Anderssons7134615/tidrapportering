@@ -1,7 +1,13 @@
 import { useAuthStore } from '../stores/authStore';
 import type { CalculationPreview, SavedCalculation, CalculationListItem } from '../types/projectCalculation';
+import type { CalculationDraft, CalculationDraftListItem, EditableCalculation } from '../types/projectCalculation';
 
 export const projectCalculationsApi = {
+  drafts: (projectId: string) => fetchApi<CalculationDraftListItem[]>(`/project-calculations/${encodeURIComponent(projectId)}/editor`),
+  draft: (projectId: string, id: string) => fetchApi<CalculationDraft | null>(`/project-calculations/${encodeURIComponent(projectId)}/editor/${encodeURIComponent(id)}`),
+  previewDraft: (projectId: string, id: string, expectedRevision: number, document: EditableCalculation) => fetchApi<CalculationPreview>(`/project-calculations/${encodeURIComponent(projectId)}/editor/${encodeURIComponent(id)}/preview`, { method: 'POST', body: JSON.stringify({ expectedRevision, document }) }),
+  saveDraft: (projectId: string, id: string, expectedRevision: number, document: EditableCalculation) => fetchApi<CalculationDraft>(`/project-calculations/${encodeURIComponent(projectId)}/editor/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify({ expectedRevision, document }) }),
+  lockDraft: (projectId: string, id: string, expectedRevision: number, expectedFingerprint: string) => fetchApi<{ id: string }>(`/project-calculations/${encodeURIComponent(projectId)}/editor/${encodeURIComponent(id)}/lock`, { method: 'POST', body: JSON.stringify({ expectedRevision, expectedFingerprint, reviewed: true }) }),
   list: (projectId: string) => fetchApi<CalculationListItem[]>(`/project-calculations/${encodeURIComponent(projectId)}`),
   get: (projectId: string, id: string) => fetchApi<SavedCalculation>(`/project-calculations/${encodeURIComponent(projectId)}/${encodeURIComponent(id)}`),
   preview: (projectId: string, calculation: unknown) => fetchApi<CalculationPreview>(`/project-calculations/${encodeURIComponent(projectId)}/preview`, { method: 'POST', body: JSON.stringify(calculation) }),

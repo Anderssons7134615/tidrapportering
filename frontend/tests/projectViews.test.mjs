@@ -45,6 +45,7 @@ function setup({ role = 'ADMIN', handler, economy, calculation = false, initialP
       '/api/projects/p1/materials': { items: [], totals: { quantity: 0, amount: 0 } },
       '/api/projects/materials/articles': [article],
       '/api/projects/p1/updates': [],
+      '/api/project-calculations/p1/editor': [],
       '/api/project-portfolio': economy,
     })[path];
     assert.notEqual(data, undefined, `Unexpected request ${method} ${path}`);
@@ -170,6 +171,17 @@ test('calculation is admin-only and fetched only after opening its project tab',
     assert.equal(requests.some(r => r.path.includes('project-calculations')), false);
     cleanup();
   }
+});
+
+test('return from calculator opens the calculation tab only for admin', async () => {
+  const { view } = setup({ initialPath: '/projects/p1?tab=calculation', handler: path => path === '/api/project-calculations/p1' ? [] : undefined });
+  await view.findByRole('link', { name: 'Ny kalkyl' });
+  assert.equal(view.getByRole('tab', { name: 'Kalkyl' }).getAttribute('aria-selected'), 'true');
+  cleanup(); requests = [];
+  const other = setup({ role: 'SUPERVISOR', initialPath: '/projects/p1?tab=calculation' });
+  await other.view.findByRole('heading', { name: 'Testprojekt' });
+  assert.equal(other.view.getByRole('tab', { name: 'Översikt' }).getAttribute('aria-selected'), 'true');
+  assert.equal(requests.some(r => r.path.includes('project-calculations')), false);
 });
 
 function calcPreview() {
