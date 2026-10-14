@@ -1,6 +1,6 @@
 # Kalkylbrygga – granskad produktionsmigration
 
-Status 2026-10-13: implementerad och lokalt verifierad. Denna nya migration är ännu inte godkänd eller körd i produktion. Push till master väntar eftersom den startar automatisk driftsättning.
+Status 2026-10-14: Rick har uttryckligen godkänt den granskade migrationen och publiceringen genom svaret ”Jag kägodkänner”. Appkoden är oförändrad sedan slutgranskningen, commit `a755c0a`. Publicering sker genom normal push till master och efterkontrolleras mot driftplattformarna.
 
 ## Ändring
 
@@ -12,7 +12,9 @@ Källans priser, tider, material och summor sparas som låst JSON. Servern räkn
 
 ## Backup och provmigration
 
-Färsk logisk produktionsbackup: `C:\Users\rick8\AppData\Local\TidAppBackups\kalkyl-production-20261013-225651\production-before.dump`, 826 953 byte. SHA-256: `33a344550f24a69db9b7175a94dc31e98cf87842efdae450fe308a31c60d5603`. Serverns och den lokala filens hash matchar.
+Färsk backup inför godkänd publicering: `C:\Users\rick8\AppData\Local\TidAppBackups\kalkyl-approved-20261014-073226\production-before.dump`, 829 020 byte. SHA-256: `b72b91f4ab7824b4164271f1f1ed3e95cb1da4e85b98bb8ff8eab84c879098cd`. Serverns och den lokala filens hash matchar; arkivets innehållsförteckning kan läsas av pg_restore. Driftens efterkontroll sparas i samma katalog.
+
+Den tidigare provåterställda produktionsbackupen: `C:\Users\rick8\AppData\Local\TidAppBackups\kalkyl-production-20261013-225651\production-before.dump`, 826 953 byte. SHA-256: `33a344550f24a69db9b7175a94dc31e98cf87842efdae450fe308a31c60d5603`. Serverns och den lokala filens hash matchar.
 
 Backupen återställdes till separat lokal PostgreSQL-databas `tidapp_kalkyl_restore_20261013`. `prisma migrate deploy` tillämpade den nya migrationen. Radantal och innehållsfingeravtryck stämmer för de 26 befintliga verksamhetstabellerna; den nya tabellen är tom. Jämförelseverktyget undantar User.allowIncompleteWeekApproval från innehållshashen; separat kontroll visar fortsatt exakt ett aktiverat konto. Kopian har 756 tidrader och 9 användare. Bevis: `backup-proof.json`, `before-fingerprints.json`, `after-fingerprints.json` i backupkatalogen. Ingen produktionsskrivning har gjorts för detta prov.
 
@@ -35,4 +37,4 @@ Desktopkällan har kopierats genom SQLite:s backupfunktion med skrivskyddad käl
 - UI-polish följer befintliga komponenter: neutral låst status, tydligt målprojekt, belopp med ören, separat manuellt anbud, fel och omförsök med bibehållen förhandsgranskning.
 - Begränsningar (P2): importen kräver 1–500 rader och högst 30 material per rad; desktop kan spara större kalkyler och tomma utkast som därför avvisas. De 200 senast importerade versionerna listas; äldre poster ligger kvar i databasen. Käll-id och fingeravtryck finns i API/audit men visas inte i vyn, så olika källor med samma namn/revision/importdatum kan ha identiska alternativ i versionsväljaren. Desktop saknar exportknapp, så en liten lokal exporthjälpare används. Kalkyleditor, automatisk synk, fasta prislistor och offertflöde ingår i senare delsteg.
 
-Slutlig läsande granskning med tidapp-critical-review och tidapp_fullstack_reviewer är klar utan P0/P1. Kvarvarande P2 finns ovan. `git diff --check` är godkänd. Lokal commit kan förberedas; produktionsmigration och push väntar fortsatt på Ricks uttryckliga godkännande av detta underlag.
+Slutlig läsande granskning med tidapp-critical-review och tidapp_fullstack_reviewer är klar utan P0/P1. Kvarvarande P2 finns ovan. `git diff --check` är godkänd. Förnyad läsande leveranskontroll 2026-10-14 bekräftar oförändrad appkod och migrationsfil. Rick har godkänt produktionsmigration och push.

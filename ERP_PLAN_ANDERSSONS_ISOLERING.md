@@ -8,7 +8,7 @@ Detta avsnitt ersätter tidigare prioriteringar nedan. Rick har godkänt en steg
 | --- | --- | --- |
 | 0 | Bevara kalkylens källor, kod och databas; kontrollera TidApps backup och återställning. | Lokala kopior verifierade. Färsk TidApp-backup återställd och migration provad på kopian. |
 | 1 | Tillförlitlig tidskrivning, revisionsskydd vid rättelse/attest och intern ekonomi endast för ADMIN. | Driftsatt och efterkontrollerad 2026-10-13 efter Ricks godkännande. Appkod `df9a32b`; migration, Railway, Cloudflare och readiness verifierade. |
-| 2 | Kalkyl, fasta prislistor, offertversioner, koppling till projekt samt Ricks undantag från fullständiga veckor. | Veckoundantaget är driftsatt och aktiverat (`2816617`). Del 2A: import av låsta desktopkalkyler är implementerad och lokalt verifierad; ny produktionsmigration väntar på uttryckligt godkännande. Kalkyleditor, prislistor och offertflöde återstår. |
+| 2 | Kalkyl, fasta prislistor, offertversioner, koppling till projekt samt Ricks undantag från fullständiga veckor. | Veckoundantaget är driftsatt och aktiverat (`2816617`). Del 2A: import av låsta desktopkalkyler är implementerad och verifierad (`a755c0a`); migration och publicering godkända av Rick 2026-10-14. Kalkyleditor, prislistor och offertflöde återstår. |
 | 3 | Fakturarader, mottagning, materialpartier/FIFO, förbrukning, returer/krediter och full avstämning. | Senare, efter kalkylens grund. |
 | 4 | Enklare veckoflöden, kopiera vald dag, samlad teamattest och uppföljning. | Senare. |
 | 5 | ÄTA och frivillig mängdrapportering som arbetsledaren verifierar. | Senare. |
