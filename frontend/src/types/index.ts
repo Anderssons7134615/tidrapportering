@@ -146,7 +146,7 @@ export interface ProjectControlResponse {
 }
 
 export interface ProjectEconomy {
-  basis: 'APPROVED_TIME_AND_REPORTED_MATERIAL';
+  basis: 'APPROVED_TIME_INVOICES_AND_WAREHOUSE';
   reportedHours: number;
   approvedHours: number;
   unapprovedHours: number;

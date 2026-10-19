@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { addUtcDays, getDateOnlyInTimeZone, getWeekEndUtc, getWeekStartUtc } from './dateOnly.js';
+import { loadProjectPurchaseCosts } from './projectPurchaseCosts.js';
 
 export type ProjectComputedStatus =
   | 'PLANNED'
@@ -115,10 +116,10 @@ type EconomyEntry = {
   project?: { defaultRate?: number | null; customer?: { defaultRate?: number | null } | null } | null;
   activity?: { rateOverride?: number | null };
 };
-type EconomyMaterial = { quantity: number; purchasePrice?: number | null; unitPrice?: number | null };
+type EconomyMaterial = { quantity: number; purchasePrice?: number | null; unitPrice?: number | null; inventoryMovementId?: string | null };
 
 /** The same estimate is used in the work list, portfolio and project details. */
-export function summarizeProjectEconomy(project: EconomyProject, entries: EconomyEntry[], materials: EconomyMaterial[]) {
+export function summarizeProjectEconomy(project: EconomyProject, entries: EconomyEntry[], materials: EconomyMaterial[], confirmedPurchaseNetOre: number) {
   const approved = entries.filter((entry) => entry.status === 'APPROVED');
   const billable = approved.filter((entry) => entry.billable);
   const reportedHours = entries.reduce((sum, entry) => sum + entry.hours, 0);
@@ -126,27 +127,30 @@ export function summarizeProjectEconomy(project: EconomyProject, entries: Econom
   const billableHours = billable.reduce((sum, entry) => sum + entry.hours, 0);
   const missingCost = approved.some((entry) => getHourlyCostValue(entry) == null);
   const missingRate = billable.some((entry) => getRateValue(entry) == null);
-  const missingPurchasePrice = materials.some((item) => item.purchasePrice == null);
-  const missingSalesPrice = materials.some((item) => item.unitPrice == null);
+  const warehouseMaterials = materials.filter((item) => item.inventoryMovementId && item.quantity !== 0);
+  const missingPurchasePrice = warehouseMaterials.some((item) => item.purchasePrice == null);
+  const missingSalesPrice = materials.some((item) => item.quantity !== 0 && item.unitPrice == null);
   const laborCost = missingCost ? null : approved.reduce((sum, entry) => sum + entry.hours * getHourlyCost(entry), 0);
   const billableValue = missingRate ? null : billable.reduce((sum, entry) => sum + entry.hours * getRate(entry), 0);
-  const materialCost = missingPurchasePrice ? null : materials.reduce((sum, item) => sum + item.quantity * item.purchasePrice!, 0);
+  const warehouseCost = missingPurchasePrice ? null : warehouseMaterials.reduce((sum, item) => sum + item.quantity * item.purchasePrice!, 0);
+  const materialCost = warehouseCost == null ? null : confirmedPurchaseNetOre / 100 + warehouseCost;
   const materialSalesValue = missingSalesPrice ? null : materials.reduce((sum, item) => sum + item.quantity * item.unitPrice!, 0);
   const financials = calculateProjectFinancials({ ...project, billableValue, materialSalesValue, laborCost, materialCost });
   const warnings: string[] = [];
   if (missingCost) warnings.push('Timkostnad saknas');
-  if (missingPurchasePrice) warnings.push('Inköpspris saknas på material');
+  if (missingPurchasePrice) warnings.push('Inköpspris saknas på lageruttag');
+  if (materials.some((item) => !item.inventoryMovementId && item.quantity !== 0)) warnings.push('Materialåtgång räknas inte som extra kostnad. Kontrollera att projektets fakturor är inlagda och bekräftade.');
   if (project.billingModel === 'HOURLY' && missingRate) warnings.push('Timpris saknas för debiterbar tid');
   if (project.billingModel === 'HOURLY' && missingSalesPrice) warnings.push('Försäljningspris saknas på material');
   if (project.billingModel === 'FIXED' && project.fixedPrice == null) warnings.push('Fast pris saknas');
   if (!['FIXED', 'HOURLY'].includes(project.billingModel || '')) warnings.push('Projekttyp saknas eller är ogiltig');
   if (approved.some((entry) => !entry.financialSnapshotCapturedAt)) warnings.push('Äldre attesterad tid beräknas med aktuella priser');
   return {
-    basis: 'APPROVED_TIME_AND_REPORTED_MATERIAL' as const,
+    basis: 'APPROVED_TIME_INVOICES_AND_WAREHOUSE' as const,
     reportedHours, approvedHours, unapprovedHours: reportedHours - approvedHours,
     budgetHours: project.budgetHours ?? null,
     budgetUsagePercent: project.budgetHours ? reportedHours / project.budgetHours * 100 : null,
-    billableHours, billableValue, laborCost, materialCost, materialSalesValue,
+    billableHours, billableValue, laborCost, materialCost, materialSalesValue, warehouseCost,
     ...financials, warnings,
   };
 }
@@ -161,7 +165,7 @@ export async function getProjectMetrics(
   const weekEnd = getWeekEndUtc(weekStart);
   const nowMinus30Days = addUtcDays(referenceDay, -30);
 
-  const [entries, materials] = await Promise.all([
+  const [entries, materials, purchases] = await Promise.all([
     prisma.timeEntry.findMany({
       where: { projectId: project.id },
       include: {
@@ -173,13 +177,14 @@ export async function getProjectMetrics(
     prisma.projectMaterial.findMany({
       where: { projectId: project.id },
     }),
+    loadProjectPurchaseCosts(prisma, project.companyId, [project.id]),
   ]);
 
   const totalHours = entries.reduce((sum, entry) => sum + entry.hours, 0);
   const weekHours = entries
     .filter((entry) => entry.date >= weekStart && entry.date <= weekEnd)
     .reduce((sum, entry) => sum + entry.hours, 0);
-  const economy = summarizeProjectEconomy(project, entries, materials);
+  const economy = summarizeProjectEconomy(project, entries, materials, purchases.get(project.id) ?? 0);
   const { billableHours, billableValue, laborCost, materialCost, materialSalesValue, result: projectResult, marginPercent } = economy;
   const budgetUsagePercent = project.budgetHours ? (totalHours / project.budgetHours) * 100 : null;
   const lastActivityAt = entries.reduce<Date | null>((latest, entry) => {

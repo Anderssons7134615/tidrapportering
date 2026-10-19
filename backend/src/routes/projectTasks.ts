@@ -306,21 +306,11 @@ export function createProjectTaskRoutes(db: typeof prisma = prisma): FastifyPlug
   fastify.get('/project-portfolio', { preHandler: [requireRoles(portfolioRoles)] }, async (request) => {
     const companyId = request.user.companyId;
     const projects = await db.project.findMany({ where: { companyId, active: true }, include: { customer: { select: { id: true, name: true, defaultRate: true } } }, orderBy: { code: 'asc' } });
-    const canReadPurchases = request.user.role === 'ADMIN';
-    const [economies, purchases] = await Promise.all([
-      loadProjectEconomies(db, companyId, projects),
-      canReadPurchases && projects.length ? db.supplierInvoiceAllocation.groupBy({
-        by: ['projectId'],
-        where: { companyId, projectId: { in: projects.map((project) => project.id) }, invoice: { companyId, status: 'CONFIRMED' } },
-        _sum: { netOre: true },
-      }) : Promise.resolve([]),
-    ]);
-    const purchaseByProject = new Map(purchases.map((item) => [item.projectId, item._sum.netOre ?? 0]));
+    const economies = await loadProjectEconomies(db, companyId, projects);
     return projects.map((project) => ({
         project: { id: project.id, code: project.code, name: project.name, status: project.status, customer: project.customer ? { id: project.customer.id, name: project.customer.name } : null },
         billingModel: project.billingModel,
         ...economies.get(project.id)!,
-        ...(canReadPurchases ? { confirmedPurchaseNetOre: purchaseByProject.get(project.id) ?? 0 } : {}),
     }));
   });
   };

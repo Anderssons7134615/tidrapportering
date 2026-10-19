@@ -29,7 +29,7 @@ before(async () => {
 afterEach(() => { cleanup(); clients.forEach((client) => client.clear()); clients = []; requests = []; globalThis.fetch = originalFetch; });
 after(async () => { await vite?.close(); dom?.window.close(); });
 
-function setup({ status = 'DRAFT', failedSave = false, projectList = false, failedList = false, failedOriginal = false, failedRead = false, readResult = {}, listPath, suggestions = {}, header = {} } = {}) {
+function setup({ status = 'DRAFT', failedSave = false, projectList = false, failedList = false, failedOriginal = false, failedRead = false, readResult = {}, listPath, detailPath, suggestions = {}, header = {} } = {}) {
   let row = { ...invoice, status, suggestions, ...header };
   auth.useAuthStore.setState({ token: 'test-token', user: { id: 'u1', name: 'Test', role: 'ADMIN' } });
   globalThis.fetch = async (url, options = {}) => {
@@ -60,7 +60,7 @@ function setup({ status = 'DRAFT', failedSave = false, projectList = false, fail
     assert.fail(`Unexpected ${method} ${path}`);
   };
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 300000, gcTime: Infinity }, mutations: { retry: false, gcTime: 0 } } }); clients.push(client);
-  const router = createMemoryRouter([{ path: projectList ? '/projects/:id' : '/purchases/:id', element: projectList ? React.createElement(List, { projectId: 'p1' }) : React.createElement(Detail) }, { path: '/purchases', element: listPath ? React.createElement(List) : React.createElement('p', null, 'Tillbaka i listan') }], { initialEntries: ['/purchases', listPath || (projectList ? '/projects/p1?tab=purchases' : '/purchases/i1')], initialIndex: 1 });
+  const router = createMemoryRouter([{ path: projectList ? '/projects/:id' : '/purchases/:id', element: projectList ? React.createElement(List, { projectId: 'p1' }) : React.createElement(Detail) }, { path: '/purchases', element: listPath ? React.createElement(List) : React.createElement('p', null, 'Tillbaka i listan') }], { initialEntries: ['/purchases', listPath || detailPath || (projectList ? '/projects/p1?tab=purchases' : '/purchases/i1')], initialIndex: 1 });
   const view = render(React.createElement(QueryClientProvider, { client }, React.createElement(RouterProvider, { router })));
   return { view, client, router };
 }
@@ -147,6 +147,55 @@ test('project invoice filter preserves the project tab URL', async () => {
   fireEvent.change(view.getByLabelText('Visa'), { target: { value: 'DRAFT' } });
   await waitFor(() => assert.ok(requests.some((request) => request.query.get('status') === 'DRAFT' && request.query.get('projectId') === 'p1')));
   assert.equal(router.state.location.search, '?tab=purchases');
+});
+
+const projectAllocations = [
+  { projectId: 'p1', netOre: 3000, note: 'Egen del', project: { name: 'Testprojekt', code: '0042' } },
+  { projectId: 'p2', netOre: 2000, note: 'Annan del', project: { name: 'Annat projekt', code: '0043' } },
+];
+
+test('project invoice list omits the global remainder and shows only its allocated amount', async () => {
+  const { view } = setup({ projectList: true, header: { allocations: projectAllocations, unallocatedOre: 5000 } });
+  const link = await view.findByRole('link', { name: /Testleverantör/ });
+  assert.match(link.textContent, /30,00/);
+  assert.doesNotMatch(link.textContent, /kvar att fördela|50,00|100,00/);
+});
+
+test('project invoice detail is read only and hides other allocations and order parts', async () => {
+  const { view, router } = setup({ detailPath: '/purchases/i1?project=p1', header: { allocations: projectAllocations }, suggestions: {
+    orders: [{ orderNumber: 'OWN', netOre: 3000, pages: [1], customerReference: '0042' }, { orderNumber: 'OTHER', netOre: 2000, pages: [2], customerReference: '0043' }],
+    orderAssignments: [{ orderNumber: 'OWN', projectId: 'p1' }, { orderNumber: 'OTHER', projectId: 'p2' }],
+  } });
+  await view.findByText('Order OWN');
+  assert.equal(view.queryByText(/OTHER|Annat projekt|kvar att fördela/), null);
+  assert.equal(view.queryByRole('button', { name: 'Bekräfta faktura' }), null);
+  assert.equal(view.queryByLabelText('Netto, exkl. moms (kr)'), null);
+  assert.match(view.container.textContent, /30,00/);
+  assert.equal(requests.some((request) => request.method !== 'GET'), false);
+  fireEvent.click(view.getByRole('link', { name: 'Hantera hela fakturan' }));
+  await view.findByLabelText('Netto, exkl. moms (kr)');
+  assert.equal(router.state.location.search, '');
+});
+
+for (const [status, message] of [['CONFIRMED', 'Beloppet ingår i projektets inköpskostnad.'], ['VOID', 'Makulerad. Beloppet ingår inte i projektets kostnad.']]) {
+  test(`project credit detail has signed amount and correct ${status} cost status`, async () => {
+    const { view } = setup({ status, detailPath: '/purchases/i1?project=p1', header: { documentType: 'CREDIT', allocations: [{ ...projectAllocations[0], netOre: -3000 }] } });
+    await view.findByText(message);
+    assert.ok(view.getByRole('heading', { name: 'Kredit TEST-1' }));
+    assert.match(view.container.textContent, /[−-]30,00/);
+    assert.equal(view.queryByRole('button', { name: 'Makulera' }), null);
+  });
+}
+
+test('removed project allocation never falls back to the full invoice amount', async () => {
+  const { view } = setup({ detailPath: '/purchases/i1?project=p1', header: { allocations: [projectAllocations[1]] } });
+  await view.findByText('Ingen fördelning till det här projektet');
+  assert.doesNotMatch(view.container.textContent, /100,00|Annat projekt/);
+});
+
+test('global invoice list retains the remainder for allocation work', async () => {
+  const { view } = setup({ listPath: '/purchases' });
+  await view.findByText(/100,00.*kvar att fördela/);
 });
 test('konflikt behåller inmatningen och ingen bekräftelse skickas', async () => {
   const { view } = setup({ failedSave: true }); await view.findByLabelText('Leverantör');

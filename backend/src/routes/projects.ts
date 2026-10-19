@@ -4,6 +4,7 @@ import ExcelJS from 'exceljs';
 import { z } from 'zod';
 import { prisma as defaultPrisma } from '../lib/prisma.js';
 import { getProjectMetrics, getRate, summarizeProjectEconomy } from '../lib/projectMetrics.js';
+import { loadProjectPurchaseCosts } from '../lib/projectPurchaseCosts.js';
 import { enqueueMaterialChanged, enqueueProjectChanged, enqueueTimeEntryChanged } from '../lib/obsidianSync.js';
 import { requireRoles } from '../lib/authorization.js';
 import {
@@ -874,7 +875,7 @@ return async (fastify) => {
     if (!dateFilter) return reply.status(400).send({ error: 'Ange giltiga datum som YYYY-MM-DD där from inte är efter to' });
     const whereDate = Object.keys(dateFilter).length ? { date: dateFilter } : {};
 
-    const [approvedEntries, openEntryCount, materials] = await Promise.all([
+    const [approvedEntries, openEntryCount, materials, purchases] = await Promise.all([
       prisma.timeEntry.findMany({
         where: { projectId: id, status: 'APPROVED', ...whereDate },
         include: {
@@ -892,9 +893,10 @@ return async (fastify) => {
         include: { createdByUser: { select: { id: true, name: true } } },
         orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
       }),
+      loadProjectPurchaseCosts(prisma, request.user.companyId, [id], Object.keys(dateFilter).length ? dateFilter : undefined),
     ]);
 
-    const economy = summarizeProjectEconomy(project, approvedEntries, materials);
+    const economy = summarizeProjectEconomy(project, approvedEntries, materials, purchases.get(id) ?? 0);
     const { approvedHours: totalHours, billableHours, billableValue, laborCost, materialCost, materialSalesValue, revenue, result, marginPercent } = economy;
     const warnings = [...economy.warnings];
     if (openEntryCount > 0) warnings.push(`${openEntryCount} tidrader är inte attesterade`);
@@ -1151,7 +1153,7 @@ return async (fastify) => {
 
     const hoursVisible = canViewProjectHours(request.user.role, project.employeeCanSeeResults);
     const financialsVisible = canViewProjectFinancials(request.user.role);
-    const metrics = hoursVisible ? await getProjectMetrics(prisma, project) : null;
+    const metrics = financialsVisible ? await getProjectMetrics(prisma, project) : null;
 
     const stats = !hoursVisible
       ? null

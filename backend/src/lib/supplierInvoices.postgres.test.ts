@@ -246,7 +246,7 @@ test('PostgreSQL/Fastify: original bytes, dates, scoped totals and corrections s
   assert.equal((await app.inject({ url: listUrl })).json().confirmedProjectNetOre, 6000);
   assert.equal((await portfolio()).confirmedPurchaseNetOre, 6000);
   assert.equal(await draftCount(), 0);
-  // A real signed credit must subtract from purchases, without changing reported material/result.
+  // A real signed credit reduces project cost and increases the result.
   const uploadedCredit = await ctx.service.upload(ctx.actor, Buffer.from('%PDF-1.4 synthetic credit'), 'credit.pdf');
   const credit = await ctx.service.save(ctx.actor, uploadedCredit.invoice.id, {
     ...ctx.draft(uploadedCredit.invoice.revision), documentType: 'CREDIT', netOre: -10000, vatOre: -2500, grossOre: -12500,
@@ -255,14 +255,15 @@ test('PostgreSQL/Fastify: original bytes, dates, scoped totals and corrections s
   await ctx.service.transition(ctx.actor, credit.id, credit.revision, 'confirm');
   const withCredit = await portfolio();
   assert.equal(withCredit.confirmedPurchaseNetOre, 4500);
-  assert.equal(withCredit.materialCost, 0);
-  assert.equal(withCredit.result, 0);
-  const accountant = (await app.inject({ url: '/api/project-portfolio', headers: { 'x-test-role': 'ACCOUNTANT' } })).json();
-  assert.ok(accountant.every((row: any) => !('confirmedPurchaseNetOre' in row)));
+  assert.equal(withCredit.materialCost, 45);
+  assert.equal(withCredit.result, -45);
+  const accountant = await app.inject({ url: '/api/project-portfolio', headers: { 'x-test-role': 'ACCOUNTANT' } });
+  assert.equal(accountant.statusCode, 403);
   assert.deepEqual((await app.inject({ url: '/api/project-portfolio', headers: { 'x-test-company': randomUUID() } })).json(), []);
   const reopened = await app.inject({ method: 'POST', url: `${url}/reopen`, payload: { revision: confirmed.json().revision, reason: 'Check allocation' } });
   assert.equal(reopened.statusCode, 200);
   assert.equal((await app.inject({ url: listUrl })).json().confirmedProjectNetOre, -1500);
   assert.equal((await portfolio()).confirmedPurchaseNetOre, -1500);
+  assert.equal((await portfolio()).materialCost, -15);
   assert.equal(await draftCount(), 1);
 });

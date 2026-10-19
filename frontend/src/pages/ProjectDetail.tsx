@@ -360,7 +360,7 @@ export default function ProjectDetail() {
       <div className="flex flex-wrap gap-x-6 gap-y-2 border-y border-graphite-200 py-3 text-sm text-graphite-600">
         {canSeeMoney && <span><strong className="text-graphite-950">{metrics?.totalHours != null ? formatHours(metrics.totalHours) : '—'}</strong> rapporterat</span>}
         <span><strong className="text-graphite-950">{projectSummary?.totals.totalHours != null ? formatHours(projectSummary.totals.totalHours) : '—'}</strong> attesterat</span>
-        {canSeeMoney && <><span>{p.budgetHours != null ? `${formatHours(p.budgetHours)} timbudget` : 'Ingen timbudget'}</span><span>{formatCurrency(projectSummary?.totals.materialCost)} material enligt åtgång</span><span>{formatCurrency(result)} beräknat resultat</span></>}
+        {canSeeMoney && <><span>{p.budgetHours != null ? `${formatHours(p.budgetHours)} timbudget` : 'Ingen timbudget'}</span><span>{formatCurrency(projectSummary?.totals.materialCost)} inköp och lageruttag</span><span>{formatCurrency(result)} beräknat resultat</span></>}
       </div>
 
       <Tabs tabs={visibleTabs} active={activeTab} onChange={setActiveTab} label="Projektinnehåll">
@@ -399,9 +399,9 @@ export default function ProjectDetail() {
                 />
                 <Line label="Beräknad intäkt" value={formatCurrency(projectSummary?.totals.revenue)} />
                 <Line label="Arbetskostnad" value={formatCurrency(projectSummary?.totals.laborCost)} />
-                <Line label="Material enligt åtgång" value={formatCurrency(projectSummary?.totals.materialCost)} />
+                <Line label="Inköp och lageruttag" value={formatCurrency(projectSummary?.totals.materialCost)} />
                 <Line label="Beräknat resultat" value={formatCurrency(result)} strong tone={result != null && result < 0 ? 'red' : 'green'} />
-                <p className="pt-2 text-xs text-graphite-600">Attesterad tid och registrerad materialåtgång, exklusive moms. {p.billingModel === 'FIXED' ? 'Fastpriset omfattar hela arbetet; återstående kostnader ingår inte.' : 'Fakturerade och betalda belopp visas inte här.'}</p>
+                <p className="pt-2 text-xs text-graphite-600">Attesterad tid, bekräftade projektinköp och lageruttag, exklusive moms. Saknade fakturor och ej attesterad tid ingår inte. {p.billingModel === 'FIXED' ? 'Fastpriset omfattar hela arbetet; återstående kostnader ingår inte.' : 'Fakturerade och betalda belopp visas inte här.'}</p>
               </div>
             }
           </TaskSection>}
@@ -1148,14 +1148,14 @@ function SummaryPanel({ summary, project, canSeeMoney }: { summary?: ProjectSumm
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="section-title">Beräknad projektekonomi</h2>
-            <p className="mt-1 text-sm text-graphite-600">Attesterade timmar och registrerad materialåtgång, exklusive moms. {project.billingModel === 'FIXED' ? 'Hela fastpriset ingår, men bara hittills registrerade kostnader.' : 'Beloppen är inte hämtade från kundfakturor.'}</p>
+            <p className="mt-1 text-sm text-graphite-600">Attesterade timmar, bekräftade projektinköp och lageruttag, exklusive moms. Saknade fakturor och ej attesterad tid ingår inte. {project.billingModel === 'FIXED' ? 'Hela fastpriset ingår, men bara hittills registrerade kostnader.' : 'Beloppen är inte hämtade från kundfakturor.'}</p>
           </div>
           <StatusBadge label={isCompleted ? 'Avslutad' : 'Pågående'} tone={isCompleted ? 'gray' : 'green'} />
         </div>
         <div className="divide-y divide-graphite-200 text-sm">
           <Line label="Beräknad intäkt" value={formatCurrency(summary.totals.revenue)} />
           <Line label="Arbetskostnad" value={formatCurrency(summary.totals.laborCost)} />
-          <Line label="Material enligt åtgång" value={formatCurrency(summary.totals.materialCost)} />
+          <Line label="Inköp och lageruttag" value={formatCurrency(summary.totals.materialCost)} />
           <Line label="Beräknat resultat" value={result == null ? 'Underlag saknas' : formatCurrency(result)} strong tone={result != null && result < 0 ? 'red' : 'green'} />
           <Line label="Beräknad marginal" value={formatPercent(summary.totals.marginPercent)} />
         </div>

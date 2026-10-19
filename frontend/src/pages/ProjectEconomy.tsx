@@ -30,7 +30,7 @@ export default function ProjectEconomy() {
   if (isLoading) return <ListSkeleton />;
   return (
     <AppShell>
-      <PageHeader title="Projektekonomi" description="Beräknade belopp från attesterad tid och registrerad materialåtgång." action={user?.role !== 'ACCOUNTANT' ? <Link to="/projects" className="btn-secondary">Till projekten</Link> : undefined} />
+      <PageHeader title="Projektekonomi" description="Kostnader från attesterad tid, bekräftade projektinköp och lageruttag." action={user?.role !== 'ACCOUNTANT' ? <Link to="/projects" className="btn-secondary">Till projekten</Link> : undefined} />
       {isError ? <QueryError title="Projektekonomin kunde inte hämtas" description="Kontrollera anslutningen och försök igen." onRetry={() => void refetch()} /> : (
         <>
           <div className="mb-4 flex flex-wrap gap-x-6 gap-y-2 border-y border-graphite-200 py-3 text-sm text-graphite-600">
@@ -50,7 +50,7 @@ export default function ProjectEconomy() {
           </select>
           <label className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" checked={onlyIncomplete} onChange={(event) => setOnlyIncomplete(event.target.checked)} />Underlag att följa upp</label>
           </div>
-          <p className="mb-4 max-w-3xl text-sm text-graphite-600">Beloppen är exklusive moms. Fastpris visar avtalat pris minus hittills registrerade kostnader. Återstående arbete ingår inte. Fakturerat och betalt belopp saknas ännu.</p>
+          <p className="mb-4 max-w-3xl text-sm text-graphite-600">Beloppen är exklusive moms. Fastpris visar avtalat pris minus hittills registrerade kostnader. Bara bekräftade projektinköp och lageruttag räknas som materialkostnad. Saknade fakturor, ej attesterad tid och återstående arbete ingår inte. Fakturerat och betalt belopp saknas ännu.</p>
           {!rows.length ? <EmptyState title="Inga projekt matchar sökningen" /> : (
             <div className="data-list">
               {rows.map((item) => <article key={item.project.id} className="px-4 py-5 sm:px-6" aria-label={`${item.project.code} · ${item.project.name}`}>
@@ -63,7 +63,7 @@ export default function ProjectEconomy() {
                 </div>
                 <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 text-sm lg:grid-cols-4">
                   <div><dt className="text-graphite-600">Arbetskostnad</dt><dd className="mt-1 tabular-nums">{money(item.laborCost)}</dd></div>
-                  <div><dt className="text-graphite-600">Material enligt åtgång</dt><dd className="mt-1 tabular-nums">{money(item.materialCost)}</dd></div>
+                  <div><dt className="text-graphite-600">Inköp och lageruttag</dt><dd className="mt-1 tabular-nums">{money(item.materialCost)}</dd></div>
                   <div><dt className="text-graphite-600">Beräknad intäkt</dt><dd className="mt-1 tabular-nums">{money(item.revenue)}</dd></div>
                   <div><dt className="text-graphite-600">Beräknat resultat</dt><dd className={`mt-1 font-semibold tabular-nums ${item.result != null && item.result < 0 ? 'text-rose-700' : ''}`}>{money(item.result)}</dd></div>
                 </dl>
@@ -71,7 +71,7 @@ export default function ProjectEconomy() {
                   <Link className="text-link inline-flex min-h-11 flex-wrap items-center gap-x-2 gap-y-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500" to={`/projects/${item.project.id}?tab=purchases`}>
                     <span>Bekräftade inköp, exkl. moms:</span><span className="tabular-nums">{item.confirmedPurchaseNetOre == null ? 'Underlag saknas' : new Intl.NumberFormat('sv-SE', { style: 'currency', currency: 'SEK', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(item.confirmedPurchaseNetOre / 100)}</span>
                   </Link>
-                  <p className="text-xs text-graphite-600">Visas separat från materialåtgången och läggs inte till i resultatet.</p>
+                  <p className="text-xs text-graphite-600">Ingår i kostnaden ovan. Lageruttag tillkommer; vanlig materialåtgång räknas inte en gång till.</p>
                 </div>}
                 {item.warnings.length > 0 && <p className="mt-3 text-sm text-amber-800">{item.warnings.join(' · ')}</p>}
               </article>)}

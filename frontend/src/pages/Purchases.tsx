@@ -51,7 +51,7 @@ export function InvoiceList({ projectId }: { projectId?: string }) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0"><h2 className="section-title">{projectId ? 'Projektets inköp' : 'Leverantörsfakturor'}</h2>
           {projectId && query.data && <p className="mt-1 text-lg font-semibold tabular-nums">{money(query.data.confirmedProjectNetOre)} <span className="text-sm font-normal">bekräftat, exkl. moms</span></p>}
-          <p className="mt-1 text-sm text-graphite-600">{projectId ? 'Inköp visas separat från registrerad materialåtgång och ingår inte en gång till i projektresultatet.' : 'Läs in PDF så sparas säkra projektträffar automatiskt. Lager och okända order sparas separat. Bekräftelse här bokför eller betalar inte fakturan.'}</p>
+          <p className="mt-1 text-sm text-graphite-600">{projectId ? 'Här visas bara projektets del av varje faktura. Bekräftade inköp ingår i projektets ekonomi.' : 'Läs in PDF så sparas säkra projektträffar automatiskt. Lager och okända order sparas separat. Bekräftelse här bokför eller betalar inte fakturan.'}</p>
         </div>
         <Button type="button" onClick={() => fileInput.current?.click()} isLoading={upload.isPending}><Upload size={17} aria-hidden="true" />Läs in PDF</Button>
         <input ref={fileInput} type="file" accept="application/pdf,.pdf" className="hidden" onChange={(event) => {
@@ -71,7 +71,7 @@ export function InvoiceList({ projectId }: { projectId?: string }) {
       {query.data.items.map((invoice) => <Link key={invoice.id} to={`/purchases/${invoice.id}${projectId ? `?project=${encodeURIComponent(projectId)}` : ''}`} className="flex min-h-20 flex-wrap items-center justify-between gap-3 p-4 hover:bg-graphite-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-500">
         <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><span className="font-semibold break-words">{invoice.supplierName || 'Leverantör saknas'}</span><InvoiceBadge status={invoice.status} /></div>
           <p className="mt-1 break-words text-sm text-graphite-600">{invoice.documentType === 'CREDIT' ? 'Kredit ' : 'Faktura '}{invoice.invoiceNumber || 'utan nummer'} · {invoice.issueDate ? formatDate(invoice.issueDate) : 'Datum saknas'}</p>
-          <p className="mt-1 text-sm">{invoice.unallocatedOre == null ? 'Nettobelopp saknas' : invoice.unallocatedOre !== 0 ? `${money(invoice.unallocatedOre)} kvar att fördela` : 'Helt fördelad'}</p>
+          {!projectId && <p className="mt-1 text-sm">{invoice.unallocatedOre == null ? 'Nettobelopp saknas' : invoice.unallocatedOre !== 0 ? `${money(invoice.unallocatedOre)} kvar att fördela` : 'Helt fördelad'}</p>}
         </div><span className="text-right font-semibold tabular-nums">{money(projectId ? invoice.allocations.find((row) => row.projectId === projectId)?.netOre ?? null : invoice.netOre)}<span className="block text-xs font-normal">exkl. moms</span></span>
       </Link>)}
     </div>}
@@ -85,8 +85,28 @@ export function PurchaseDetail() {
   const projectId = searchParams.get('project');
   const query = useQuery({ queryKey: ['supplier-invoice', id], queryFn: () => supplierInvoicesApi.get(id), refetchOnWindowFocus: false, refetchOnReconnect: false });
   return <AppShell><Link to={projectId ? `/projects/${encodeURIComponent(projectId)}?tab=purchases` : '/purchases'} className="text-link inline-flex min-h-11 items-center gap-2"><ArrowLeft size={16} aria-hidden="true" />{projectId ? 'Till projektets inköp' : 'Alla inköp'}</Link>
-    {query.isLoading ? <TaskSection><p role="status">Laddar faktura…</p></TaskSection> : query.isError ? <QueryError title="Fakturan kunde inte hämtas" onRetry={() => void query.refetch()} /> : query.data && <InvoiceEditor key={`${query.data.id}:${query.data.revision}`} invoice={query.data} />}
+    {query.isLoading ? <TaskSection><p role="status">Laddar faktura…</p></TaskSection> : query.isError ? <QueryError title="Fakturan kunde inte hämtas" onRetry={() => void query.refetch()} /> : query.data && (projectId ? <ProjectInvoice invoice={query.data} projectId={projectId} /> : <InvoiceEditor key={`${query.data.id}:${query.data.revision}`} invoice={query.data} />)}
   </AppShell>;
+}
+
+function ProjectInvoice({ invoice, projectId }: { invoice: SupplierInvoice; projectId: string }) {
+  const allocation = invoice.allocations.find((row) => row.projectId === projectId);
+  const assignedOrders = new Set(invoice.suggestions?.orderAssignments?.filter((row) => row.projectId === projectId).map((row) => row.orderNumber));
+  const orders = (invoice.suggestions?.orders || []).filter((row) => assignedOrders.has(row.orderNumber));
+  return <>
+    <PageHeader title={invoice.invoiceNumber ? `${invoice.documentType === 'CREDIT' ? 'Kredit' : 'Faktura'} ${invoice.invoiceNumber}` : 'Projektets fakturadel'} description={invoice.supplierName || 'Leverantör saknas'} />
+    <div className="flex flex-wrap items-center gap-3"><InvoiceBadge status={invoice.status} /><span className="text-sm">{invoice.issueDate ? formatDate(invoice.issueDate) : 'Datum saknas'}</span></div>
+    {allocation ? <>
+      <TaskSection title={`${allocation.project.code} · ${allocation.project.name}`}>
+        <p className="text-lg font-semibold tabular-nums">{money(allocation.netOre)} <span className="text-sm font-normal">exkl. moms</span></p>
+        <p className="mt-2 text-sm text-graphite-600">{invoice.status === 'CONFIRMED' ? 'Beloppet ingår i projektets inköpskostnad.' : invoice.status === 'VOID' ? 'Makulerad. Beloppet ingår inte i projektets kostnad.' : 'Inväntar bekräftelse och ingår ännu inte i projektets kostnad.'}</p>
+        {allocation.note && <p className="mt-2 whitespace-pre-wrap break-words text-sm">{allocation.note}</p>}
+      </TaskSection>
+      {orders.length > 0 && <TaskSection title="Projektets orderdelar"><div className="divide-y divide-graphite-200">{orders.map((order) => <div key={order.orderNumber} className="flex flex-wrap justify-between gap-3 py-3"><span className="break-words">Order {order.orderNumber}</span><span className="tabular-nums">{money(order.netOre)}</span></div>)}</div></TaskSection>}
+    </> : <EmptyState title="Ingen fördelning till det här projektet" description="Fakturan har ingen sparad del för projektet." />}
+    <Link className="btn-secondary inline-flex min-h-11 items-center" to={`/purchases/${invoice.id}`}>Hantera hela fakturan</Link>
+    <p className="text-sm text-graphite-600">Kontrollera original, fördela och bekräfta i den gemensamma inköpsvyn.</p>
+  </>;
 }
 
 function InvoiceEditor({ invoice }: { invoice: SupplierInvoice }) {
@@ -165,7 +185,7 @@ function InvoiceEditor({ invoice }: { invoice: SupplierInvoice }) {
           {textField('net', 'Netto, exkl. moms (kr)')}{textField('vat', 'Moms (kr)')}{textField('rounding', 'Öresavrundning (kr)')}{textField('gross', 'Totalbelopp (kr)')}
         </div><p className="mt-3 text-sm text-graphite-600">Kreditbelopp anges med minus. Leverantörens organisationsnummer används för att upptäcka dubbletter.</p></TaskSection>
         <TaskSection title="Fördela på projekt">
-          <p className="mb-4 text-sm text-graphite-600">Fördela nettobeloppet, exklusive moms. Samma faktura kan höra till flera projekt.</p>
+          <p className="mb-4 text-sm text-graphite-600">Fördela direkta projektinköp exklusive moms. Samma faktura kan höra till flera projekt. Lagerinköp lämnas utan projekt och räknas som projektkostnad först vid lageruttag.</p>
           {projects.isError && <QueryError title="Projektlistan kunde inte hämtas" onRetry={() => void projects.refetch()} />}
           {orders.length > 0 && <div ref={orderSectionRef} tabIndex={-1} className="mb-4 space-y-3">
             <h3 className="font-semibold">Orderdelar från originalet</h3>

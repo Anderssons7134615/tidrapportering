@@ -36,7 +36,7 @@ async function appWith(db: any) {
     if (error instanceof ZodError) return reply.status(400).send({ error: error.issues[0]?.message });
     return reply.status(500).send({ error: error instanceof Error ? error.message : 'Okänt testfel' });
   });
-  await app.register(createProjectTaskRoutes({ supplierInvoice: { count: async () => 0 }, ...db }), { prefix: '/api' });
+  await app.register(createProjectTaskRoutes({ supplierInvoice: { count: async () => 0 }, supplierInvoiceAllocation: { groupBy: async () => [] }, ...db }), { prefix: '/api' });
   return app;
 }
 
@@ -227,7 +227,7 @@ test('work queue includes scoped economy only for managers, never in employee JS
       const response = await app.inject({ method: 'GET', url: '/api/project-control/projects', headers: { 'x-test-role': role } });
       assert.equal(response.statusCode, 200);
       const { economy } = response.json().items[0];
-      assert.equal(economy.basis, 'APPROVED_TIME_AND_REPORTED_MATERIAL');
+      assert.equal(economy.basis, 'APPROVED_TIME_INVOICES_AND_WAREHOUSE');
       assert.equal(economy.approvedHours, 4);
       assert.equal(economy.laborCost, null);
       assert.equal(economy.result, null);
@@ -262,7 +262,7 @@ test('company invoice drafts remain visible with no matching projects, only to m
   } finally { await app.close(); }
 });
 
-test('portfolio purchases are signed ore, company scoped and excluded from accountant data and results', async () => {
+test('portfolio credits reduce cost and increase result within company scope; non-admins are blocked', async () => {
   const calls: any[] = [];
   const project = { id: 'p1', code: '42', name: 'Projekt', status: 'ONGOING', billingModel: 'HOURLY', customer: null };
   const app = await appWith({
@@ -275,9 +275,9 @@ test('portfolio purchases are signed ore, company scoped and excluded from accou
       const response = await app.inject({ url: '/api/project-portfolio', headers: { 'x-test-role': role } });
       assert.equal(response.statusCode, 200);
       assert.deepEqual(response.json().map((row: any) => row.confirmedPurchaseNetOre), [-12345, 0]);
-      assert.ok(response.json().every((row: any) => row.materialCost === 0 && row.result === 0));
+      assert.deepEqual(response.json().map((row: any) => [row.materialCost, row.result]), [[-123.45, 123.45], [0, 0]]);
     }
-    assert.deepEqual(calls[0], { by: ['projectId'], where: { companyId: 'company-a', projectId: { in: ['p1', 'p2'] }, invoice: { companyId: 'company-a', status: 'CONFIRMED' } }, _sum: { netOre: true } });
+    assert.deepEqual(calls[0], { by: ['projectId'], where: { companyId: 'company-a', projectId: { in: ['p1', 'p2'] }, project: { companyId: 'company-a' }, invoice: { companyId: 'company-a', status: 'CONFIRMED' } }, _sum: { netOre: true } });
     const accountant = await app.inject({ url: '/api/project-portfolio', headers: { 'x-test-role': 'ACCOUNTANT' } });
     assert.equal(accountant.statusCode, 403);
     assert.equal((await app.inject({ url: '/api/project-portfolio', headers: { 'x-test-role': 'SUPERVISOR' } })).statusCode, 403);

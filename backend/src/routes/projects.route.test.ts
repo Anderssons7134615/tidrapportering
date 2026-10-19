@@ -5,6 +5,41 @@ import { createProjectRoutes } from './projects.js';
 
 const baseline = { id: 'project-1', companyId: 'company-a', name: 'Testprojekt', code: '0042', status: 'ONGOING', active: true, site: 'Plats', notes: 'Anteckning', budgetHours: 80, customerId: null };
 
+test('summary uses confirmed direct purchases and net warehouse issues, with invoice dates matching the period', async () => {
+  const invoiceQueries: any[] = [];
+  const db: any = {
+    project: { findUnique: async () => ({ ...baseline, billingModel: 'FIXED', fixedPrice: 1000 }) },
+    timeEntry: { findMany: async () => [], count: async () => 0 },
+    projectMaterial: { findMany: async () => [
+      { id: 'manual', quantity: 2, purchasePrice: 500, unitPrice: 600, inventoryMovementId: null },
+      { id: 'warehouse', quantity: 1.5, purchasePrice: 100, unitPrice: 150, inventoryMovementId: 'issue' },
+    ] },
+    supplierInvoiceAllocation: { groupBy: async (query: any) => { invoiceQueries.push(query); return [{ projectId: baseline.id, _sum: { netOre: 12345 } }]; } },
+  };
+  const app = Fastify();
+  app.decorate('authenticate', async (request: any) => { request.user = { id: 'admin', companyId: 'company-a', role: request.headers['x-role'] || 'ADMIN' }; });
+  await app.register(createProjectRoutes(db), { prefix: '/api/projects' });
+  try {
+    for (const suffix of ['', '?from=2026-10-01&to=2026-10-31']) {
+      const response = await app.inject({ url: `/api/projects/${baseline.id}/summary${suffix}` });
+      assert.equal(response.statusCode, 200, response.body);
+      assert.equal(response.json().totals.materialCost, 273.45);
+      assert.equal(response.json().totals.result, 726.55);
+      assert.match(response.json().warnings.join(' '), /Materialåtgång räknas inte/);
+    }
+    const expected = { companyId: 'company-a', projectId: { in: [baseline.id] }, project: { companyId: 'company-a' }, invoice: { companyId: 'company-a', status: 'CONFIRMED' } };
+    assert.deepEqual(invoiceQueries[0].where, expected);
+    assert.deepEqual(invoiceQueries[1].where, { ...expected, invoice: { ...expected.invoice, issueDate: { gte: new Date('2026-10-01T00:00:00.000Z'), lte: new Date('2026-10-31T23:59:59.999Z') } } });
+    const supervisor = await app.inject({ url: `/api/projects/${baseline.id}/summary`, headers: { 'x-role': 'SUPERVISOR' } });
+    assert.equal(supervisor.statusCode, 200);
+    assert.equal(supervisor.json().totals.materialCost, null);
+    assert.equal(invoiceQueries.length, 2);
+    const invalid = await app.inject({ url: `/api/projects/${baseline.id}/summary?from=2026-10-31&to=2026-10-01` });
+    assert.equal(invalid.statusCode, 400);
+    assert.equal(invoiceQueries.length, 2);
+  } finally { await app.close(); }
+});
+
 test('project choices keep company and active scope without financial or metrics queries', async () => {
   const calls: any[] = [];
   const choices = [{ id: 'project-1', code: '0042', name: 'Testprojekt', customer: { id: 'customer-1', name: 'Testkund' } }];
