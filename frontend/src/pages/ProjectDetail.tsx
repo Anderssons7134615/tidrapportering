@@ -1,44 +1,22 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, ArrowLeft, Bot, Check, CheckCircle2, Edit2, FileSpreadsheet, ListTodo, MessageSquareText, Plus, Search, Trash2, Upload, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Bot, Check, CheckCircle2, Edit2, ListTodo, MessageSquareText, Plus } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { projectsApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
-import type { MaterialArticle, Project, ProjectMaterial, ProjectSummary, ProjectUpdate, ProjectUpdateType, TimeEntry } from '../types';
-import { AppShell, Button, ConfirmDialog, DataList, DataRow, DataTable, EmptyState, FormField, PageHeader, StatusBadge, Tabs, TaskSection } from '../components/ui/design';
+import type { Project, ProjectSummary, ProjectUpdate, ProjectUpdateType, TimeEntry } from '../types';
+import { AppShell, Button, DataList, DataRow, DataTable, EmptyState, FormField, PageHeader, StatusBadge, Tabs, TaskSection } from '../components/ui/design';
 import { QueryError } from '../components/ui/QueryError';
-import { formatCurrency, formatDate, formatHours, formatPercent, parseSwedishNumber, toDateInputValue } from '../utils/format';
-import { searchMaterialArticles } from '../utils/materialSearch';
-import { canModifyProjectMaterial, getProjectQueryAccess } from '../utils/frontendGuards';
+import { formatCurrency, formatDate, formatHours, formatPercent, toDateInputValue } from '../utils/format';
+import { getProjectQueryAccess } from '../utils/frontendGuards';
 import { ProjectDialog } from '../components/ProjectDialog';
-import { refreshProjectQueries } from '../utils/projectQueries';
-const InvoiceList = lazy(() => import('./Purchases').then((module) => ({ default: module.InvoiceList })));
-const ProjectCalculations = lazy(() => import('./ProjectCalculations'));
-
 const tabs = [
   { id: 'overview', label: 'Översikt' },
-  { id: 'materials', label: 'Material' },
-  { id: 'purchases', label: 'Inköp' },
-  { id: 'calculation', label: 'Kalkyl' },
   { id: 'hours', label: 'Tid' },
   { id: 'summary', label: 'Ekonomi' },
   { id: 'notes', label: 'Dagbok' },
 ];
-
-type MaterialForm = {
-  articleId: string;
-  quantity: string;
-  date: string;
-  note: string;
-};
-
-const emptyMaterialForm = (): MaterialForm => ({
-  articleId: '',
-  quantity: '',
-  date: toDateInputValue(new Date()),
-  note: '',
-});
 
 type ProjectUpdateForm = {
   type: ProjectUpdateType;
@@ -56,18 +34,11 @@ export default function ProjectDetail() {
   const { id = '' } = useParams();
   const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const { user } = useAuthStore();
   const isAdmin = user?.role === 'ADMIN';
   const isManager = user?.role === 'ADMIN' || user?.role === 'SUPERVISOR';
-  const [activeTab, setActiveTab] = useState(isAdmin && ['purchases', 'calculation'].includes(searchParams.get('tab') || '') ? searchParams.get('tab')! : 'overview');
+  const [activeTab, setActiveTab] = useState('overview');
   const [editingProject, setEditingProject] = useState(false);
-  const [materialForm, setMaterialForm] = useState<MaterialForm>(emptyMaterialForm);
-  const [editingMaterial, setEditingMaterial] = useState<ProjectMaterial | null>(null);
-  const [deletingMaterial, setDeletingMaterial] = useState<ProjectMaterial | null>(null);
-  const [importErrors, setImportErrors] = useState<Array<{ row: number; message: string }>>([]);
-  const [materialSearch, setMaterialSearch] = useState('');
-  const [materialPickerOpen, setMaterialPickerOpen] = useState(false);
   const [projectUpdateForm, setProjectUpdateForm] = useState<ProjectUpdateForm>(emptyProjectUpdateForm);
 
   const { data: project, isLoading, isError: projectFailed, error: projectError, refetch: refetchProject } = useQuery({
@@ -102,23 +73,6 @@ export default function ProjectDetail() {
   });
 
   const {
-    data: materialArticles,
-    isLoading: isLoadingMaterialArticles,
-    isError: materialArticlesFailed,
-    refetch: refetchMaterialArticles,
-  } = useQuery({
-    queryKey: ['material-articles', 'active'],
-    queryFn: () => projectsApi.listMaterialArticles(true),
-    enabled: !!id && activeTab === 'materials',
-  });
-
-  const { data: materialsResponse, isLoading: materialsLoading, isError: materialsFailed, refetch: refetchMaterials } = useQuery({
-    queryKey: ['project', id, 'materials'],
-    queryFn: () => projectsApi.listMaterials(id),
-    enabled: !!id && activeTab === 'materials',
-  });
-
-  const {
     data: projectUpdates,
     isLoading: isLoadingProjectUpdates,
     isError: projectUpdatesFailed,
@@ -132,114 +86,14 @@ export default function ProjectDetail() {
   const p = project as Project | undefined;
   const metrics = p?.metrics;
   const entries = (timeEntries || []) as TimeEntry[];
-  const materials = materialsResponse?.items || [];
-  const activeMaterialArticles = (materialArticles || []) as MaterialArticle[];
   const projectSummary = summary as ProjectSummary | undefined;
   const updates = (projectUpdates || []) as ProjectUpdate[];
   const canSeeMoney = isAdmin && Boolean(
     p?.financialsVisibleToCurrentUser
-      || materialsResponse?.costVisibleToCurrentUser
       || projectSummary?.financialsVisibleToCurrentUser
   );
   const hoursOnly = Boolean(p?.hoursVisibleToCurrentUser && !canSeeMoney);
-  const visibleTabs = tabs.filter((tab) => (tab.id !== 'summary' || canSeeMoney) && (!['purchases', 'calculation'].includes(tab.id) || isAdmin));
-  const selectedMaterialArticle = activeMaterialArticles.find((article) => article.id === materialForm.articleId);
-
-  const handleMaterialMutationError = (error: Error) => {
-    const code = (error as Error & { code?: string }).code;
-    const message = code === 'PROJECT_INACTIVE'
-      ? 'Projektet är inaktivt. Materialhistoriken kan läsas men inte ändras.'
-      : code === 'MATERIAL_INVOICED'
-        ? 'Materialraden är fakturerad och kan inte ändras eller tas bort.'
-        : error.message;
-    if (code === 'PROJECT_INACTIVE' || code === 'MATERIAL_INVOICED') {
-      void queryClient.invalidateQueries({ queryKey: ['project', id, 'materials'] });
-    }
-    toast.error(message);
-  };
-
-  const recentMaterialArticles = useMemo(() => {
-    const seen = new Set<string>();
-    const recent: MaterialArticle[] = [];
-
-    for (const material of materials) {
-      if (seen.has(material.articleId)) continue;
-      const article = activeMaterialArticles.find((candidate) => candidate.id === material.articleId);
-      if (!article) continue;
-      seen.add(article.id);
-      recent.push(article);
-      if (recent.length === 6) break;
-    }
-
-    return recent;
-  }, [activeMaterialArticles, materials]);
-
-  const materialMatches = useMemo(() => (
-    materialSearch.trim()
-      ? searchMaterialArticles(activeMaterialArticles, materialSearch).slice(0, 12)
-      : recentMaterialArticles
-  ), [activeMaterialArticles, materialSearch, recentMaterialArticles]);
-
-  const createMaterialMutation = useMutation({
-    mutationFn: () => projectsApi.createMaterial(id, {
-      articleId: materialForm.articleId,
-      quantity: parseSwedishNumber(materialForm.quantity),
-      date: new Date(`${materialForm.date}T12:00:00`).toISOString(),
-      note: materialForm.note || undefined,
-    }),
-    onSuccess: () => {
-      toast.success('Material sparat');
-      setMaterialForm(emptyMaterialForm());
-      setMaterialSearch('');
-      setMaterialPickerOpen(false);
-      void refreshProjectQueries(queryClient);
-    },
-    onError: handleMaterialMutationError,
-  });
-
-  const updateMaterialMutation = useMutation({
-    mutationFn: () => {
-      if (!editingMaterial) throw new Error('Ingen materialrad vald');
-      return projectsApi.updateMaterial(id, editingMaterial.id, {
-        quantity: parseSwedishNumber(materialForm.quantity),
-        date: new Date(`${materialForm.date}T12:00:00`).toISOString(),
-        note: materialForm.note || null,
-      });
-    },
-    onSuccess: () => {
-      toast.success('Materialrad uppdaterad');
-      setEditingMaterial(null);
-      setMaterialForm(emptyMaterialForm());
-      setMaterialSearch('');
-      setMaterialPickerOpen(false);
-      void refreshProjectQueries(queryClient);
-    },
-    onError: handleMaterialMutationError,
-  });
-
-  const deleteMaterialMutation = useMutation({
-    mutationFn: (materialId: string) => projectsApi.deleteMaterial(id, materialId),
-    onSuccess: () => {
-      toast.success('Materialrad borttagen');
-      setDeletingMaterial(null);
-      void refreshProjectQueries(queryClient);
-    },
-    onError: handleMaterialMutationError,
-  });
-
-  const importMutation = useMutation({
-    mutationFn: (file: File) => projectsApi.importProjectMaterialsExcel(id, file),
-    onSuccess: (result) => {
-      setImportErrors(result.errors || []);
-      toast.success(`Importerade ${result.imported} materialrader`);
-      void refreshProjectQueries(queryClient);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    },
-    onError: async (error: Error) => {
-      setImportErrors(((error as any).errors || []) as Array<{ row: number; message: string }>);
-      handleMaterialMutationError(error);
-    },
-  });
+  const visibleTabs = tabs.filter(tab => tab.id !== 'summary' || canSeeMoney);
 
   const createProjectUpdateMutation = useMutation({
     mutationFn: () => projectsApi.createUpdate(id, {
@@ -269,38 +123,6 @@ export default function ProjectDetail() {
 
   const budgetUsage = metrics?.budgetUsagePercent ?? null;
   const result = projectSummary?.totals.result ?? null;
-
-  const startEditMaterial = (item: ProjectMaterial) => {
-    setEditingMaterial(item);
-    setMaterialForm({
-      articleId: item.articleId,
-      quantity: String(item.quantity).replace('.', ','),
-      date: toDateInputValue(item.date),
-      note: item.note || '',
-    });
-    setMaterialSearch(item.articleName);
-    setMaterialPickerOpen(false);
-    setActiveTab('materials');
-  };
-
-  const cancelEditMaterial = () => {
-    setEditingMaterial(null);
-    setMaterialForm(emptyMaterialForm());
-    setMaterialSearch('');
-    setMaterialPickerOpen(false);
-  };
-
-  const selectMaterialArticle = (article: MaterialArticle) => {
-    setMaterialForm((current) => ({ ...current, articleId: article.id }));
-    setMaterialSearch(article.name);
-    setMaterialPickerOpen(false);
-  };
-
-  const onMaterialSubmit = (event: React.FormEvent) => {
-    event.preventDefault();
-    if (editingMaterial) updateMaterialMutation.mutate();
-    else createMaterialMutation.mutate();
-  };
 
   if (isLoading) return <TaskSection>Laddar projekt...</TaskSection>;
 
@@ -335,24 +157,17 @@ export default function ProjectDetail() {
           <div className="flex flex-wrap items-center gap-2">
             {isManager && <button type="button" className="btn-primary" onClick={() => setEditingProject(true)}><Edit2 className="h-4 w-4" aria-hidden="true" />Redigera projekt</button>}
             {metrics?.status && <StatusBadge label={metrics.status.label} tone={metrics.status.tone} />}
-            {isManager && p.active && (
-              <button type="button" className="btn-secondary" onClick={() => setActiveTab('materials')}>
-                <Plus className="h-4 w-4" />
-                Lägg material
-              </button>
-            )}
           </div>
         }
       />
 
-      {(summaryFailed || (activeTab === 'hours' && canLoadTimeEntries && timeEntriesFailed) || (activeTab === 'materials' && materialsFailed)) && (
+      {(summaryFailed || (activeTab === 'hours' && canLoadTimeEntries && timeEntriesFailed)) && (
         <QueryError
           title="Delar av projektet kunde inte hämtas"
-          description="Vissa timmar, material eller ekonomivärden kan saknas. Försök igen innan du använder sammanställningen."
+          description="Vissa timmar eller ekonomivärden kan saknas. Försök igen innan du använder sammanställningen."
           onRetry={() => {
             void refetchSummary();
             if (activeTab === 'hours' && canLoadTimeEntries) void refetchTimeEntries();
-            if (activeTab === 'materials') void refetchMaterials();
           }}
         />
       )}
@@ -364,8 +179,6 @@ export default function ProjectDetail() {
       </div>
 
       <Tabs tabs={visibleTabs} active={activeTab} onChange={setActiveTab} label="Projektinnehåll">
-      {activeTab === 'purchases' && isAdmin && <Suspense fallback={<p role="status">Laddar inköp…</p>}><InvoiceList projectId={id} /></Suspense>}
-      {activeTab === 'calculation' && isAdmin && <Suspense fallback={<p role="status">Laddar kalkyl…</p>}><ProjectCalculations key={id} projectId={id} projectName={`${p.code} · ${p.name}`} active={p.active} /></Suspense>}
 
       {(activeTab === 'overview' || activeTab === 'summary') && summaryLoading && <TaskSection><p role="status">Laddar sammanställning…</p></TaskSection>}
       {activeTab === 'overview' && !summaryLoading && !summaryFailed && (
@@ -427,151 +240,6 @@ export default function ProjectDetail() {
             )}
           </TaskSection>
         </div>
-      )}
-
-      {activeTab === 'materials' && materialsLoading && <TaskSection><p role="status">Laddar material…</p></TaskSection>}
-      {activeTab === 'materials' && !materialsLoading && !materialsFailed && (
-        <TaskSection>
-          <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <h2 className="section-title">Registrera material</h2>
-              <p className="mt-1 text-sm text-slate-500">Sök fram artikeln, ange antal och spara. Datumet är förvalt till idag.</p>
-            </div>
-            {isAdmin && p.active && (
-              <div className="flex flex-wrap gap-2">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".xlsx,.xls"
-                  className="hidden"
-                  onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    if (file) importMutation.mutate(file);
-                  }}
-                />
-                <button type="button" className="btn-secondary" onClick={() => fileInputRef.current?.click()} disabled={importMutation.isPending}>
-                  <Upload className="h-4 w-4" />
-                  {importMutation.isPending ? 'Importerar...' : 'Importera Excel'}
-                </button>
-                <button type="button" className="btn-secondary" onClick={async () => {
-                  const blob = await projectsApi.downloadMaterialTemplate();
-                  downloadBlob(blob, 'materialmall.xlsx');
-                }}>
-                  <FileSpreadsheet className="h-4 w-4" />
-                  Mall
-                </button>
-              </div>
-            )}
-          </div>
-
-          {!p.active && (
-            <div className="mb-4 border-y border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950" role="status">
-              Projektet är inaktivt. Materialhistoriken kan läsas, men material kan inte registreras, importeras, ändras eller tas bort.
-            </div>
-          )}
-
-          {importErrors.length > 0 && (
-            <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-              <p className="font-semibold">Importen gav radfel</p>
-              <ul className="mt-2 space-y-1">
-                {importErrors.map((error) => <li key={`${error.row}-${error.message}`}>Rad {error.row}: {error.message}</li>)}
-              </ul>
-            </div>
-          )}
-
-          <div className="material-inline-summary">
-            <span><strong>{materials.length.toLocaleString('sv-SE')}</strong> materialrader</span>
-            <span><strong>{(materialsResponse?.totals.quantity || 0).toLocaleString('sv-SE')}</strong> totalt antal</span>
-            {canSeeMoney && <span><strong>{formatCurrency(materialsResponse?.totals.amount)}</strong> materialkostnad</span>}
-          </div>
-
-          {isLoadingMaterialArticles ? (
-            <p className="mb-5 border-y border-graphite-200 py-5 text-sm text-graphite-600" role="status">
-              Laddar materialregister...
-            </p>
-          ) : materialArticlesFailed ? (
-            <div className="mb-5">
-              <QueryError
-                title="Materialregistret kunde inte hämtas"
-                description="Kontrollera anslutningen och försök igen. Inget har ändrats på projektet."
-                onRetry={() => void refetchMaterialArticles()}
-              />
-            </div>
-          ) : !activeMaterialArticles.length ? (
-            <div className="mb-5">
-              <EmptyState
-                title="Materialregistret är tomt"
-                description={isManager ? 'Importera prislistan under Material innan material kan registreras på projekt.' : 'Be en arbetsledare importera företagets materialregister.'}
-              />
-              {isAdmin && <Link to="/materials" className="text-link mt-3 inline-flex">Öppna materialregistret</Link>}
-            </div>
-          ) : p.active ? (
-            <form onSubmit={onMaterialSubmit} className="material-entry-form">
-              <MaterialArticlePicker
-                articles={activeMaterialArticles}
-                matches={materialMatches}
-                recentCount={recentMaterialArticles.length}
-                value={materialSearch}
-                selectedArticle={selectedMaterialArticle}
-                open={materialPickerOpen}
-                disabled={Boolean(editingMaterial)}
-                onOpenChange={setMaterialPickerOpen}
-                onChange={(value) => {
-                  setMaterialSearch(value);
-                  setMaterialPickerOpen(true);
-                  if (materialForm.articleId) {
-                    setMaterialForm((current) => ({ ...current, articleId: '' }));
-                  }
-                }}
-                onSelect={selectMaterialArticle}
-              />
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(9rem,0.55fr)_minmax(10rem,0.7fr)_minmax(14rem,1.4fr)_auto]">
-                <FormField label={selectedMaterialArticle ? `Antal (${selectedMaterialArticle.unit})` : 'Antal'} controlId="project-material-quantity">
-                  <input
-                    id="project-material-quantity"
-                    className="input"
-                    inputMode="decimal"
-                    value={materialForm.quantity}
-                    onChange={(event) => setMaterialForm((current) => ({ ...current, quantity: event.target.value }))}
-                    placeholder="0"
-                    required
-                  />
-                </FormField>
-                <FormField label="Datum" controlId="project-material-date">
-                  <input id="project-material-date" type="date" className="input" value={materialForm.date} onChange={(event) => setMaterialForm((current) => ({ ...current, date: event.target.value }))} />
-                </FormField>
-                <FormField label="Kommentar" controlId="project-material-note">
-                  <input id="project-material-note" className="input" value={materialForm.note} onChange={(event) => setMaterialForm((current) => ({ ...current, note: event.target.value }))} placeholder="Valfritt" />
-                </FormField>
-                <div className="flex items-end gap-2">
-                  <Button type="submit" isLoading={createMaterialMutation.isPending || updateMaterialMutation.isPending} disabledReason={!materialForm.articleId ? 'Välj artikel' : !materialForm.quantity ? 'Ange antal' : null}>
-                    {editingMaterial ? <Edit2 className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-                    {editingMaterial ? 'Spara' : 'Lägg till'}
-                  </Button>
-                  {editingMaterial && (
-                    <button type="button" className="icon-button" onClick={cancelEditMaterial} title="Avbryt redigering" aria-label="Avbryt redigering">
-                      <X className="h-4 w-4" />
-                    </button>
-                  )}
-                </div>
-              </div>
-            </form>
-          ) : null}
-
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <h3 className="text-sm font-semibold text-graphite-950">Använt material</h3>
-            <span className="text-xs tabular-nums text-graphite-500">{materials.length.toLocaleString('sv-SE')} rader</span>
-          </div>
-          <MaterialsTable
-            materials={materials}
-            canSeeMoney={canSeeMoney}
-            canChange={p.active}
-            canManageAll={isManager}
-            currentUserId={user?.id}
-            onEdit={startEditMaterial}
-            onDelete={setDeletingMaterial}
-          />
-        </TaskSection>
       )}
 
       {activeTab === 'hours' && canLoadTimeEntries && timeEntriesLoading && <TaskSection><p role="status">Laddar tidrader…</p></TaskSection>}
@@ -691,17 +359,6 @@ export default function ProjectDetail() {
         </TaskSection>
       )}
       </Tabs>
-      <ConfirmDialog
-        open={Boolean(deletingMaterial)}
-        onClose={() => setDeletingMaterial(null)}
-        onConfirm={() => deletingMaterial && deleteMaterialMutation.mutate(deletingMaterial.id)}
-        title="Ta bort materialraden?"
-        description={deletingMaterial ? `${deletingMaterial.articleName} · ${deletingMaterial.quantity.toLocaleString('sv-SE')} ${deletingMaterial.unit}` : undefined}
-        confirmLabel="Ta bort materialrad"
-        consequence="Materialraden tas bort från projektet och projektets materialkostnad räknas om."
-        isLoading={deleteMaterialMutation.isPending}
-      />
-
       {editingProject && isManager && <ProjectDialog key={id} project={p} onClose={() => setEditingProject(false)} onSaved={() => setEditingProject(false)} />}
     </AppShell>
   );
@@ -872,270 +529,6 @@ function SimpleEntries({ entries }: { entries: TimeEntry[] }) {
   );
 }
 
-function MaterialArticlePicker({
-  articles,
-  matches,
-  recentCount,
-  value,
-  selectedArticle,
-  open,
-  disabled,
-  onOpenChange,
-  onChange,
-  onSelect,
-}: {
-  articles: MaterialArticle[];
-  matches: MaterialArticle[];
-  recentCount: number;
-  value: string;
-  selectedArticle?: MaterialArticle;
-  open: boolean;
-  disabled: boolean;
-  onOpenChange: (open: boolean) => void;
-  onChange: (value: string) => void;
-  onSelect: (article: MaterialArticle) => void;
-}) {
-  const resultLabel = value.trim() ? 'Sökresultat' : 'Senast använda på projektet';
-  const [activeIndex, setActiveIndex] = useState(-1);
-  const activeIndexRef = useRef(-1);
-  const matchesRef = useRef(matches);
-  const activeOption = activeIndex >= 0 ? matches[activeIndex] : undefined;
-  matchesRef.current = matches;
-
-  const setActiveOptionIndex = (index: number) => {
-    activeIndexRef.current = index;
-    setActiveIndex(index);
-  };
-
-  useEffect(() => {
-    if (!open || !activeOption) return;
-    document.getElementById(`project-material-option-${activeOption.id}`)?.scrollIntoView({ block: 'nearest' });
-  }, [activeOption, open]);
-
-  const moveActiveOption = (direction: 1 | -1) => {
-    const availableMatches = matchesRef.current;
-    if (!availableMatches.length) return;
-    onOpenChange(true);
-    const current = activeIndexRef.current;
-    const next = current < 0
-      ? direction === 1 ? 0 : availableMatches.length - 1
-      : (current + direction + availableMatches.length) % availableMatches.length;
-    setActiveOptionIndex(next);
-  };
-
-  const chooseArticle = (article: MaterialArticle) => {
-    setActiveOptionIndex(-1);
-    onSelect(article);
-  };
-
-  return (
-    <div
-      className="material-picker"
-      onBlur={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-          onOpenChange(false);
-          setActiveOptionIndex(-1);
-        }
-      }}
-    >
-      <label htmlFor="project-material-search" className="label">Artikel</label>
-      <div className="relative">
-        <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-graphite-500" aria-hidden="true" />
-        <input
-          id="project-material-search"
-          role="combobox"
-          aria-expanded={open}
-          aria-controls="project-material-results"
-          aria-activedescendant={open && activeOption ? `project-material-option-${activeOption.id}` : undefined}
-          aria-autocomplete="list"
-          autoComplete="off"
-          className="input pl-10 pr-11"
-          value={value}
-          onFocus={() => {
-            onOpenChange(true);
-            matchesRef.current = matches;
-            setActiveOptionIndex(matches.length ? 0 : -1);
-          }}
-          onChange={(event) => {
-            const nextValue = event.target.value;
-            const nextMatches = nextValue.trim()
-              ? searchMaterialArticles(articles, nextValue).slice(0, 12)
-              : matches;
-            matchesRef.current = nextMatches;
-            onChange(nextValue);
-            setActiveOptionIndex(nextMatches.length ? 0 : -1);
-          }}
-          onKeyDown={(event) => {
-            const availableMatches = matchesRef.current;
-            if (event.key === 'ArrowDown') {
-              event.preventDefault();
-              moveActiveOption(1);
-            } else if (event.key === 'ArrowUp') {
-              event.preventDefault();
-              moveActiveOption(-1);
-            } else if (event.key === 'Home' && availableMatches.length) {
-              event.preventDefault();
-              onOpenChange(true);
-              setActiveOptionIndex(0);
-            } else if (event.key === 'End' && availableMatches.length) {
-              event.preventDefault();
-              onOpenChange(true);
-              setActiveOptionIndex(availableMatches.length - 1);
-            } else if (event.key === 'Enter' && activeIndexRef.current >= 0 && availableMatches[activeIndexRef.current]) {
-              event.preventDefault();
-              chooseArticle(availableMatches[activeIndexRef.current]);
-            } else if (event.key === 'Escape') {
-              event.preventDefault();
-              onOpenChange(false);
-              setActiveOptionIndex(-1);
-            }
-          }}
-          placeholder="Sök AF215, rörskål 22-30 eller artikelnummer"
-          disabled={disabled}
-        />
-        {value && !disabled && (
-          <button
-            type="button"
-            className="absolute right-0 top-1/2 inline-flex min-h-11 min-w-11 -translate-y-1/2 items-center justify-center rounded-md text-graphite-500 hover:bg-graphite-100 hover:text-graphite-950"
-            onClick={() => {
-              matchesRef.current = [];
-              onChange('');
-              setActiveOptionIndex(-1);
-            }}
-            aria-label="Rensa materialsökning"
-            title="Rensa"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        )}
-      </div>
-
-      {selectedArticle && (
-        <div className="material-picker-selection" aria-live="polite">
-          <Check className="h-4 w-4 text-emerald-700" aria-hidden="true" />
-          <strong>{selectedArticle.name}</strong>
-          <span>{selectedArticle.articleNumber || 'Utan artikelnr'}</span>
-          <span>{selectedArticle.category} · {selectedArticle.unit}</span>
-        </div>
-      )}
-
-      {open && !disabled && (
-        <div id="project-material-results" role="listbox" aria-label={resultLabel} className="material-picker-results">
-          <div className="material-picker-results-label">{resultLabel}</div>
-          {!value.trim() && recentCount === 0 ? (
-            <p className="px-3 py-4 text-sm text-graphite-600">Börja skriva namn, dimension eller artikelnummer.</p>
-          ) : !matches.length ? (
-            <p className="px-3 py-4 text-sm text-graphite-600">Ingen artikel matchar sökningen.</p>
-          ) : (
-            matches.map((article, index) => (
-              <button
-                key={article.id}
-                id={`project-material-option-${article.id}`}
-                type="button"
-                role="option"
-                aria-selected={activeIndex === index}
-                className="material-picker-option"
-                onPointerMove={() => setActiveOptionIndex(index)}
-                onClick={() => chooseArticle(article)}
-              >
-                <span className="min-w-0">
-                  <strong className="block truncate text-graphite-950">{article.name}</strong>
-                  <span className="mt-0.5 block truncate text-xs text-graphite-500">
-                    {[article.articleNumber, article.category, article.supplier].filter(Boolean).join(' · ')}
-                  </span>
-                </span>
-                <span className="shrink-0 text-xs font-semibold text-graphite-600">{article.unit}</span>
-              </button>
-            ))
-          )}
-          {value.trim() && matches.length > 0 && (
-            <div className="border-t border-graphite-200 px-3 py-2 text-xs text-graphite-500">
-              Visar {matches.length} av {articles.length.toLocaleString('sv-SE')} artiklar
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function MaterialsTable({
-  materials,
-  canSeeMoney,
-  canChange,
-  canManageAll,
-  currentUserId,
-  onEdit,
-  onDelete,
-}: {
-  materials: ProjectMaterial[];
-  canSeeMoney: boolean;
-  canChange: boolean;
-  canManageAll: boolean;
-  currentUserId?: string;
-  onEdit: (item: ProjectMaterial) => void;
-  onDelete: (item: ProjectMaterial) => void;
-}) {
-  if (!materials.length) return <EmptyState title="Inget material" description="Registrera material manuellt eller importera en Excel-lista." />;
-  return (
-    <DataTable label="Projektets materialrader">
-      <table className="min-w-full text-sm">
-        <thead className="table-head">
-          <tr>
-            <th className="px-3 py-2">Datum</th>
-            <th className="px-3 py-2">Artikel</th>
-            <th className="px-3 py-2">Antal</th>
-            {canSeeMoney && <th className="px-3 py-2">Radtotal (inköp)</th>}
-            <th className="px-3 py-2">Kommentar</th>
-            <th className="px-3 py-2 text-right">Åtgärd</th>
-          </tr>
-        </thead>
-        <tbody>
-          {materials.map((item) => {
-            const canChangeItem = canModifyProjectMaterial({
-              projectActive: canChange,
-              isManager: canManageAll,
-              currentUserId,
-              createdByUserId: item.createdByUserId,
-              invoiceStatus: item.invoiceStatus,
-              lockedForChanges: item.lockedForChanges,
-              inventoryMovementId: item.inventoryMovementId,
-            });
-            return (
-            <tr key={item.id} className="border-b border-slate-100">
-              <td className="px-3 py-2">{formatDate(item.date)}</td>
-              <td className="px-3 py-2">
-                <div className="font-semibold text-slate-900">{item.articleName}</div>
-                <div className="text-xs text-slate-500">{item.articleNumber || '-'}</div>
-                {item.inventoryMovementId && <Link to="/inventory" className="text-link inline-flex min-h-11 items-center">Lageruttag – retur görs i Lager</Link>}
-                {item.invoiceStatus === 'INVOICED' && (
-                  <div className="mt-1">
-                    <StatusBadge label={item.invoiceReference ? `Fakturerad · ${item.invoiceReference}` : 'Fakturerad'} tone="green" />
-                  </div>
-                )}
-              </td>
-              <td className="px-3 py-2">{item.quantity.toLocaleString('sv-SE')} {item.unit}</td>
-              {canSeeMoney && <td className="px-3 py-2 font-semibold">{formatCurrency(item.lineTotal)}</td>}
-              <td className="px-3 py-2">{item.note || '-'}</td>
-              <td className="px-3 py-2 text-right">
-                <div className="inline-flex gap-1">
-                  <button type="button" className="icon-button border-0 text-slate-500 hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-40" onClick={() => onEdit(item)} title={!canChange ? 'Projektet är inaktivt' : item.invoiceStatus === 'INVOICED' ? 'Fakturerat material kan inte ändras' : !canChangeItem ? 'Endast den som registrerade raden eller en arbetsledare kan ändra den' : 'Redigera'} aria-label="Redigera materialrad" disabled={!canChangeItem}>
-                    <Edit2 className="h-4 w-4" />
-                  </button>
-                  <button type="button" className="icon-button border-0 text-rose-600 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40" onClick={() => onDelete(item)} title={!canChange ? 'Projektet är inaktivt' : item.invoiceStatus === 'INVOICED' ? 'Fakturerat material kan inte tas bort' : !canChangeItem ? 'Endast den som registrerade raden eller en arbetsledare kan ta bort den' : 'Ta bort'} aria-label="Ta bort materialrad" disabled={!canChangeItem}>
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
-              </td>
-            </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </DataTable>
-  );
-}
-
 function SummaryPanel({ summary, project, canSeeMoney }: { summary?: ProjectSummary; project: Project; canSeeMoney: boolean }) {
   if (!summary?.resultsVisibleToCurrentUser || !canSeeMoney) {
     return <EmptyState title="Sammanfattning är dold" description="Du saknar behörighet att se projektets ekonomi." />;
@@ -1180,15 +573,4 @@ function SummaryPanel({ summary, project, canSeeMoney }: { summary?: ProjectSumm
       </div>
     </div>
   );
-}
-
-function downloadBlob(blob: Blob, filename: string) {
-  const url = window.URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  window.URL.revokeObjectURL(url);
 }

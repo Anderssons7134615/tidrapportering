@@ -254,19 +254,13 @@ test('switching view preserves search and archive filters remain visible and can
   assert.equal(view.queryByRole('link', { name: /Arkivprojekt/ }), null);
 });
 
-test('invoice draft link is company-wide even with an empty project search and hidden from employees', async () => {
-  const { view } = renderProjects();
-  await openTools(view);
-  const link = await view.findByRole('link', { name: 'Inköp · 3 utkast i företaget' });
-  assert.equal(link.getAttribute('href'), '/purchases?status=DRAFT');
-  fireEvent.change(view.getByRole('searchbox'), { target: { value: 'Saknas' } });
-  await waitFor(() => assert.equal(Boolean(view.queryByRole('link', { name: /0042.*Testprojekt/ })), false));
-  assert.ok(view.getByRole('link', { name: 'Inköp · 3 utkast i företaget' }));
-  cleanup();
-  const employee = renderProjects({ role: 'EMPLOYEE' });
-  await openTools(employee.view);
-  await employee.view.findByRole('link', { name: /0042.*Testprojekt/ });
-  assert.equal(employee.view.queryByRole('link', { name: /Inköp/ }), null);
+test('purchase link is removed from project tools for admins and employees', async () => {
+  for (const role of ['ADMIN', 'EMPLOYEE']) {
+    const { view } = renderProjects({ role });
+    await openTools(view);
+    assert.equal(view.queryByRole('link', { name: /Inköp/ }), null);
+    cleanup();
+  }
 });
 
 async function openTools(view) {

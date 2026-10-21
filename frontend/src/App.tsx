@@ -15,15 +15,11 @@ const Approval = lazy(() => import('./pages/Approval'));
 const Customers = lazy(() => import('./pages/Customers'));
 const Projects = lazy(() => import('./pages/Projects'));
 const ProjectEconomy = lazy(() => import('./pages/ProjectEconomy'));
-const Purchases = lazy(() => import('./pages/Purchases'));
-const PurchaseDetail = lazy(() => import('./pages/Purchases').then((module) => ({ default: module.PurchaseDetail })));
 const ProjectDetail = lazy(() => import('./pages/ProjectDetail'));
-const CalculationEditor = lazy(() => import('./pages/CalculationEditor'));
 const Activities = lazy(() => import('./pages/Activities'));
-const Materials = lazy(() => import('./pages/Materials'));
-const Inventory = lazy(() => import('./pages/Inventory'));
 const Users = lazy(() => import('./pages/Users'));
 const Reports = lazy(() => import('./pages/Reports'));
+const Planning = lazy(() => import('./pages/Planning'));
 const Settings = lazy(() => import('./pages/Settings'));
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -108,7 +104,7 @@ export default function App() {
         <Route path="time-overview" element={<WorkRoute><PageLoader><Dashboard /></PageLoader></WorkRoute>} />
         <Route path="overview/details/:metric" element={<WorkRoute><PageLoader><DashboardDetail /></PageLoader></WorkRoute>} />
         <Route path="time-entry" element={<WorkRoute><PageLoader><TimeEntry /></PageLoader></WorkRoute>} />
-        <Route path="inventory" element={<WorkRoute><PageLoader><Inventory /></PageLoader></WorkRoute>} />
+        <Route path="planning" element={<WorkRoute><PageLoader><Planning /></PageLoader></WorkRoute>} />
         <Route path="week" element={<WorkRoute><PageLoader><WeekView /></PageLoader></WorkRoute>} />
         <Route
           path="team-week"
@@ -143,10 +139,6 @@ export default function App() {
           }
         />
         <Route
-          path="projects/:id/calculations/:draftId"
-          element={<AdminOnlyRoute><PageLoader><CalculationEditor /></PageLoader></AdminOnlyRoute>}
-        />
-        <Route
           path="projects/:id"
           element={
             <WorkRoute>
@@ -157,16 +149,6 @@ export default function App() {
         <Route
           path="project-economy"
           element={<AdminOnlyRoute><PageLoader><ProjectEconomy /></PageLoader></AdminOnlyRoute>}
-        />
-        <Route path="purchases" element={<AdminOnlyRoute><PageLoader><Purchases /></PageLoader></AdminOnlyRoute>} />
-        <Route path="purchases/:id" element={<AdminOnlyRoute><PageLoader><PurchaseDetail /></PageLoader></AdminOnlyRoute>} />
-        <Route
-          path="materials"
-          element={
-            <AdminOnlyRoute>
-              <PageLoader><Materials /></PageLoader>
-            </AdminOnlyRoute>
-          }
         />
         <Route
           path="activities"

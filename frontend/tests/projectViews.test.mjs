@@ -114,30 +114,18 @@ test('project return context is validated against its actual customer', async ()
   }
 });
 
-test('saving project material refreshes every cached project economy', async () => {
-  const { view, client } = setup();
-  const keys = [['project-portfolio'], ['project-control', 'other-filter'], ['project', 'other-project'], ['dashboard']];
-  keys.forEach((key) => client.setQueryData(key, { old: true }));
-  fireEvent.click(await view.findByRole('tab', { name: 'Material', exact: true }));
-  fireEvent.change(await view.findByRole('combobox'), { target: { value: 'Rörskål' } });
-  fireEvent.click(await view.findByRole('option', { name: /Rörskål/ }));
-  fireEvent.change(view.getByLabelText('Antal (m)'), { target: { value: '5' } });
-  fireEvent.click(view.getByRole('button', { name: 'Lägg till', exact: true }));
-  await waitFor(() => assert.ok(requests.some((r) => r.path.endsWith('/materials') && r.method === 'POST')));
-  await waitFor(() => keys.forEach((key) => assert.equal(client.getQueryState(key)?.isInvalidated, true, key.join('/'))));
-});
-
-test('confirmed purchases show signed ore separately for managers and stay hidden from accountants', async () => {
-  const economy = [{ project, reportedHours: 0, approvedHours: 0, unapprovedHours: 0, laborCost: 0, materialCost: 0, revenue: 0, result: 0, billingModel: 'HOURLY', warnings: [], confirmedPurchaseNetOre: -12345 }];
-  const { view } = setup({ economy });
-  const link = await view.findByRole('link', { name: /Bekräftade inköp, exkl. moms:/ });
-  assert.match(link.textContent, /123,45/);
-  assert.match(link.textContent, /[−-]/);
-  assert.equal(link.getAttribute('href'), '/projects/p1?tab=purchases');
-  cleanup();
-  const accountant = setup({ economy, role: 'ACCOUNTANT' });
-  await accountant.view.findByRole('article');
-  assert.equal(accountant.view.queryByText(/Bekräftade inköp/), null);
+test('retired material, purchase and calculation tabs cannot be opened by any work role', async () => {
+  for (const role of ['ADMIN', 'SUPERVISOR', 'EMPLOYEE']) {
+    for (const tab of ['materials', 'purchases', 'calculation']) {
+      const { view } = setup({ role, initialPath: `/projects/p1?tab=${tab}` });
+      await view.findByRole('heading', { name: 'Testprojekt' });
+      for (const name of ['Material', 'Inköp', 'Kalkyl']) assert.equal(view.queryByRole('tab', { name, exact: true }), null);
+      assert.equal(view.queryByRole('button', { name: 'Lägg material' }), null);
+      assert.equal(view.getByRole('tab', { name: 'Översikt' }).getAttribute('aria-selected'), 'true');
+      assert.equal(requests.some(r => /materials|supplier-invoices|project-calculations/.test(r.path)), false);
+      cleanup(); requests = [];
+    }
+  }
 });
 
 test('missing costs keep the portfolio result unknown and filters recompute the selection', async () => {
@@ -157,32 +145,6 @@ test('missing costs keep the portfolio result unknown and filters recompute the 
   assert.doesNotMatch(view.container.textContent, /Underlag saknas/);
 });
 
-
-test('calculation is admin-only and fetched only after opening its project tab', async () => {
-  const { view } = setup({ handler: path => path === '/api/project-calculations/p1' ? [] : undefined });
-  fireEvent.click(await view.findByRole('tab', { name: 'Kalkyl' }));
-  await view.findByText('Ingen kalkyl sparad');
-  assert.equal(requests.filter(r => r.path === '/api/project-calculations/p1').length, 1);
-  cleanup(); requests = [];
-  for (const role of ['SUPERVISOR','EMPLOYEE']) {
-    const other = setup({ role });
-    await other.view.findByRole('heading', { name: 'Testprojekt' });
-    assert.equal(other.view.queryByRole('tab', { name: 'Kalkyl' }), null);
-    assert.equal(requests.some(r => r.path.includes('project-calculations')), false);
-    cleanup();
-  }
-});
-
-test('return from calculator opens the calculation tab only for admin', async () => {
-  const { view } = setup({ initialPath: '/projects/p1?tab=calculation', handler: path => path === '/api/project-calculations/p1' ? [] : undefined });
-  await view.findByRole('link', { name: 'Ny kalkyl' });
-  assert.equal(view.getByRole('tab', { name: 'Kalkyl' }).getAttribute('aria-selected'), 'true');
-  cleanup(); requests = [];
-  const other = setup({ role: 'SUPERVISOR', initialPath: '/projects/p1?tab=calculation' });
-  await other.view.findByRole('heading', { name: 'Testprojekt' });
-  assert.equal(other.view.getByRole('tab', { name: 'Översikt' }).getAttribute('aria-selected'), 'true');
-  assert.equal(requests.some(r => r.path.includes('project-calculations')), false);
-});
 
 function calcPreview() {
   return { fingerprint: 'a'.repeat(64), document: { id: 'source', revision: 1, name: 'Testkalkyl', customerName: 'Testkund', quoteNumber: 'TEST-1', manualBid: 90000, scope: '', terms: '', lines: [{ id: 'row', internalDescription: 'Testarbete', customerDescription: 'Testarbete', quantity: 10, workUnit: 'm', laborMinutesPerUnit: 9, timeSource: 'ownEstimate', materialCostExcluded: true, materials: [] }] },

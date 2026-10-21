@@ -39,11 +39,11 @@ function setup({ role = 'ADMIN', path = '/projects', pending = [] } = {}) {
   return { view, router, sidebar: view.container.querySelector('aside:not([role])'), drawer: view.container.querySelector('#mobile-navigation') };
 }
 
-test('navigation keeps the exact role boundaries and manager purchases on mobile', () => {
+test('navigation keeps the exact role boundaries and planning on mobile', () => {
   const expectations = {
-    ADMIN: ['/projects', '/inventory', '/purchases', '/project-economy', '/time-overview', '/time-entry', '/week', '/team-week', '/approval', '/reports', '/customers', '/materials', '/activities', '/users', '/settings'],
-    SUPERVISOR: ['/projects', '/inventory', '/time-overview', '/time-entry', '/week', '/team-week', '/approval', '/reports', '/customers', '/settings'],
-    EMPLOYEE: ['/projects', '/inventory', '/', '/time-entry', '/week', '/settings'],
+    ADMIN: ['/planning', '/projects', '/project-economy', '/time-overview', '/time-entry', '/week', '/team-week', '/approval', '/reports', '/customers', '/activities', '/users', '/settings'],
+    SUPERVISOR: ['/planning', '/projects', '/time-overview', '/time-entry', '/week', '/team-week', '/approval', '/reports', '/customers', '/settings'],
+    EMPLOYEE: ['/planning', '/projects', '/', '/time-entry', '/week', '/settings'],
     ACCOUNTANT: ['/reports', '/settings'],
   };
   for (const [role, expected] of Object.entries(expectations)) {
@@ -51,13 +51,13 @@ test('navigation keeps the exact role boundaries and manager purchases on mobile
     assert.deepEqual([...sidebar.querySelectorAll('nav a')].map((link) => link.getAttribute('href')), expected);
     assert.deepEqual([...drawer.querySelectorAll('nav a')].map((link) => link.getAttribute('href')), expected);
     const mobile = within(view.getByRole('navigation', { name: 'Snabbnavigation' })).getAllByRole('link').map((link) => link.getAttribute('href'));
-    assert.deepEqual(mobile, role === 'EMPLOYEE' ? ['/', '/week', '/time-entry', '/projects', '/settings'] : role === 'ACCOUNTANT' ? ['/reports', '/settings'] : role === 'SUPERVISOR' ? ['/projects', '/inventory', '/time-entry', '/approval', '/week'] : ['/projects', '/purchases', '/time-entry', '/approval', '/project-economy']);
+    assert.deepEqual(mobile, role === 'EMPLOYEE' ? ['/', '/planning', '/time-entry', '/week', '/projects'] : role === 'ACCOUNTANT' ? ['/reports', '/settings'] : role === 'SUPERVISOR' ? ['/projects', '/planning', '/time-entry', '/approval', '/week'] : ['/projects', '/planning', '/time-entry', '/approval', '/project-economy']);
     cleanup();
   }
 });
 
 test('only the current destination is active, including detail routes and time overview aliases', () => {
-  for (const [role, path, expected] of [['ADMIN', '/purchases/i1', '/purchases'], ['ADMIN', '/projects/p1?tab=purchases', '/projects'], ['EMPLOYEE', '/overview/details/hours', '/'], ['ADMIN', '/overview/details/hours', '/time-overview']]) {
+  for (const [role, path, expected] of [['ADMIN', '/planning', '/planning'], ['ADMIN', '/projects/p1?tab=purchases', '/projects'], ['EMPLOYEE', '/overview/details/hours', '/'], ['ADMIN', '/overview/details/hours', '/time-overview']]) {
     const { sidebar } = setup({ role, path });
     assert.deepEqual([...sidebar.querySelectorAll('[aria-current="page"]')].map((link) => link.getAttribute('href')), [expected]);
     assert.equal(sidebar.querySelector('a[href="/time-entry"]').classList.contains('side-nav-active'), false);
@@ -89,8 +89,8 @@ test('mobile drawer isolates background, traps focus, restores scroll and closes
   assert.equal(document.body.style.overflow, 'auto');
   assert.equal(document.activeElement === menu, true);
   fireEvent.click(menu);
-  fireEvent.click(within(drawer).getByRole('link', { name: 'Inköp' }));
-  await waitFor(() => assert.equal(router.state.location.pathname, '/purchases'));
+  fireEvent.click(within(drawer).getByRole('link', { name: 'Planering' }));
+  await waitFor(() => assert.equal(router.state.location.pathname, '/planning'));
   assert.equal(drawer.hasAttribute('inert'), true);
   fireEvent.click(menu);
   await act(async () => { await router.navigate('/projects/p1'); });

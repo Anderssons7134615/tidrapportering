@@ -11,7 +11,6 @@ import { formatCurrency, formatHours } from '../utils/format';
 
 export default function ProjectEconomy() {
   const { user } = useAuthStore();
-  const canReadPurchases = user?.role === 'ADMIN' || user?.role === 'SUPERVISOR';
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
   const [onlyIncomplete, setOnlyIncomplete] = useState(false);
@@ -67,12 +66,6 @@ export default function ProjectEconomy() {
                   <div><dt className="text-graphite-600">Beräknad intäkt</dt><dd className="mt-1 tabular-nums">{money(item.revenue)}</dd></div>
                   <div><dt className="text-graphite-600">Beräknat resultat</dt><dd className={`mt-1 font-semibold tabular-nums ${item.result != null && item.result < 0 ? 'text-rose-700' : ''}`}>{money(item.result)}</dd></div>
                 </dl>
-                {canReadPurchases && <div className="mt-3 border-t border-graphite-100 pt-2 text-sm">
-                  <Link className="text-link inline-flex min-h-11 flex-wrap items-center gap-x-2 gap-y-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500" to={`/projects/${item.project.id}?tab=purchases`}>
-                    <span>Bekräftade inköp, exkl. moms:</span><span className="tabular-nums">{item.confirmedPurchaseNetOre == null ? 'Underlag saknas' : new Intl.NumberFormat('sv-SE', { style: 'currency', currency: 'SEK', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(item.confirmedPurchaseNetOre / 100)}</span>
-                  </Link>
-                  <p className="text-xs text-graphite-600">Ingår i kostnaden ovan. Lageruttag tillkommer; vanlig materialåtgång räknas inte en gång till.</p>
-                </div>}
                 {item.warnings.length > 0 && <p className="mt-3 text-sm text-amber-800">{item.warnings.join(' · ')}</p>}
               </article>)}
             </div>

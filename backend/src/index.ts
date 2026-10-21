@@ -13,6 +13,7 @@ export { prisma } from './lib/prisma.js';
 
 // Routes
 import authRoutes from './routes/auth.js';
+import planningRoutes from './routes/planning.js';
 import userRoutes from './routes/users.js';
 import customerRoutes from './routes/customers.js';
 import projectRoutes from './routes/projects.js';
@@ -178,6 +179,7 @@ declare module '@fastify/jwt' {
 
 // Register routes
 fastify.register(authRoutes, { prefix: '/api/auth' });
+fastify.register(planningRoutes, { prefix: '/api/planning' });
 fastify.register(userRoutes, { prefix: '/api/users' });
 fastify.register(customerRoutes, { prefix: '/api/customers' });
 fastify.register(projectRoutes, { prefix: '/api/projects' });

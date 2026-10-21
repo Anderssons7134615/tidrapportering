@@ -1,4 +1,12 @@
 import { useAuthStore } from '../stores/authStore';
+import type { PlanningBoard, PlanningDocument, PlanningComment } from '../types/planning';
+
+export const planningApi = {
+  get: () => fetchApi<PlanningBoard | null>('/planning'),
+  save: (expectedRevision: number, document: PlanningDocument) => fetchApi<PlanningBoard>('/planning', { method: 'PUT', body: JSON.stringify({ expectedRevision, document }) }),
+  comments: (page: number) => fetchApi<{ items: PlanningComment[]; hasMore: boolean }>(`/planning/comments?page=${page}`),
+  comment: (content: string, requestKey: string) => fetchApi<PlanningComment>('/planning/comments', { method: 'POST', body: JSON.stringify({ content, requestKey }) }),
+};
 import type { CalculationPreview, SavedCalculation, CalculationListItem } from '../types/projectCalculation';
 import type { CalculationDraft, CalculationDraftListItem, EditableCalculation } from '../types/projectCalculation';
 

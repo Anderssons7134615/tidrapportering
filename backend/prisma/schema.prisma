@@ -63,6 +63,7 @@ model Company {
   timeEntryWriteRequests TimeEntryWriteRequest[]
   projectCalculations ProjectCalculation[]
   calculationDrafts ProjectCalculationDraft[]
+  planningBoard PlanningBoard?
 }
 
 model User {
@@ -95,6 +96,7 @@ model User {
   confirmedSupplierInvoices SupplierInvoice[] @relation("SupplierInvoiceReviewer")
   inventoryMovements InventoryMovement[]
   timeEntryWriteRequests TimeEntryWriteRequest[]
+  planningComments PlanningComment[]
 
   @@index([companyId, active])
   @@unique([id, companyId])
@@ -670,4 +672,31 @@ model Settings {
   reminderEnabled Boolean  @default(true)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+}
+
+model PlanningBoard {
+  id String @id @default(uuid())
+  companyId String @unique
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  document Json
+  revision Int @default(1)
+  updatedAt DateTime @updatedAt
+  comments PlanningComment[]
+
+  @@unique([id, companyId])
+}
+
+model PlanningComment {
+  id String @id @default(uuid())
+  companyId String
+  boardId String
+  board PlanningBoard @relation(fields: [boardId, companyId], references: [id, companyId], onDelete: Restrict)
+  authorId String
+  author User @relation(fields: [authorId, companyId], references: [id, companyId], onDelete: Restrict)
+  content String
+  requestKey String
+  createdAt DateTime @default(now())
+
+  @@unique([companyId, authorId, requestKey])
+  @@index([companyId, createdAt, id])
 }
