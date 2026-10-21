@@ -1,0 +1,75 @@
+{
+  "browser": "153.0.8010.0",
+  "fixtures": "Synthetic local data; no production API calls",
+  "checks": [
+    "Desktop directory: no overflow; targets >= 44 × 44",
+    "New project dialog: tab containment, Escape, trigger focus restored",
+    "Customer → project detail retains customer context",
+    "Admin desktop: delayed editor retains/restores focus; repeated Enter sends one GET",
+    "Desktop management: no overflow; targets >= 44 × 44",
+    "Empty search: no overflow; targets >= 44 × 44",
+    "Keyboard expansion, filter tab order, visible focus, filter/reset, empty search",
+    "Archive context, restore confirmation and Escape cancel",
+    "Directory 390px: no overflow; targets >= 44 × 44",
+    "Customer 390px: no overflow; targets >= 44 × 44",
+    "Admin mobile: delayed editor retains/restores focus; repeated Enter sends one GET",
+    "Management 390px: no overflow; targets >= 44 × 44",
+    "Filters 390px: no overflow; targets >= 44 × 44",
+    "Directory 320px: no overflow; targets >= 44 × 44",
+    "Customer 320px: no overflow; targets >= 44 × 44",
+    "Management 320px: no overflow; targets >= 44 × 44",
+    "Filters 320px: no overflow; targets >= 44 × 44",
+    "320px long unbroken names: no overflow; targets >= 44 × 44",
+    "Directory 768px: no overflow; targets >= 44 × 44",
+    "Customer 768px: no overflow; targets >= 44 × 44",
+    "Management 768px: no overflow; targets >= 44 × 44",
+    "Filters 768px: no overflow; targets >= 44 × 44",
+    "Reduced motion disables filter animation",
+    "200% zoom equivalent (720x500 CSS viewport): no overflow; targets >= 44 × 44",
+    "EMPLOYEE: no overflow; targets >= 44 × 44",
+    "EMPLOYEE: no cached economic fields or economy column",
+    "Supervisor desktop: delayed editor retains/restores focus; repeated Enter sends one GET",
+    "SUPERVISOR: no overflow; targets >= 44 × 44",
+    "SUPERVISOR: no cached economic fields or economy column",
+    "API read error and retry recovery",
+    "320px initial loading: no overflow; targets >= 44 × 44",
+    "Delayed initial load resolves to the directory"
+  ],
+  "screenshots": [
+    "desktop-customers.png",
+    "desktop-projects.png",
+    "desktop-management.png",
+    "mobile-customers.png",
+    "mobile-projects.png",
+    "mobile-management.png",
+    "mobile-long-names.png",
+    "zoom-200-reflow.png"
+  ],
+  "accessibility": [
+    {
+      "label": "Desktop directory",
+      "violations": [],
+      "incomplete": []
+    },
+    {
+      "label": "Desktop management",
+      "violations": [],
+      "incomplete": []
+    },
+    {
+      "label": "Mobile management",
+      "violations": [],
+      "incomplete": []
+    },
+    {
+      "label": "EMPLOYEE",
+      "violations": [],
+      "incomplete": []
+    },
+    {
+      "label": "SUPERVISOR",
+      "violations": [],
+      "incomplete": []
+    }
+  ]
+}

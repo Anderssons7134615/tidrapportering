@@ -21,6 +21,13 @@ before(async () => {
   Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator });
   dom.window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
   dom.window.HTMLDialogElement.prototype.close = function () { this.open = false; };
+  // JSDOM otherwise lets React autoFocus focus inputs inside a closed dialog,
+  // unlike the browser, replacing the trigger before showModal can capture it.
+  const focus = dom.window.HTMLElement.prototype.focus;
+  dom.window.HTMLElement.prototype.focus = function (options) {
+    const dialog = this.closest('dialog');
+    if (!dialog || dialog.open) focus.call(this, options);
+  };
   ({ cleanup, fireEvent, render, waitFor, within, act } = await import('@testing-library/react'));
   ({ QueryClient, QueryClientProvider } = await import('@tanstack/react-query'));
   ({ MemoryRouter, useLocation, useNavigate } = await import('react-router-dom'));
@@ -33,7 +40,7 @@ before(async () => {
 afterEach(() => { cleanup(); clients.forEach((client) => client.clear()); clients = []; requests = []; globalThis.fetch = originalFetch; });
 after(async () => { await vite?.close(); dom?.window.close(); });
 
-function renderProjects({ extraProjects = [], tasks = [], failArchive = '', failSave = false, role = 'ADMIN', archiveResponse, initialPath = '/projects' } = {}) {
+function renderProjects({ extraProjects = [], tasks = [], failArchive = '', failSave = false, role = 'ADMIN', archiveResponse, projectResponse, initialPath = '/projects' } = {}) {
   savedProject = { ...project, tasks };
   let records = [savedProject, ...extraProjects.map((p) => ({ ...project, ...p }))];
   auth.useAuthStore.setState({ token: 'test-token', user: { id: 'admin-1', name: 'Testadmin', role } });
@@ -53,6 +60,7 @@ function renderProjects({ extraProjects = [], tasks = [], failArchive = '', fail
     else if (path.endsWith('/projects') && method === 'POST') { data = { ...project, ...body, id: 'project-99', code: '0043' }; records.push(data); }
     else if (/\/projects\/project-\d+(\/restore)?$/.test(path)) {
       const id = path.match(/project-\d+/)[0];
+      if (method === 'GET' && projectResponse) { const response = await projectResponse(); if (response instanceof Response) return response; }
       if (method === 'DELETE' && archiveResponse) { const response = await archiveResponse(); if (response instanceof Response) return response; }
       if ((method === 'DELETE' && id === failArchive) || (method === 'PUT' && failSave)) return new Response(JSON.stringify({ error: 'Tillfälligt serverfel, försök igen' }), { status: 503 });
       const record = records.find((p) => p.id === id);
@@ -246,7 +254,7 @@ test('switching view preserves search and archive filters remain visible and can
   assert.equal(view.getByRole('searchbox').value, 'Test');
   fireEvent.change(view.getByRole('searchbox'), { target: { value: '' } });
   fireEvent.click(view.getByRole('button', { name: 'Filter', exact: true }));
-  fireEvent.change(view.getByRole('combobox', { name: 'Visa aktiva eller arkiverade projekt' }), { target: { value: 'archived' } });
+  fireEvent.change(view.getByRole('combobox', { name: 'Visa projekt' }), { target: { value: 'archived' } });
   await view.findByRole('link', { name: 'Testkund 1 arkiverat projekt' });
   assert.match(view.container.textContent, /Visar:.*Arkiverade/);
   fireEvent.click(view.getByRole('button', { name: 'Rensa', exact: true }));
@@ -381,6 +389,76 @@ test('employee never renders economic fields even if an old cache contains them'
   assert.equal(view.queryByText('Timkostnad saknas'), null);
   assert.equal(view.queryByRole('button', { name: 'Behöver åtgärd' }), null);
   assert.equal(view.queryByRole('link', { name: 'Ekonomi' }), null);
+});
+
+test('supervisor keeps project tools without exposing cached economy or reserving its column', async () => {
+  const { view } = renderProjects({ role: 'SUPERVISOR', extraProjects: [{ id: 'project-2', code: '0043', name: 'Följ upp', economy: { reportedHours: 12, unapprovedHours: 4, budgetHours: 10, budgetUsagePercent: 120, warnings: ['Timkostnad saknas'] } }] });
+  await openTools(view);
+  assert.ok(view.getByRole('button', { name: 'Redigera 0043 · Följ upp' }));
+  assert.ok(view.getByRole('button', { name: 'Ny uppgift' }));
+  assert.equal(view.queryByText('Timmar och underlag'), null);
+  assert.equal(view.queryByText('Timkostnad saknas'), null);
+  assert.equal(view.queryByRole('link', { name: 'Ekonomi' }), null);
+  assert.equal(view.queryByRole('link', { name: /Inköp/ }), null);
+  assert.equal(view.container.querySelector('.project-row-manager'), null);
+});
+
+test('filter and task disclosures retain labelled controls and expansion state', async () => {
+  const { view } = renderProjects();
+  const filter = await view.findByRole('button', { name: 'Filter', exact: true });
+  assert.equal(filter.getAttribute('aria-expanded'), 'false');
+  fireEvent.click(filter);
+  assert.equal(filter.getAttribute('aria-expanded'), 'true');
+  for (const [name, label] of [['Visa projekt', 'Visa projekt'], ['Filtrera på projektstatus', 'Projektstatus'], ['Filtrera på uppgiftsstatus', 'Uppgiftsstatus'], ['Filtrera på ansvarig', 'Ansvarig']]) {
+    assert.equal(view.getByRole('combobox', { name }).closest('label').querySelector('span').textContent, label);
+  }
+  fireEvent.click(filter);
+  assert.equal(view.queryByRole('combobox'), null);
+  await openTools(view);
+  const expand = view.getByRole('button', { name: 'Visa uppgifter för Testprojekt' });
+  fireEvent.click(expand);
+  assert.equal(expand.getAttribute('aria-expanded'), 'true');
+  assert.ok(document.getElementById(expand.getAttribute('aria-controls')));
+  fireEvent.click(expand);
+  assert.equal(expand.getAttribute('aria-expanded'), 'false');
+  assert.equal(document.getElementById(expand.getAttribute('aria-controls')), null);
+});
+
+test('closing an unmounted project editor restores keyboard focus to its trigger', async () => {
+  const { view } = renderProjects();
+  const trigger = await view.findByRole('button', { name: 'Nytt projekt' });
+  trigger.focus();
+  fireEvent.click(trigger);
+  const dialog = view.getByRole('dialog', { name: 'Nytt projekt' });
+  assert.ok(dialog.contains(document.activeElement));
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Avbryt' }));
+  assert.equal(view.queryByRole('dialog', { name: 'Nytt projekt' }), null);
+  assert.ok(document.activeElement === trigger, `Expected trigger focus, got ${document.activeElement?.tagName}`);
+});
+
+test('delayed project editing retains focus, prevents duplicate reads and can retry a failed read', async () => {
+  let release;
+  let response = new Promise((resolve) => { release = resolve; });
+  const { view } = renderProjects({ projectResponse: () => response });
+  await openTools(view);
+  const trigger = view.getByRole('button', { name: 'Redigera 0042 · Testprojekt' });
+  trigger.focus();
+  act(() => { trigger.click(); trigger.click(); });
+  const editorReads = () => requests.filter((r) => r.path === '/api/projects/project-1' && r.method === 'GET');
+  await waitFor(() => assert.equal(editorReads().length, 1));
+  assert.equal(trigger.getAttribute('aria-disabled'), 'true');
+  assert.equal(trigger.disabled, false);
+  assert.ok(document.activeElement === trigger);
+  fireEvent.click(trigger);
+  assert.equal(editorReads().length, 1);
+  await act(async () => release(new Response(JSON.stringify({ error: 'Tillfälligt testfel' }), { status: 503 })));
+  await waitFor(() => assert.equal(trigger.getAttribute('aria-disabled'), 'false'));
+  response = Promise.resolve();
+  fireEvent.click(trigger);
+  const dialog = await view.findByRole('dialog', { name: 'Redigera projekt' });
+  assert.equal(editorReads().length, 2);
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Avbryt' }));
+  assert.ok(document.activeElement === trigger);
 });
 
 test('saving a project refreshes cached detail, dashboard, portfolio and selectors', async () => {

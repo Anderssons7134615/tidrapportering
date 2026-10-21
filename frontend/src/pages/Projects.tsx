@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Archive, ArrowLeft, ChevronDown, ChevronRight, Edit2, Plus, RotateCcw, Search, SlidersHorizontal } from 'lucide-react';
+import { Archive, ArrowLeft, CheckCircle2, ChevronDown, ChevronRight, CircleDashed, CircleDot, Edit2, Plus, RotateCcw, Search, SlidersHorizontal } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { projectTasksApi, projectsApi, usersApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
 import type { Project, ProjectControlItem, ProjectTask, ProjectTaskPriority, ProjectTaskStatus, User } from '../types';
 import { AppShell, ConfirmDialog, Dialog, EmptyState, PageHeader } from '../components/ui/design';
 import { IdentityMark } from '../components/ui/IdentityMark';
-import { ListSkeleton, Skeleton } from '../components/ui/Skeleton';
+import { Skeleton } from '../components/ui/Skeleton';
 import { QueryError } from '../components/ui/QueryError';
 import { ProjectDialog } from '../components/ProjectDialog';
 import { refreshProjectQueries } from '../utils/projectQueries';
@@ -25,6 +25,26 @@ const taskStatusLabels: Record<ProjectTaskStatus, string> = {
 const priorityLabels: Record<ProjectTaskPriority, string> = { LOW: 'Låg', NORMAL: 'Normal', HIGH: 'Hög' };
 const projectStatusLabels: Record<string, string> = { PLANNED: 'Planerade', ONGOING: 'Pågående', COMPLETED: 'Avslutade' };
 const deadlineLabels: Record<string, string> = { OVERDUE: 'Försenade', TODAY: 'Idag', UPCOMING: 'Kommande sju dagar' };
+
+function ProjectStatus({ status }: { status: string }) {
+  const Icon = status === 'PLANNED' ? CircleDashed : status === 'COMPLETED' ? CheckCircle2 : CircleDot;
+  return <span className="project-status"><Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />{status === 'PLANNED' ? 'Planerad' : status === 'COMPLETED' ? 'Avslutad' : 'Pågående'}</span>;
+}
+
+function ProjectsLoading() {
+  return <div className="projects-workspace" role="status" aria-label="Laddar projekt">
+    <div aria-hidden="true"><AppShell>
+      <div className="flex min-w-0 items-center justify-between gap-4 border-b border-graphite-200 pb-5"><Skeleton width={140} height={28} /><Skeleton width={44} height={44} /></div>
+      <Skeleton width="100%" height={48} />
+      <div className="project-list">
+        {[0, 1, 2, 3].map((row) => <div key={row} className="project-directory-row">
+          <Skeleton width={36} height={36} className="shrink-0" />
+          <div className="min-w-0 flex-1 space-y-2"><Skeleton width="65%" height={16} /><Skeleton width="40%" height={12} /></div>
+        </div>)}
+      </div>
+    </AppShell></div>
+  </div>;
+}
 
 function formatTaskDate(date: string) {
   return new Intl.DateTimeFormat('sv-SE', { day: 'numeric', month: 'short' }).format(new Date(`${date}T12:00:00`));
@@ -78,6 +98,7 @@ export default function Projects() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [taskDialog, setTaskDialog] = useState<{ project?: ProjectControlItem; task?: ProjectTask } | null>(null);
   const [projectDialog, setProjectDialog] = useState<{ project?: Project } | null>(null);
+  const editorRequestPending = useRef(false);
 
   const { data, isLoading, isFetching, isError, refetch } = useQuery({
     queryKey: ['project-control', archived, searchTerm, projectStatus, deadline, assigneeId, taskStatus],
@@ -90,7 +111,12 @@ export default function Projects() {
     return { project: await projectsApi.get(id), requestedScope };
   }, onSuccess: ({ project, requestedScope }) => {
     if (requestedScope === currentScope.current) setProjectDialog({ project });
-  }, onError: (error: Error) => toast.error(error.message) });
+  }, onError: (error: Error) => toast.error(error.message), onSettled: () => { editorRequestPending.current = false; } });
+  const openProjectEditor = (id: string) => {
+    if (editorRequestPending.current) return;
+    editorRequestPending.current = true;
+    loadProjectMutation.mutate(id);
+  };
   const changeArchive = useMutation({
     mutationFn: async (items: ProjectControlItem[]) => {
       const requestedScope = scopeKey;
@@ -180,18 +206,18 @@ export default function Projects() {
     });
   };
 
-  if (isLoading) return <ListSkeleton />;
+  if (isLoading) return <ProjectsLoading />;
 
   return (
-    <AppShell>
-      {customerView && <Link to={directoryPath} className="btn-secondary inline-flex w-fit"><ArrowLeft className="h-4 w-4" aria-hidden="true" />Tillbaka till kunder</Link>}
+    <div className="projects-workspace"><AppShell>
+      {customerView && <Link to={directoryPath} className="project-back-link"><ArrowLeft className="h-4 w-4" aria-hidden="true" />Tillbaka till kunder</Link>}
       <PageHeader
         title={customerView ? customerName || 'Kundens projekt' : 'Projekt'}
         description={customerView ? `${countLabel(visibleProjects.length)}. Välj ett projekt för att öppna detaljerna.` : managing ? isManager ? 'Uppgifter, underlag och hantering av projekten.' : 'Dina öppna uppgifter visas först.' : 'Välj en kund för att se deras projekt.'}
         action={(
           <div className="flex flex-wrap gap-2">
-            {(isManager || user?.role === 'EMPLOYEE') && <button type="button" className="btn-primary" onClick={() => setProjectDialog({})}>Nytt projekt</button>}
-            <button type="button" className="btn-secondary" aria-pressed={managing} onClick={() => setManaging((current) => !current)}>{isManager ? 'Hantera' : 'Uppgifter'}</button>
+            {(isManager || user?.role === 'EMPLOYEE') && <button type="button" className="btn-primary" onClick={() => setProjectDialog({})}><Plus className="h-4 w-4" aria-hidden="true" />Nytt projekt</button>}
+            <button type="button" className="btn-secondary project-view-toggle" aria-pressed={managing} onClick={() => setManaging((current) => !current)}>{isManager ? 'Hantera' : 'Uppgifter'}</button>
             {isManager && managing && <button type="button" className="btn-secondary" onClick={() => setTaskDialog({})} disabled={archived || !scopedProjects.length}>
               <Plus className="h-4 w-4" aria-hidden="true" />Ny uppgift
             </button>}
@@ -199,7 +225,7 @@ export default function Projects() {
         )}
       />
 
-      {isManager && managing && <div className="flex flex-wrap gap-2 border-b border-graphite-200" aria-label="Projektvy">
+      {isManager && managing && <div className="flex flex-wrap gap-2 border-b border-graphite-200" role="group" aria-label="Projektvy">
         <button type="button" className={`min-h-11 px-3 text-sm font-semibold border-b-2 ${!archived && !attentionOnly ? 'border-primary-600 text-primary-700' : 'border-transparent text-graphite-600'}`} aria-pressed={!archived && !attentionOnly} disabled={changeArchive.isPending} onClick={() => { setArchived(false); setAttentionOnly(false); clearFilters(); }}>Aktiva</button>
         {!archived && <button type="button" className={`min-h-11 px-3 text-sm font-semibold border-b-2 ${attentionOnly ? 'border-primary-600 text-primary-700' : 'border-transparent text-graphite-600'}`} aria-pressed={attentionOnly} onClick={() => setAttentionOnly(!attentionOnly)}>Behöver åtgärd</button>}
         {user?.role === 'ADMIN' && <Link to="/project-economy" className="flex min-h-11 items-center px-3 text-sm font-semibold text-graphite-600 hover:text-primary-700">Ekonomi</Link>}
@@ -213,7 +239,7 @@ export default function Projects() {
         <QueryError title="Projektkontrollen kunde inte hämtas" description="Kontrollera anslutningen och försök igen." onRetry={() => void refetch()} />
       ) : (
         <>
-          {managing && !archived && !customerView && <div className="mb-3 grid grid-cols-4 items-stretch gap-x-2 border-y border-graphite-200 text-xs text-graphite-600 sm:text-sm" aria-label="Projektstatus">
+          {managing && !archived && !customerView && <div className="mb-3 grid grid-cols-4 items-stretch gap-x-2 border-y border-graphite-200 text-xs text-graphite-600 sm:text-sm" role="group" aria-label="Projektstatus">
             <button type="button" className={`min-h-11 min-w-0 border-b-2 px-0.5 font-semibold ${!deadline ? 'border-primary-600 text-graphite-950' : 'border-transparent hover:text-graphite-950'}`} aria-pressed={!deadline} onClick={() => setDeadline('')}>
               {data?.summary.active ?? 0} projekt
             </button>
@@ -228,39 +254,41 @@ export default function Projects() {
             </button>
           </div>}
 
-          {customerView && Boolean(visibleProjects.length) && <dl className="mb-4 flex flex-wrap gap-x-8 gap-y-3 border-y border-graphite-200 py-4" aria-label="Kundens projektstatus i urvalet">
+          {customerView && Boolean(visibleProjects.length) && <dl className="project-status-summary" aria-label="Kundens projektstatus i urvalet">
             {Object.entries(projectStatusLabels).map(([status, label]) => <div key={status}>
-              <dt className="text-sm text-graphite-600">{label}</dt>
-              <dd className="mt-1 text-lg font-semibold text-graphite-950">{visibleProjects.filter((project) => project.status === status).length}</dd>
+              <dt>{label}</dt>
+              <dd>{visibleProjects.filter((project) => project.status === status).length}</dd>
             </div>)}
           </dl>}
-          <div className="mb-3 flex gap-2 border-b border-graphite-200 pb-3">
-            <label className="relative min-w-0 flex-1">
-              <span className="sr-only">Sök projekt</span>
-              <Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-graphite-400" aria-hidden="true" />
-              <input className="input pl-9" type="search" placeholder="Sök projekt, kund eller plats" value={search} onChange={(event) => setSearch(event.target.value)} />
+          <div className="project-search-toolbar">
+            <label className="min-w-0 flex-1">
+              <span className="project-field-label">Sök projekt</span>
+              <span className="relative block">
+                <Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-graphite-500" aria-hidden="true" />
+                <input className="input pl-9" type="search" placeholder="Sök projekt, kund eller plats" value={search} onChange={(event) => setSearch(event.target.value)} />
+              </span>
             </label>
             <button type="button" className="btn-secondary min-w-11 shrink-0 px-3" onClick={() => setFiltersOpen((current) => !current)} aria-expanded={filtersOpen} aria-controls="project-filters" aria-label={activeFilterCount > 0 ? `Filter, ${activeFilterCount} aktiva` : 'Filter'}>
               <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
-              <span className="hidden sm:inline">Filter</span>{activeFilterCount > 0 && <span aria-label={`${activeFilterCount} aktiva filter`}>({activeFilterCount})</span>}
+              <span>Filter</span>{activeFilterCount > 0 && <span aria-label={`${activeFilterCount} aktiva filter`}>({activeFilterCount})</span>}
             </button>
           </div>
 
           {filtersOpen && (
-            <div id="project-filters" className="mb-3 grid grid-cols-1 gap-3 border-b border-graphite-200 pb-4 sm:grid-cols-2 xl:grid-cols-4">
-              {isManager && <select className="input" aria-label="Visa aktiva eller arkiverade projekt" value={archived ? 'archived' : 'active'} disabled={changeArchive.isPending} onChange={(event) => { clearFilters(); setArchived(event.target.value === 'archived'); }}>
+            <div id="project-filters" className="project-filter-panel">
+              {isManager && <label><span className="project-field-label">Visa projekt</span><select className="input" value={archived ? 'archived' : 'active'} disabled={changeArchive.isPending} onChange={(event) => { clearFilters(); setArchived(event.target.value === 'archived'); }}>
                 <option value="active">Aktiva projekt</option><option value="archived">Arkiverade projekt</option>
-              </select>}
-              <select className="input" aria-label="Filtrera på projektstatus" value={projectStatus} onChange={(event) => setProjectStatus(event.target.value)}>
+              </select></label>}
+              <label><span className="project-field-label">Projektstatus</span><select className="input" aria-label="Filtrera på projektstatus" value={projectStatus} onChange={(event) => setProjectStatus(event.target.value)}>
                 <option value="">Alla projektstatusar</option><option value="PLANNED">Planerade</option><option value="ONGOING">Pågående</option><option value="COMPLETED">Avslutade</option>
-              </select>
-              <select className="input" aria-label="Filtrera på uppgiftsstatus" value={taskStatus} onChange={(event) => setTaskStatus(event.target.value)}>
+              </select></label>
+              <label><span className="project-field-label">Uppgiftsstatus</span><select className="input" aria-label="Filtrera på uppgiftsstatus" value={taskStatus} onChange={(event) => setTaskStatus(event.target.value)}>
                 <option value="">Alla uppgiftsstatusar</option>{Object.entries(taskStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-              </select>
+              </select></label>
               {isManager ? (
-                <select className="input" aria-label="Filtrera på ansvarig" value={assigneeId} onChange={(event) => setAssigneeId(event.target.value)}>
+                <label><span className="project-field-label">Ansvarig</span><select className="input" aria-label="Filtrera på ansvarig" value={assigneeId} onChange={(event) => setAssigneeId(event.target.value)}>
                   <option value="">Alla ansvariga</option>{users?.filter((item) => item.active && item.role !== 'ACCOUNTANT').map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-                </select>
+                </select></label>
               ) : <div className="flex min-h-11 items-center text-sm text-graphite-600">Dina öppna uppgifter visas först</div>}
               <button type="button" className="min-h-11 justify-self-start px-1 text-sm font-semibold text-primary-700 disabled:text-graphite-400" onClick={clearFilters} disabled={activeFilterCount === 0}>Rensa filter</button>
             </div>
@@ -284,7 +312,10 @@ export default function Projects() {
               <button type="button" className="btn-secondary" disabled={changeArchive.isPending} onClick={() => setSelected(new Set())}>Avmarkera</button>
             </>}
           </div>}
-          {isFetching && <p role="status" className="mb-2 text-sm text-graphite-600">Uppdaterar projektlistan…</p>}
+          <div className="project-list-heading">
+            <h2>{!managing && !customerView ? 'Kunder' : 'Projekt'}</h2>
+            <p role="status" aria-live="polite">{listUpdating ? 'Uppdaterar projektlistan…' : countLabel(visibleProjects.length)}</p>
+          </div>
           {isFetching && !data ? (
             <div className="border-t border-graphite-200 bg-white" role="status" aria-live="polite" aria-label="Uppdaterar projektlistan">
               {[0, 1, 2, 3].map((row) => (
@@ -303,9 +334,9 @@ export default function Projects() {
             <div className="project-list">
               {!managing && !customerView ? [...customerGroups.entries()].map(([key, group]) => <Link key={key} to={group.path} className="project-directory-row">
                 <IdentityMark name={group.name} identity={key} />
-                <span className="min-w-0">
+                <span className="project-directory-content">
                   <span className="block font-semibold text-graphite-950 [overflow-wrap:anywhere]">{group.name}</span>
-                  <span className="mt-1 block text-sm text-graphite-600">{countLabel(group.projects.length)}</span>
+                  <span className="project-directory-count">{countLabel(group.projects.length)}</span>
                 </span>
                 <ChevronRight className="h-5 w-5 shrink-0 text-graphite-400" aria-hidden="true" />
               </Link>) : visibleProjects.map((project) => managing ? (
@@ -319,7 +350,7 @@ export default function Projects() {
                   onToggle={() => toggleExpanded(project.id)}
                   onAddTask={() => setTaskDialog({ project })}
                   onEditTask={(task) => setTaskDialog({ project, task })}
-                  onEditProject={() => loadProjectMutation.mutate(project.id)}
+                  onEditProject={() => openProjectEditor(project.id)}
                   selected={selected.has(project.id)}
                   disabled={listUpdating || changeArchive.isPending}
                   loadingEditor={loadProjectMutation.isPending}
@@ -329,9 +360,9 @@ export default function Projects() {
               ) : (
                 <Link key={project.id} to={projectPath(project.id)} className="project-directory-row">
                   <IdentityMark name={project.name} identity={project.id} />
-                  <span className="min-w-0">
+                  <span className="project-directory-content">
                     <span className="block font-semibold text-graphite-950 [overflow-wrap:anywhere]">{project.name}</span>
-                    <span className="mt-1 block text-sm text-graphite-600">{project.code} · {project.status === 'PLANNED' ? 'Planerad' : project.status === 'COMPLETED' ? 'Avslutad' : 'Pågående'}</span>
+                    <span className="project-directory-meta"><span className="tabular-nums">{project.code}</span><span> · </span><ProjectStatus status={project.status} /></span>
                   </span>
                   <ChevronRight className="h-5 w-5 shrink-0 text-graphite-400" aria-hidden="true" />
                 </Link>
@@ -344,7 +375,7 @@ export default function Projects() {
       {taskDialog && <TaskDialog context={taskDialog} projects={scopedProjects.filter((project) => project.active)} users={(users || []) as User[]} isManager={isManager} onClose={() => setTaskDialog(null)} onSaved={() => { setTaskDialog(null); refetch(); }} />}
       {projectDialog && <ProjectDialog project={projectDialog.project} onClose={() => setProjectDialog(null)} onSaved={() => { setProjectDialog(null); refetch(); }} />}
       <ConfirmDialog open={confirmProjects.length > 0} onClose={() => { if (!changeArchive.isPending) setConfirmProjects([]); }} onConfirm={() => changeArchive.mutate(confirmProjects)} title={`${archived ? 'Återställ' : 'Arkivera'} ${confirmProjects.length} projekt?`} description={confirmProjects.map((project) => `${project.code} · ${project.name}`).join(', ')} consequence={archived ? 'Projekten blir valbara för tid och material igen. Tidigare projektstatus behålls.' : 'Projekten flyttas till Arkiverade och blir inte längre valbara för ny tid eller nytt material. Timmar, material och historik finns kvar. Du kan återställa dem senare.'} confirmLabel={archived ? 'Återställ projekt' : 'Arkivera projekt'} confirmVariant="primary" isLoading={changeArchive.isPending} />
-    </AppShell>
+    </AppShell></div>
   );
 }
 
@@ -385,22 +416,23 @@ function ProjectControlRow({ detailPath, project, open, isManager, showDone, onT
   };
 
   return (
-    <article className={`border-b border-graphite-200 last:border-b-0 ${rowTone}`}>
+    <article className={`project-control-item border-b border-graphite-200 last:border-b-0 ${rowTone}`}>
       <div className={`project-row ${isManager ? 'project-row-selectable' : ''}`}>
         {isManager && <label className="flex min-h-11 min-w-11 cursor-pointer items-center justify-center"><input type="checkbox" aria-label={`Markera ${project.code} · ${project.name}`} checked={selected} disabled={disabled} onChange={onSelect} /></label>}
-        <div className={`project-row-content ${isManager ? 'project-row-manager' : ''}`}>
+        <div className={`project-row-content ${canSeeEconomy && project.economy ? 'project-row-manager' : ''}`}>
           <div className="min-w-0">
-          <Link to={detailPath} className="flex min-h-11 min-w-0 items-center font-semibold text-graphite-950 hover:text-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-600">
-            <span className="[overflow-wrap:anywhere]">{project.code} · {project.name}</span>
+          <Link to={detailPath} className="project-name-link">
+            <span className="project-code">{project.code}</span><span className="sr-only"> · </span><span className="[overflow-wrap:anywhere]">{project.name}</span>
           </Link>
-          <p className="text-xs leading-5 text-graphite-600 [overflow-wrap:anywhere]">{project.customer?.name || 'Intern'}{project.site ? ` · ${project.site}` : ''} · {project.status === 'PLANNED' ? 'Planerad' : project.status === 'COMPLETED' ? 'Avslutad' : 'Pågående'}{!project.active ? ' · Arkiverad' : ''}</p>
+          <p className="text-xs leading-5 text-graphite-600 [overflow-wrap:anywhere]">{project.customer?.name || 'Intern'}{project.site ? ` · ${project.site}` : ''}</p>
+          <div className="mt-2 flex flex-wrap items-center gap-2"><ProjectStatus status={project.status} />{!project.active && <span className="project-status"><Archive className="h-3.5 w-3.5" aria-hidden="true" />Arkiverad</span>}</div>
           </div>
           <div className="min-w-0 xl:pt-3">
             <p className="mb-1 text-xs font-medium text-graphite-500">Nästa uppgift</p>
             {project.nextTask ? <><p className="text-sm font-medium text-graphite-800 [overflow-wrap:anywhere]">{project.nextTask.title}</p><p className="mt-1 text-xs text-graphite-600">{project.nextTask.assignee.name} · {formatTaskDate(project.nextTask.dueDate)}</p></> : <p className="text-sm text-graphite-500">Ingen uppgift i urvalet</p>}
             {attentionLabel && project.active && <span className={`mt-1 inline-block text-xs font-semibold ${attentionTone}`}>{attentionLabel}</span>}
           </div>
-          {canSeeEconomy && project.economy && <div className="flex min-w-0 flex-col gap-1 text-xs text-graphite-600 xl:pt-3">
+          {canSeeEconomy && project.economy && <div className="flex min-w-0 flex-col gap-1 text-xs tabular-nums text-graphite-600 xl:pt-3">
             <p className="font-medium text-graphite-500">Timmar och underlag</p>
             <span>{formatHours(project.economy.reportedHours)} rapporterat{project.economy.budgetHours != null ? ` / ${formatHours(project.economy.budgetHours)} budget` : ' · Ingen timbudget'}</span>
             {project.economy.unapprovedHours > 0 && <span className="text-amber-800">{formatHours(project.economy.unapprovedHours)} ej attesterat</span>}
@@ -409,13 +441,13 @@ function ProjectControlRow({ detailPath, project, open, isManager, showDone, onT
           </div>}
         </div>
         <div className="project-row-actions">
-        {isManager && <button type="button" className="icon-button" disabled={disabled || loadingEditor} onClick={onEditProject} aria-label={`Redigera ${project.code} · ${project.name}`}><Edit2 className="h-4 w-4" aria-hidden="true" /></button>}
+        {isManager && <button type="button" className="icon-button" aria-disabled={disabled || loadingEditor} onClick={() => { if (!disabled && !loadingEditor) onEditProject(); }} aria-label={`Redigera ${project.code} · ${project.name}`}><Edit2 className="h-4 w-4" aria-hidden="true" /></button>}
         {isManager && !project.active && <button type="button" className="btn-secondary min-w-11 shrink-0 px-3" aria-label={`Återställ ${project.code} · ${project.name}`} disabled={disabled} onClick={onInactivateProject}><RotateCcw className="h-4 w-4" aria-hidden="true" /><span className="hidden sm:inline">Återställ</span></button>}
-        {canExpand && <button type="button" className="icon-button shrink-0 border-0" onClick={onToggle} disabled={disabled} aria-expanded={open} aria-controls={`project-tasks-${project.id}`} aria-label={`${open ? 'Dölj' : 'Visa'} uppgifter för ${project.name}`}><ChevronDown aria-hidden="true" className={`h-5 w-5 transition ${open ? 'rotate-180' : ''}`} /></button>}
+        {canExpand && <button type="button" className="project-task-toggle" onClick={onToggle} disabled={disabled} aria-expanded={open} aria-controls={`project-tasks-${project.id}`} aria-label={`${open ? 'Dölj' : 'Visa'} uppgifter för ${project.name}`}><span>Uppgifter</span><ChevronDown aria-hidden="true" className={`h-4 w-4 transition-transform ${open ? 'rotate-180' : ''}`} /></button>}
         </div>
       </div>
       {open && canExpand && (
-        <div id={`project-tasks-${project.id}`} className="mx-3 mb-3 rounded-lg border border-graphite-200 bg-white px-3">
+        <div id={`project-tasks-${project.id}`} className="project-task-detail">
           <div className="flex min-h-12 flex-wrap items-center justify-between gap-2">
             <h2 className="text-sm font-semibold text-graphite-950">{showDone ? 'Klara uppgifter' : 'Öppna uppgifter'}</h2>
             {isManager && <div className="flex flex-wrap items-center gap-1"><button type="button" className="min-h-11 px-2 text-sm font-semibold text-primary-700" onClick={onAddTask}>Lägg till uppgift</button><button type="button" className="min-h-11 px-2 text-sm font-semibold text-rose-700" disabled={disabled} onClick={onInactivateProject}>Arkivera</button></div>}

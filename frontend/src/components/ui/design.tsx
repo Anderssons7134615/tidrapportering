@@ -338,6 +338,17 @@ export function Dialog({
   const titleId = useId();
   const descriptionId = useId();
 
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    return () => {
+      // Project/task editors unmount on close instead of rendering open=false.
+      // Restore focus after React has removed the dialog and restored its selection.
+      if (dialog?.open) dialog.close();
+      if (previousFocusRef.current?.isConnected) previousFocusRef.current.focus({ preventScroll: true });
+      previousFocusRef.current = null;
+    };
+  }, []);
+
   useLayoutEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;

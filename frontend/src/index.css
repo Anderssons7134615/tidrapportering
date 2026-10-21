@@ -452,12 +452,18 @@
     @apply fixed left-4 top-4 z-[100] -translate-y-24 rounded-lg bg-primary-800 px-4 py-3 text-sm font-semibold text-white focus:translate-y-0;
   }
 
+  .projects-workspace .app-workspace { @apply space-y-4; }
+  .projects-workspace .page-title { overflow-wrap: anywhere; }
+  .projects-workspace .input { @apply border-graphite-400 focus:border-primary-600; }
+  .projects-workspace .project-back-link + .app-header { @apply mt-1; }
+  .projects-workspace .project-list-heading + .project-list { @apply mt-2; }
+
   .project-list {
     @apply overflow-hidden rounded-xl border border-graphite-200 bg-white;
   }
 
   .project-directory-row {
-    @apply flex min-h-[76px] items-center gap-3 border-b border-graphite-200 px-4 py-3 text-sm last:border-b-0 hover:bg-graphite-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary-600 sm:px-5;
+    @apply flex min-h-[80px] items-center gap-3 border-b border-graphite-200 px-4 py-4 text-sm transition-colors last:border-b-0 hover:bg-graphite-50 focus-visible:bg-primary-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary-600 sm:gap-4 sm:px-5;
   }
 
   .project-directory-row > svg:last-child { @apply ml-auto; }
@@ -467,6 +473,50 @@
   .project-directory-row:hover .identity-mark {
     border-color: #b8c2d0;
   }
+
+  .project-directory-content {
+    @apply flex min-w-0 flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between sm:gap-6;
+  }
+
+  .project-directory-count {
+    @apply shrink-0 text-xs tabular-nums text-graphite-600 sm:text-[13px];
+  }
+
+  .project-directory-meta {
+    @apply flex shrink-0 flex-wrap items-center gap-2 text-xs text-graphite-600;
+  }
+
+  .project-status {
+    @apply inline-flex items-center gap-1.5 text-xs font-medium text-graphite-600;
+  }
+
+  .project-back-link {
+    @apply inline-flex min-h-11 w-fit items-center gap-2 rounded-md pr-3 text-[13px] font-medium text-graphite-600 hover:text-primary-700;
+  }
+
+  .project-view-toggle[aria-pressed='true'] {
+    @apply border-primary-600 bg-primary-50 text-primary-800;
+  }
+
+  .project-status-summary {
+    @apply mb-5 flex flex-wrap gap-x-6 gap-y-3 border-b border-graphite-200 pb-4;
+  }
+
+  .project-status-summary > div { @apply flex items-baseline gap-2; }
+  .project-status-summary dt { @apply text-xs text-graphite-600; }
+  .project-status-summary dd { @apply text-sm font-semibold tabular-nums text-graphite-950; }
+
+  .project-search-toolbar { @apply mb-4 flex items-end gap-2; }
+  .project-field-label { @apply mb-1.5 block text-xs font-medium text-graphite-700; }
+
+  .project-filter-panel {
+    @apply mb-4 grid grid-cols-1 gap-3 rounded-lg border border-graphite-200 bg-graphite-50 p-3 sm:grid-cols-2 sm:p-4 xl:grid-cols-4;
+  }
+  .project-filter-panel > label { @apply min-w-0; }
+
+  .project-list-heading { @apply mb-2 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-1; }
+  .project-list-heading h2 { @apply text-sm font-semibold text-graphite-950; }
+  .project-list-heading p { @apply text-xs tabular-nums text-graphite-600; }
 
   .task-section.team-week-section { @apply border-0 p-0 sm:p-0; }
   .task-section.time-entry-section { @apply rounded-none border-0 p-0 sm:p-0; }
@@ -498,16 +548,16 @@
   }
 
   .project-row {
-    @apply grid items-start gap-x-2 px-3 py-4 sm:px-4;
-    grid-template-columns: minmax(0, 1fr) auto;
+    @apply grid items-start gap-x-2 gap-y-3 px-3 py-4 sm:px-4;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .project-row-selectable {
-    grid-template-columns: 44px minmax(0, 1fr) auto;
+    grid-template-columns: 44px minmax(0, 1fr);
   }
 
   .project-row-content {
-    @apply grid min-w-0 gap-x-6 gap-y-3 xl:grid-cols-2;
+    @apply grid min-w-0 gap-x-6 gap-y-4 xl:grid-cols-2;
   }
 
   .project-row-manager {
@@ -515,13 +565,28 @@
   }
 
   .project-row-actions {
-    @apply flex flex-wrap items-center justify-end gap-1;
+    @apply flex flex-wrap items-center gap-1;
+    grid-column: 1;
   }
 
-  @media (max-width: 1023px) {
-    .project-row-content { grid-column: 1 / -1; grid-row: 2; }
-    .project-row-actions { grid-column: 2; grid-row: 1; }
-    .project-row-selectable .project-row-actions { grid-column: 3; }
+  .project-row-selectable .project-row-actions { grid-column: 2; }
+  .project-row-actions .icon-button { @apply border-transparent bg-transparent disabled:cursor-not-allowed disabled:opacity-50; }
+  .project-row-actions .icon-button[aria-disabled='true'] { @apply cursor-not-allowed opacity-50; }
+
+  .project-name-link {
+    @apply flex min-h-11 min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 rounded-sm py-1 font-semibold text-graphite-950 hover:text-primary-700;
+  }
+  .project-code { @apply text-xs font-medium tabular-nums text-graphite-500; }
+  .project-task-toggle {
+    @apply btn border border-transparent bg-transparent text-graphite-600 hover:bg-primary-50 hover:text-primary-800;
+  }
+  .project-task-toggle[aria-expanded='true'] { @apply bg-primary-50 text-primary-800; }
+  .project-task-detail { @apply mx-3 mb-4 rounded-lg border border-graphite-200 bg-graphite-50 px-3 sm:mx-4 sm:px-4; }
+
+  @media (min-width: 1280px) {
+    .project-row { grid-template-columns: minmax(0, 1fr) auto; }
+    .project-row-selectable { grid-template-columns: 44px minmax(0, 1fr) auto; }
+    .project-row-actions, .project-row-selectable .project-row-actions { grid-column: auto; }
   }
 
   .login-shell {
@@ -596,6 +661,7 @@
   .btn:active:not(:disabled), .choice-tile:active:not(:disabled) { transform: translateY(1px); }
   .dialog-surface[open] { animation: dialog-enter 180ms ease-out; }
   .team-week-detail { animation: detail-enter 160ms ease-out; }
+  .project-task-detail, .project-filter-panel { animation: detail-enter 160ms ease-out; }
 }
 
 @keyframes dialog-enter { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
