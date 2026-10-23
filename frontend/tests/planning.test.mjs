@@ -25,9 +25,9 @@ before(async () => {
 });
 afterEach(() => { cleanup(); clients.splice(0).forEach(c => c.clear()); globalThis.fetch = originalFetch; });
 after(async () => { await vite?.close(); dom?.window.close(); });
-function setup({ role = 'ADMIN', empty = false, failSave = false, failComment = false, failLoad = false } = {}) {
+function setup({ role = 'ADMIN', empty = false, failSave = false, failComment = false, failLoad = false, initialDocument = documentFixture } = {}) {
   auth.useAuthStore.setState({ token: 'synthetic-test', user: { id: 'u1', companyId: 'a', role, name: 'Testperson' } });
-  let board = empty ? null : { id: 'p1', document: structuredClone(documentFixture), revision: 1, updatedAt: '2026-10-21T10:00:00Z' }, comments = [], requests = [], commentAttempts = 0;
+  let board = empty ? null : { id: 'p1', document: structuredClone(initialDocument), revision: 1, updatedAt: '2026-10-21T10:00:00Z' }, comments = [], requests = [], commentAttempts = 0;
   globalThis.fetch = async (url, options = {}) => {
     const path = new URL(url, 'http://localhost').pathname, method = options.method || 'GET';
     const body = options.body ? JSON.parse(options.body) : undefined;
@@ -54,6 +54,7 @@ test('employee and supervisor read the plan and post advice; retry uses the same
     const { view, requests } = setup({ role, failComment: true });
     await view.findByText('Behöver bemanning');
     assert.equal(view.queryByRole('button', { name: 'Redigera planering' }), null);
+    assert.equal(view.queryByLabelText('Dag att planera'), null);
     const field = view.getByLabelText('Din kommentar');
     fireEvent.change(field, { target: { value: 'Kan hjälpa på torsdag' } });
     fireEvent.click(view.getByRole('button', { name: 'Publicera kommentar' }));
@@ -75,6 +76,187 @@ test('admin edits a weekday and saves the expected revision', async () => {
   await view.findByText('Nytt jobb');
   const put = requests.find(r => r.method === 'PUT'); assert.equal(put.body.expectedRevision, 1); assert.equal(put.body.document.weeks[0].people[0].days[0], 'Nytt jobb');
 });
+function dragData() {
+  const values = new Map();
+  return { setData: (type, value) => values.set(type, value), getData: type => values.get(type) || '', get types() { return [...values.keys()]; }, effectAllowed: '' };
+}
+
+test('dragging assigns only the chosen person, weekday and week and saves explicitly', async () => {
+  const initialDocument = structuredClone(documentFixture);
+  initialDocument.weeks.push({ startDate: '2026-11-02', note: 'Nästa vecka', people: [{ name: 'Testperson', days: ['Annat','','','',''] }] });
+  const { view, requests } = setup({ initialDocument });
+  fireEvent.click(await view.findByRole('button', { name: 'Redigera planering' }));
+  fireEvent.change(view.getByLabelText('Vecka'), { target: { value: '2026-10-26' } });
+  fireEvent.change(view.getByLabelText('Dag att planera'), { target: { value: '2' } });
+  const dataTransfer = dragData();
+  fireEvent.dragStart(view.getByRole('button', { name: 'Välj Testperson' }), { dataTransfer });
+  fireEvent.drop(view.getByRole('region', { name: 'Jobb Jobb A' }), { dataTransfer });
+  assert.equal(view.getByLabelText('Testperson onsdag').value, 'Jobb A');
+  assert.equal(requests.some(r => r.method === 'PUT'), false);
+  fireEvent.click(view.getByRole('button', { name: 'Spara planering' }));
+  await view.findByText('Planeringen är sparad och synlig för personalen.');
+  const expected = structuredClone(initialDocument);
+  expected.weeks[0].people[0].days[2] = 'Jobb A';
+  const put = requests.find(r => r.method === 'PUT');
+  assert.equal(put.body.expectedRevision, 1);
+  assert.deepEqual(put.body.document, expected);
+});
+
+test('touch and keyboard controls assign the selected day without dragging or auto-saving', async () => {
+  const { view, requests } = setup();
+  fireEvent.click(await view.findByRole('button', { name: 'Redigera planering' }));
+  fireEvent.change(view.getByLabelText('Dag att planera'), { target: { value: '4' } });
+  fireEvent.click(view.getByRole('button', { name: 'Välj Testperson' }));
+  fireEvent.change(view.getByLabelText('Jobb att tilldela'), { target: { value: '0' } });
+  fireEvent.click(view.getByRole('button', { name: 'Tilldela vald dag' }));
+  assert.equal(view.getByLabelText('Testperson fredag').value, 'Jobb A');
+  assert.equal(view.getByLabelText('Testperson tisdag').value, 'Jobb B');
+  assert.equal(requests.some(r => r.method === 'PUT'), false);
+  await view.findByText(/Testperson.*Jobb A.*fredag.*inte sparad/);
+});
+
+test('replacing existing day text requires confirmation and cancellation preserves it', async () => {
+  const { view, requests } = setup();
+  fireEvent.click(await view.findByRole('button', { name: 'Redigera planering' }));
+  fireEvent.change(view.getByLabelText('Dag att planera'), { target: { value: '1' } });
+  const drop = () => {
+    const dataTransfer = dragData();
+    fireEvent.dragStart(view.getByRole('button', { name: 'Välj Testperson' }), { dataTransfer });
+    fireEvent.drop(view.getByRole('region', { name: 'Jobb Jobb A' }), { dataTransfer });
+  };
+  drop();
+  const dialog = view.getByRole('dialog', { name: 'Ändra planering för Testperson?' });
+  assert.match(dialog.textContent, /Jobb B/);
+  assert.match(dialog.textContent, /tisdag/);
+  assert.equal(view.getByLabelText('Testperson tisdag').value, 'Jobb B');
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Avbryt' }));
+  assert.equal(view.getByLabelText('Testperson tisdag').value, 'Jobb B');
+  drop();
+  fireEvent.click(within(view.getByRole('dialog', { name: 'Ändra planering för Testperson?' })).getByRole('button', { name: 'Byt jobb' }));
+  assert.equal(view.getByLabelText('Testperson tisdag').value, 'Jobb A');
+  assert.equal(requests.some(r => r.method === 'PUT'), false);
+});
+
+test('external drag data cannot change the planning document', async () => {
+  const { view, requests } = setup();
+  fireEvent.click(await view.findByRole('button', { name: 'Redigera planering' }));
+  fireEvent.change(view.getByLabelText('Dag att planera'), { target: { value: '2' } });
+  const dataTransfer = dragData();
+  dataTransfer.setData('application/x-tidapp-planning-person', '0');
+  fireEvent.drop(view.getByRole('region', { name: 'Jobb Jobb A' }), { dataTransfer });
+  assert.equal(view.getByLabelText('Testperson onsdag').value, '');
+  assert.equal(requests.some(r => r.method === 'PUT'), false);
+});
+
+for (const changed of ['weekday', 'week', 'person removal', 'job rename']) {
+  test(`stale drag after ${changed} never changes another planning cell`, async () => {
+    const initialDocument = structuredClone(documentFixture);
+    initialDocument.weeks[0].people.push({ name: 'Testperson', days: ['', '', '', '', ''] });
+    initialDocument.weeks.push({ startDate: '2026-11-02', note: '', people: [{ name: 'Testperson', days: ['', '', '', '', ''] }] });
+    const { view, requests } = setup({ initialDocument });
+    fireEvent.click(await view.findByRole('button', { name: 'Redigera planering' }));
+    fireEvent.change(view.getByLabelText('Vecka'), { target: { value: '2026-10-26' } });
+    fireEvent.change(view.getByLabelText('Dag att planera'), { target: { value: '2' } });
+    const dataTransfer = dragData();
+    fireEvent.dragStart(view.getAllByRole('button', { name: 'Välj Testperson' })[0], { dataTransfer });
+    if (changed === 'weekday') fireEvent.change(view.getByLabelText('Dag att planera'), { target: { value: '3' } });
+    if (changed === 'week') fireEvent.change(view.getByLabelText('Vecka'), { target: { value: '2026-11-02' } });
+    if (changed === 'person removal') fireEvent.click(view.getAllByRole('button', { name: 'Ta bort rad' })[0]);
+    if (changed === 'job rename') fireEvent.change(view.getByLabelText('Jobb / beställare'), { target: { value: 'Nytt jobb' } });
+    fireEvent.drop(view.getByRole('region', { name: changed === 'job rename' ? 'Jobb Nytt jobb' : 'Jobb Jobb A' }), { dataTransfer });
+    assert.ok(view.getAllByLabelText('Testperson onsdag').every(field => field.value === ''));
+    assert.equal(view.queryByRole('dialog', { name: 'Ändra planering för Testperson?' }), null);
+    assert.equal(requests.some(r => r.method === 'PUT'), false);
+  });
+}
+
+test('duplicate job names block ambiguous assignments and explain how to fix them', async () => {
+  const initialDocument = structuredClone(documentFixture);
+  initialDocument.jobs.push({ ...initialDocument.jobs[0], details: 'Annat jobb med samma namn' });
+  const { view } = setup({ initialDocument });
+  fireEvent.click(await view.findByRole('button', { name: 'Redigera planering' }));
+  fireEvent.change(view.getByLabelText('Dag att planera'), { target: { value: '2' } });
+  const dataTransfer = dragData();
+  fireEvent.dragStart(view.getByRole('button', { name: 'Välj Testperson' }), { dataTransfer });
+  fireEvent.drop(view.getAllByRole('region', { name: 'Jobb Jobb A' })[0], { dataTransfer });
+  assert.equal(view.getByLabelText('Testperson onsdag').value, '');
+  assert.ok(view.getAllByText('Ge jobben olika namn innan du tilldelar personal.').length > 0);
+});
+
+test('unnamed jobs are not shown as assignments for people with an empty day', async () => {
+  const initialDocument = structuredClone(documentFixture);
+  initialDocument.jobs.push({ name: '', details: '', deadline: '' });
+  const { view } = setup({ initialDocument });
+  fireEvent.click(await view.findByRole('button', { name: 'Redigera planering' }));
+  fireEvent.change(view.getByLabelText('Dag att planera'), { target: { value: '2' } });
+  const unnamed = view.getByRole('region', { name: 'Jobb' });
+  assert.equal(Boolean(within(unnamed).queryByText('Testperson')), false);
+  const dataTransfer = dragData();
+  fireEvent.dragStart(view.getByRole('button', { name: 'Välj Testperson' }), { dataTransfer });
+  fireEvent.drop(unnamed, { dataTransfer });
+  assert.equal(view.getByLabelText('Testperson onsdag').value, '');
+});
+
+test('saving disables assignment controls and ignores an in-flight drag', async () => {
+  const { view } = setup();
+  fireEvent.click(await view.findByRole('button', { name: 'Redigera planering' }));
+  fireEvent.change(view.getByLabelText('Dag att planera'), { target: { value: '2' } });
+  const dataTransfer = dragData();
+  fireEvent.dragStart(view.getByRole('button', { name: 'Välj Testperson' }), { dataTransfer });
+  const fetch = globalThis.fetch;
+  let release;
+  globalThis.fetch = (url, options = {}) => options.method === 'PUT'
+    ? new Promise(resolve => { release = () => resolve(fetch(url, options)); }) : fetch(url, options);
+  fireEvent.click(view.getByRole('button', { name: 'Spara planering' }));
+  await waitFor(() => assert.equal(view.getByRole('button', { name: 'Välj Testperson' }).disabled, true));
+  assert.equal(view.getByRole('button', { name: 'Välj Testperson' }).draggable, false);
+  fireEvent.drop(view.getByRole('region', { name: 'Jobb Jobb A' }), { dataTransfer });
+  assert.equal(view.getByLabelText('Testperson onsdag').value, '');
+  await waitFor(() => assert.equal(typeof release, 'function'));
+  release();
+  await view.findByText('Planeringen är sparad och synlig för personalen.');
+});
+
+test('a name already placed on a job can be dragged directly to another job', async () => {
+  const initialDocument = structuredClone(documentFixture);
+  initialDocument.jobs.push({ name: 'Jobb B', details: '', deadline: '' });
+  const { view } = setup({ initialDocument });
+  fireEvent.click(await view.findByRole('button', { name: 'Redigera planering' }));
+  const dataTransfer = dragData();
+  fireEvent.dragStart(view.getByRole('button', { name: 'Flytta Testperson från Jobb A' }), { dataTransfer });
+  fireEvent.dragOver(view.getByRole('region', { name: 'Jobb Jobb B' }), { dataTransfer });
+  fireEvent.drop(view.getByRole('region', { name: 'Jobb Jobb B' }), { dataTransfer });
+  fireEvent.click(within(view.getByRole('dialog', { name: 'Ändra planering för Testperson?' })).getByRole('button', { name: 'Byt jobb' }));
+  assert.equal(view.getByLabelText('Testperson måndag').value, 'Jobb B');
+});
+
+test('dropping a person onto their existing job changes nothing and needs no confirmation', async () => {
+  const { view, requests } = setup();
+  fireEvent.click(await view.findByRole('button', { name: 'Redigera planering' }));
+  const dataTransfer = dragData();
+  fireEvent.dragStart(view.getByRole('button', { name: 'Välj Testperson' }), { dataTransfer });
+  fireEvent.drop(view.getByRole('region', { name: 'Jobb Jobb A' }), { dataTransfer });
+  assert.equal(view.getByLabelText('Testperson måndag').value, 'Jobb A');
+  assert.equal(Boolean(view.queryByRole('dialog', { name: 'Ändra planering för Testperson?' })), false);
+  await view.findByText(/Ingen ändring gjord/);
+  assert.equal(requests.some(r => r.method === 'PUT'), false);
+});
+
+test('confirmed keyboard assignment returns focus to the person instead of the disabled action', async () => {
+  const initialDocument = structuredClone(documentFixture);
+  initialDocument.jobs.push({ name: 'Jobb B', details: '', deadline: '' });
+  const { view } = setup({ initialDocument });
+  fireEvent.click(await view.findByRole('button', { name: 'Redigera planering' }));
+  fireEvent.click(view.getByRole('button', { name: 'Välj Testperson' }));
+  fireEvent.change(view.getByLabelText('Jobb att tilldela'), { target: { value: '1' } });
+  const assign = view.getByRole('button', { name: 'Tilldela vald dag' });
+  assign.focus();
+  fireEvent.click(assign);
+  fireEvent.click(within(view.getByRole('dialog', { name: 'Ändra planering för Testperson?' })).getByRole('button', { name: 'Byt jobb' }));
+  assert.equal(view.getByLabelText('Testperson måndag').value, 'Jobb B');
+  assert.equal(document.activeElement.getAttribute('aria-label'), 'Välj Testperson');
+});
+
 test('conflicting save retains draft and navigation requires a decision', async () => {
   const { view, router } = setup({ failSave: true });
   fireEvent.click(await view.findByRole('button', { name: 'Redigera planering' }));

@@ -8,6 +8,7 @@ import { useAuthStore } from '../stores/authStore';
 import { AppShell, PageHeader, TaskSection, EmptyState, FormField, ConfirmDialog } from '../components/ui/design';
 import { QueryError } from '../components/ui/QueryError';
 import type { PlanningDocument, PlanningWeek } from '../types/planning';
+import PlanningAssignments from './PlanningAssignments';
 import './Planning.css';
 
 const emptyPlan = (): PlanningDocument => ({ weeks: [], jobs: [], issues: '' });
@@ -78,6 +79,12 @@ export default function Planning() {
         {draft && <AddWeek weeks={weeks} onAdd={w => { setDraft(d => d && ({ ...d, weeks: [...d.weeks, w] })); setSelected(w.startDate); }} />}
         {week ? <>
           <h3 className="mb-3 font-semibold">{weekLabel(week.startDate)}</h3>
+          {admin && draft && <PlanningAssignments key={week.startDate} week={week} jobs={draft.jobs} disabled={save.isPending} onAssign={(row, day, jobName) => {
+            if (save.isPending) return;
+            setDraft(current => current && ({ ...current, weeks: current.weeks.map(item => item.startDate === week.startDate
+              ? { ...item, people: item.people.map((person, index) => index === row ? { ...person, days: person.days.map((value, column) => column === day ? jobName : value) } : person) }
+              : item) }));
+          }} />}
           <div className="planning-roster" role="table" aria-label={`Arbetsplanering vecka ${getISOWeek(parseISO(week.startDate))}, ${getISOWeekYear(parseISO(week.startDate))}`}>
             <div className="planning-roster-head" role="row"><span role="columnheader">Personal</span>{Array.from({ length: 5 }, (_, i) => <span role="columnheader" key={i}>{format(addDays(parseISO(week.startDate), i), 'EEE d/M', { locale: sv })}</span>)}</div>
             {week.people.map((p, row) => (!draft && person && person !== p.name) ? null : <div className="planning-person" role="row" key={row}>

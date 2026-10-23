@@ -1,4 +1,27 @@
 .planning-save { display: grid; gap: 12px; padding: 16px; background: var(--color-bg-soft); border-radius: var(--radius-sm); }
+.planning-assignments { display: grid; gap: 12px; min-width: 0; margin-bottom: 24px; padding: 16px 0 24px; border-bottom: 1px solid var(--color-border); }
+.planning-assignments > label { max-width: 22rem; }
+.planning-assignment-layout { display: grid; gap: 16px; min-width: 0; }
+.planning-assignment-people { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr)); align-content: start; gap: 8px; min-width: 0; }
+.planning-assignments .planning-person-drag { width: 100%; min-height: 44px; justify-content: flex-start; align-items: flex-start; text-align: left; cursor: grab; }
+.planning-person-drag > svg, .planning-assigned-name > svg { flex-shrink: 0; }
+.planning-person-copy { display: grid; gap: 4px; min-width: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.planning-person-drag[aria-pressed="true"] { border-color: var(--color-focus); outline: 1px solid var(--color-focus); background: var(--color-bg-soft); }
+.planning-assignment-jobs { display: grid; gap: 8px; align-content: start; max-height: 32rem; min-width: 0; overflow-y: auto; padding: 3px; scrollbar-gutter: stable; }
+.planning-assignment-job { min-width: 0; padding: 12px; border: 1px dashed var(--color-border); border-radius: var(--radius-sm); overflow-wrap: anywhere; }
+.planning-assignment-job[data-drop-state="ready"] { border-color: var(--color-focus); }
+.planning-assignment-job[data-drop-state="over"] { border-color: var(--color-focus); border-style: solid; background: var(--color-bg-soft); outline: 1px solid var(--color-focus); }
+.planning-assigned-names { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.planning-assigned-name { display: inline-flex; align-items: center; gap: 6px; min-width: 44px; min-height: 44px; max-width: 100%; padding: 6px 10px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-bg-soft); cursor: grab; text-align: left; overflow-wrap: anywhere; }
+.planning-person-drag:active, .planning-assigned-name:active { cursor: grabbing; }
+.planning-person-drag:disabled, .planning-assigned-name:disabled { cursor: not-allowed; opacity: 0.6; }
+.planning-drop-hint { margin-top: 6px; color: var(--color-text-muted); font-size: 0.75rem; }
+.planning-assignment-controls { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; min-width: 0; }
+.planning-assignment-controls > label { flex: 1 1 220px; min-width: 0; max-width: 28rem; }
+@media (min-width: 640px) {
+  .planning-assignment-layout { grid-template-columns: minmax(140px, 0.65fr) minmax(0, 1.5fr); }
+}
+
 .task-section[id^="planning-"] { scroll-margin-top: 88px; }
 .planning-filters { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 20px; }
 .planning-filters > * { flex: 1 1 220px; min-width: 0; }
