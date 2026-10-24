@@ -81,6 +81,38 @@ test('comment retry is idempotent, bound to author, and validates content', asyn
   } finally { await app.close(); }
 });
 
+test('multiple daily assignments round-trip without changing legacy day text', async () => {
+  const { app, call } = await setup();
+  const multiple = {
+    ...document,
+    weeks: document.weeks.map(week => ({ ...week, people: week.people.map(person => ({ ...person,
+      days: [...person.days], assignments: [['Jobb A', 'Jobb B', 'Ett jobb\nmed radbrytning'], [], [], [], []],
+    })) })),
+  };
+  multiple.weeks[0].people[0].days[0] = '  Importerad text\nmed anteckning  ';
+  try {
+    const saved = await call('PUT', '', 'ADMIN', { expectedRevision: 0, document: multiple });
+    assert.equal(saved.statusCode, 200);
+    assert.deepEqual((await call('GET', '', 'EMPLOYEE')).json().document, multiple);
+    assert.equal(saved.json().revision, 1);
+    assert.equal((await call('PUT', '', 'ADMIN', { expectedRevision: 0, document: multiple })).statusCode, 409);
+    assert.equal((await call('GET', '', 'EMPLOYEE', undefined, 'b')).body, 'null');
+    assert.equal((await call('PUT', '', 'EMPLOYEE', { expectedRevision: 1, document: multiple })).statusCode, 403);
+  } finally { await app.close(); }
+});
+
+test('assignment fields enforce their own bounds without interpreting multiline names or day text', () => {
+  const withAssignments = (assignments: unknown) => ({ ...document, weeks: [{ ...document.weeks[0], people: [{ ...document.weeks[0].people[0], assignments }] }] });
+  for (const assignments of [null, [], [[], [], [], []], [[], [], [], [], [], []], ['A', [], [], [], []], [[null], [], [], [], []], [[' '], [], [], [], []], [['A', 'A'], [], [], [], []], [['x'.repeat(201)], [], [], [], []], [Array.from({ length: 201 }, (_, index) => String(index)), [], [], [], []]]) {
+    assert.equal(planningDocumentSchema.safeParse(withAssignments(assignments)).success, false);
+  }
+  const maximum = [Array.from({ length: 200 }, (_, index) => `${index} ${'x'.repeat(190)}`), [], [], [], []];
+  assert.equal(planningDocumentSchema.safeParse(withAssignments(maximum)).success, true);
+  const names = [['A', 'B', 'A\nB', ' Naam '], [], [], [], []];
+  assert.deepEqual(planningDocumentSchema.parse(withAssignments(names)).weeks[0].people[0].assignments, names);
+  assert.equal(planningDocumentSchema.safeParse(document).success, true);
+});
+
 test('plan validates real Mondays, duplicate weeks, five weekdays and bounded fields', () => {
   assert.equal(planningDocumentSchema.safeParse(document).success, true);
   for (const startDate of ['2026-02-30', '2026-10-20', 'invalid']) assert.equal(planningDocumentSchema.safeParse({ ...document, weeks: [{ ...document.weeks[0], startDate }] }).success, false);
