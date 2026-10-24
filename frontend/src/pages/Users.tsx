@@ -8,7 +8,7 @@ import toast from 'react-hot-toast';
 import { ListSkeleton } from '../components/ui/Skeleton';
 import { QueryError } from '../components/ui/QueryError';
 import { AppShell, ConfirmDialog, DataTable, Dialog, PageHeader, StatusBadge } from '../components/ui/design';
-import { formatCurrency, parseSwedishNumber } from '../utils/format';
+
 
 const roleLabels: Record<string, string> = {
   ADMIN: 'Admin',
@@ -77,19 +77,13 @@ export default function UsersPage() {
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
-    const hourlyCostText = String(formData.get('hourlyCost') || '').trim();
-    const hourlyCost = hourlyCostText ? parseSwedishNumber(hourlyCostText) : null;
 
-    if (hourlyCostText && (hourlyCost == null || !Number.isFinite(hourlyCost) || hourlyCost < 0)) {
-      toast.error('Timkostnaden måste vara ett giltigt belopp');
-      return;
-    }
 
     const data: Partial<User> = {
       name: formData.get('name') as string,
       email: formData.get('email') as string,
       role: formData.get('role') as User['role'],
-      hourlyCost,
+
       ...(editingUser && (formData.get('allowIncompleteWeekApproval') === 'on') !== Boolean(editingUser.allowIncompleteWeekApproval)
         ? { allowIncompleteWeekApproval: formData.get('allowIncompleteWeekApproval') === 'on' }
         : {}),
@@ -97,10 +91,7 @@ export default function UsersPage() {
 
     if (editingUser) updateMutation.mutate({ id: editingUser.id, data });
     else {
-      const createData = hourlyCost == null
-        ? { ...data, hourlyCost: undefined }
-        : data;
-      createMutation.mutate({ ...createData, password: formData.get('password') as string });
+      createMutation.mutate({ ...data, password: formData.get('password') as string });
     }
   };
 
@@ -127,7 +118,7 @@ export default function UsersPage() {
               <th className="px-4 py-3">Namn</th>
               <th className="px-4 py-3">E-post</th>
               <th className="px-4 py-3">Roll</th>
-              <th className="px-4 py-3 text-right">Intern timkostnad</th>
+
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3 text-right">Åtgärder</th>
             </tr>
@@ -147,13 +138,7 @@ export default function UsersPage() {
                 <td className="px-4 py-3">
                   <StatusBadge label={roleLabels[user.role]} tone={roleTones[user.role]} />
                 </td>
-                <td className="whitespace-nowrap px-4 py-3 text-right font-medium tabular-nums text-graphite-800">
-                  {user.hourlyCost == null ? (
-                    <span className="text-amber-700">Saknas</span>
-                  ) : (
-                    `${formatCurrency(user.hourlyCost)}/tim`
-                  )}
-                </td>
+
                 <td className="px-4 py-3">
                   <StatusBadge label={user.active ? 'Aktiv' : 'Inaktiv'} tone={user.active ? 'green' : 'gray'} />
                 </td>
@@ -218,21 +203,7 @@ export default function UsersPage() {
                   <option value="ADMIN">Admin</option>
                 </select>
               </div>
-              <div>
-                <label htmlFor="user-hourly-cost" className="label">Intern timkostnad (kr/tim)</label>
-                <input
-                  id="user-hourly-cost"
-                  name="hourlyCost"
-                  defaultValue={editingUser?.hourlyCost ?? ''}
-                  className="input"
-                  inputMode="decimal"
-                  placeholder="Exempel: 450"
-                  aria-describedby="hourly-cost-help"
-                />
-                <p id="hourly-cost-help" className="mt-1 text-sm leading-5 text-graphite-600">
-                  Används som arbetskostnad när projektets resultat beräknas. Beloppet visas inte för medarbetaren.
-                </p>
-              </div>
+
               {editingUser && <label className="flex min-h-11 cursor-pointer items-start gap-3 py-2">
                 <input type="checkbox" name="allowIncompleteWeekApproval" defaultChecked={editingUser.allowIncompleteWeekApproval ?? false}
                   className="mt-1 h-5 w-5 shrink-0 rounded border-graphite-300 text-primary-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600" />

@@ -12,7 +12,7 @@ import { ListSkeleton, Skeleton } from '../components/ui/Skeleton';
 import { QueryError } from '../components/ui/QueryError';
 import { ProjectDialog } from '../components/ProjectDialog';
 import { refreshProjectQueries } from '../utils/projectQueries';
-import { formatHours, toDateInputValue } from '../utils/format';
+import { toDateInputValue } from '../utils/format';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 
 const taskStatusLabels: Record<ProjectTaskStatus, string> = {
@@ -31,9 +31,7 @@ function formatTaskDate(date: string) {
 }
 
 function needsAttention(project: ProjectControlItem) {
-  return project.overdueCount > 0 || project.dueTodayCount > 0 || project.waitingCount > 0
-    || Boolean(project.economy && (project.economy.unapprovedHours > 0
-      || (project.economy.budgetUsagePercent ?? 0) >= 100 || project.economy.warnings.length > 0));
+  return project.overdueCount > 0 || project.dueTodayCount > 0 || project.waitingCount > 0;
 }
 
 export default function Projects() {
@@ -202,7 +200,7 @@ export default function Projects() {
       {isManager && managing && <div className="flex flex-wrap gap-2 border-b border-graphite-200" aria-label="Projektvy">
         <button type="button" className={`min-h-11 px-3 text-sm font-semibold border-b-2 ${!archived && !attentionOnly ? 'border-primary-600 text-primary-700' : 'border-transparent text-graphite-600'}`} aria-pressed={!archived && !attentionOnly} disabled={changeArchive.isPending} onClick={() => { setArchived(false); setAttentionOnly(false); clearFilters(); }}>Aktiva</button>
         {!archived && <button type="button" className={`min-h-11 px-3 text-sm font-semibold border-b-2 ${attentionOnly ? 'border-primary-600 text-primary-700' : 'border-transparent text-graphite-600'}`} aria-pressed={attentionOnly} onClick={() => setAttentionOnly(!attentionOnly)}>Behöver åtgärd</button>}
-        {user?.role === 'ADMIN' && <Link to="/project-economy" className="flex min-h-11 items-center px-3 text-sm font-semibold text-graphite-600 hover:text-primary-700">Ekonomi</Link>}
+
         <button type="button" className={`min-h-11 px-3 text-sm font-semibold border-b-2 ${archived ? 'border-primary-600 text-primary-700' : 'border-transparent text-graphite-600'}`} aria-pressed={archived} disabled={changeArchive.isPending} onClick={() => { clearFilters(); setArchived(true); }}>Arkiverade</button>
       </div>}
       {archived && <p className="text-sm text-graphite-600">Historiken finns kvar. Återställ ett projekt när arbetet ska fortsätta.</p>}
@@ -356,7 +354,7 @@ function ProjectControlRow({ detailPath, project, open, isManager, showDone, onT
   });
   const openTaskCount = project.tasks.filter((task) => task.status !== 'DONE').length;
   const visibleTasks = project.tasks.filter((task) => showDone ? task.status === 'DONE' : task.status !== 'DONE');
-  const canSeeEconomy = useAuthStore(state => state.user?.role === 'ADMIN');
+
   const canExpand = project.active && (isManager || visibleTasks.length > 0);
   const rowTone = selected ? 'bg-primary-50/60' : '';
   const attentionLabel = project.overdueCount > 0
@@ -399,13 +397,7 @@ function ProjectControlRow({ detailPath, project, open, isManager, showDone, onT
             {project.nextTask ? <><p className="text-sm font-medium text-graphite-800 [overflow-wrap:anywhere]">{project.nextTask.title}</p><p className="mt-1 text-xs text-graphite-600">{project.nextTask.assignee.name} · {formatTaskDate(project.nextTask.dueDate)}</p></> : <p className="text-sm text-graphite-500">Ingen uppgift i urvalet</p>}
             {attentionLabel && project.active && <span className={`mt-1 inline-block text-xs font-semibold ${attentionTone}`}>{attentionLabel}</span>}
           </div>
-          {canSeeEconomy && project.economy && <div className="flex min-w-0 flex-col gap-1 text-xs text-graphite-600 xl:pt-3">
-            <p className="font-medium text-graphite-500">Timmar och underlag</p>
-            <span>{formatHours(project.economy.reportedHours)} rapporterat{project.economy.budgetHours != null ? ` / ${formatHours(project.economy.budgetHours)} budget` : ' · Ingen timbudget'}</span>
-            {project.economy.unapprovedHours > 0 && <span className="text-amber-800">{formatHours(project.economy.unapprovedHours)} ej attesterat</span>}
-            {(project.economy.budgetUsagePercent ?? 0) >= 100 && <span className="font-semibold text-rose-700">Timbudget nådd</span>}
-            {project.economy.warnings.length > 0 && <span className="text-amber-800">{project.economy.warnings[0]}</span>}
-          </div>}
+
         </div>
         <div className="project-row-actions">
         {isManager && <button type="button" className="icon-button" disabled={disabled || loadingEditor} onClick={onEditProject} aria-label={`Redigera ${project.code} · ${project.name}`}><Edit2 className="h-4 w-4" aria-hidden="true" /></button>}
@@ -435,23 +427,25 @@ function ProjectControlRow({ detailPath, project, open, isManager, showDone, onT
   );
 }
 
-function TaskDialog({ context, projects, users, isManager, onClose, onSaved }: { context: { project?: ProjectControlItem; task?: ProjectTask }; projects: ProjectControlItem[]; users: User[]; isManager: boolean; onClose: () => void; onSaved: () => void }) {
+type TaskProject = Pick<ProjectControlItem, 'id' | 'code' | 'name' | 'active'>;
+export function TaskDialog({ context, projects, users, isManager, onClose, onSaved }: { context: { project?: TaskProject; task?: ProjectTask }; projects: TaskProject[]; users: User[]; isManager: boolean; onClose: () => void; onSaved: () => void }) {
   const queryClient = useQueryClient();
   const task = context.task;
   const [confirmArchive, setConfirmArchive] = useState(false);
   const [dialogStatus, setDialogStatus] = useState<ProjectTaskStatus>(task?.status || 'TODO');
+  const [assigneeId, setAssigneeId] = useState(task?.assigneeId || '');
   const today = toDateInputValue(new Date());
   const initialDueDate = task?.deadlineBucket === 'OVERDUE' && task.status === 'WAITING' ? today : task?.dueDate || today;
   const saveMutation = useMutation({
     mutationFn: (data: { projectId: string; title: string; note?: string | null; assigneeId: string; priority: ProjectTaskPriority; status: ProjectTaskStatus; dueDate: string }) => task
       ? isManager ? projectTasksApi.update(task.id, data) : projectTasksApi.updateStatus(task.id, { status: data.status, ...(data.status === 'WAITING' ? { dueDate: data.dueDate } : {}) })
       : projectTasksApi.create(data.projectId, { title: data.title, note: data.note, assigneeId: data.assigneeId, priority: data.priority, status: data.status, dueDate: data.dueDate }),
-    onSuccess: () => { toast.success(task ? 'Uppgiften sparades' : 'Uppgiften skapades'); queryClient.invalidateQueries({ queryKey: ['project-control'] }); onSaved(); },
+    onSuccess: () => { toast.success(task ? 'Uppgiften sparades' : 'Uppgiften skapades'); void refreshProjectQueries(queryClient); onSaved(); },
     onError: (error: Error) => toast.error(error.message),
   });
   const archiveMutation = useMutation({
     mutationFn: () => projectTasksApi.archive(task!.id),
-    onSuccess: () => { toast.success('Uppgiften arkiverades'); queryClient.invalidateQueries({ queryKey: ['project-control'] }); onSaved(); },
+    onSuccess: () => { toast.success('Uppgiften arkiverades'); void refreshProjectQueries(queryClient); onSaved(); },
     onError: (error: Error) => toast.error(error.message),
   });
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -465,7 +459,7 @@ function TaskDialog({ context, projects, users, isManager, onClose, onSaved }: {
       <form id="project-task-form" onSubmit={handleSubmit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {!context.project && <label className="sm:col-span-2"><span className="label">Projekt</span><select name="projectId" className="input" required defaultValue=""><option value="" disabled>Välj projekt</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.code} · {project.name}</option>)}</select></label>}
         <label className="sm:col-span-2"><span className="label">Vad ska göras?</span><input autoFocus name="title" className="input" required maxLength={160} defaultValue={task?.title || ''} disabled={!isManager && Boolean(task)} /></label>
-        {isManager ? <label><span className="label">Ansvarig</span><select name="assigneeId" className="input" required defaultValue={task?.assigneeId || availableUsers[0]?.id || ''}>{availableUsers.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label> : <div><span className="label">Ansvarig</span><div className="flex min-h-11 items-center text-sm text-graphite-800">{task?.assignee.name}</div></div>}
+        {isManager ? <label><span className="label">Ansvarig</span><select name="assigneeId" className="input" required value={assigneeId} onChange={(event) => setAssigneeId(event.target.value)}><option value="" disabled>Välj ansvarig</option>{task && !availableUsers.some((item) => item.id === task.assigneeId) && <option value={task.assigneeId}>{task.assignee.name} (nuvarande ansvarig)</option>}{availableUsers.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label> : <div><span className="label">Ansvarig</span><div className="flex min-h-11 items-center text-sm text-graphite-800">{task?.assignee.name}</div></div>}
         <label><span className="label">Deadline / uppföljning</span><input name="dueDate" className="input" type="date" required min={dialogStatus === 'WAITING' ? today : undefined} defaultValue={initialDueDate} disabled={!isManager && dialogStatus !== 'WAITING'} /></label>
         <label><span className="label">Status</span><select name="status" className="input" value={dialogStatus} onChange={(event) => setDialogStatus(event.target.value as ProjectTaskStatus)}>{Object.entries(taskStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
         <label><span className="label">Prioritet</span><select name="priority" className="input" defaultValue={task?.priority || 'NORMAL'} disabled={!isManager}>{Object.entries(priorityLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>

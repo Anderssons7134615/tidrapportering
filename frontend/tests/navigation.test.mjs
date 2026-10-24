@@ -41,7 +41,7 @@ function setup({ role = 'ADMIN', path = '/projects', pending = [] } = {}) {
 
 test('navigation keeps the exact role boundaries and planning on mobile', () => {
   const expectations = {
-    ADMIN: ['/planning', '/projects', '/project-economy', '/time-overview', '/time-entry', '/week', '/team-week', '/approval', '/reports', '/customers', '/activities', '/users', '/settings'],
+    ADMIN: ['/planning', '/projects', '/time-overview', '/time-entry', '/week', '/team-week', '/approval', '/reports', '/customers', '/activities', '/users', '/settings'],
     SUPERVISOR: ['/planning', '/projects', '/time-overview', '/time-entry', '/week', '/team-week', '/approval', '/reports', '/customers', '/settings'],
     EMPLOYEE: ['/planning', '/projects', '/', '/time-entry', '/week', '/settings'],
     ACCOUNTANT: ['/reports', '/settings'],
@@ -51,7 +51,7 @@ test('navigation keeps the exact role boundaries and planning on mobile', () => 
     assert.deepEqual([...sidebar.querySelectorAll('nav a')].map((link) => link.getAttribute('href')), expected);
     assert.deepEqual([...drawer.querySelectorAll('nav a')].map((link) => link.getAttribute('href')), expected);
     const mobile = within(view.getByRole('navigation', { name: 'Snabbnavigation' })).getAllByRole('link').map((link) => link.getAttribute('href'));
-    assert.deepEqual(mobile, role === 'EMPLOYEE' ? ['/', '/planning', '/time-entry', '/week', '/projects'] : role === 'ACCOUNTANT' ? ['/reports', '/settings'] : role === 'SUPERVISOR' ? ['/projects', '/planning', '/time-entry', '/approval', '/week'] : ['/projects', '/planning', '/time-entry', '/approval', '/project-economy']);
+    assert.deepEqual(mobile, role === 'EMPLOYEE' ? ['/', '/planning', '/time-entry', '/week', '/projects'] : role === 'ACCOUNTANT' ? ['/reports', '/settings'] : ['/projects', '/planning', '/time-entry', '/approval', '/week']);
     cleanup();
   }
 });

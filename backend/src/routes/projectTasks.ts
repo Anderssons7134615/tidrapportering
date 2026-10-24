@@ -51,6 +51,7 @@ const taskStatusSchema = z.object({
 });
 
 const controlQuerySchema = z.object({
+  includeEconomy: z.enum(['true', 'false']).optional(),
   active: z.enum(['true', 'false']).optional(),
   q: z.string().trim().max(100).optional(),
   projectStatus: z.enum(['PLANNED', 'ONGOING', 'COMPLETED']).optional(),
@@ -96,6 +97,69 @@ function auditTaskValue(task: any) {
 
 export function createProjectTaskRoutes(db: typeof prisma = prisma): FastifyPluginAsync {
   return async (fastify) => {
+  // Additive, read-only workspace contract. Legacy economy reads remain compatible;
+  // this path never reads prices, materials, invoices or financial snapshots.
+  fastify.get('/project-workspace', {
+    preHandler: [requireRoles(workRoles, 'Arbetsytan är för projektarbete')],
+  }, async (request) => {
+    const companyId = request.user.companyId;
+    const role = request.user.role;
+    const projects = await db.project.findMany({
+      where: { companyId, ...(role === 'EMPLOYEE' ? { active: true } : {}) },
+      select: {
+        id: true, code: true, name: true, site: true, status: true, active: true,
+        notes: true, updatedAt: true, employeeCanSeeResults: true,
+        customer: { select: { id: true, name: true } },
+      },
+      orderBy: [{ name: 'asc' }, { id: 'asc' }],
+    });
+    if (!projects.length) return { items: [] };
+    const projectIds = projects.map(project => project.id);
+    const hourProjectIds = projects.filter(project => role !== 'EMPLOYEE' || project.employeeCanSeeResults).map(project => project.id);
+    const [tasks, updates, hourGroups] = await Promise.all([
+      db.projectTask.findMany({
+        where: { ...getProjectTaskScope(request.user)!, projectId: { in: projectIds }, archivedAt: null },
+        include: taskInclude,
+        orderBy: [{ dueDate: 'asc' }, { createdAt: 'asc' }],
+      }),
+      db.projectUpdate.findMany({
+        where: { companyId, projectId: { in: projectIds } },
+        select: { id: true, projectId: true, type: true, content: true, occurredAt: true, createdAt: true, source: true, createdByUser: { select: { id: true, name: true } } },
+        orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }],
+      }),
+      hourProjectIds.length ? db.timeEntry.groupBy({
+        by: ['projectId', 'status'],
+        where: { projectId: { in: hourProjectIds }, project: { companyId }, ...(role === 'ADMIN' ? {} : { status: 'APPROVED' }) },
+        _sum: { hours: true },
+      }) : Promise.resolve([]),
+    ]);
+    const taskMap = new Map<string, ReturnType<typeof publicTask>[]>();
+    const updateMap = new Map<string, typeof updates>();
+    const hourMap = new Map<string, { reported: number; approved: number }>();
+    const now = new Date();
+    for (const task of tasks) taskMap.set(task.projectId, [...(taskMap.get(task.projectId) || []), publicTask(task, now)]);
+    for (const update of updates) updateMap.set(update.projectId, [...(updateMap.get(update.projectId) || []), update]);
+    for (const group of hourGroups) {
+      if (!group.projectId) continue;
+      const hours = hourMap.get(group.projectId) || { reported: 0, approved: 0 };
+      hours.reported += group._sum.hours ?? 0;
+      if (group.status === 'APPROVED') hours.approved += group._sum.hours ?? 0;
+      hourMap.set(group.projectId, hours);
+    }
+    return { items: projects.map(project => {
+      const hours = hourMap.get(project.id) || { reported: 0, approved: 0 };
+      const hoursVisible = role !== 'EMPLOYEE' || project.employeeCanSeeResults;
+      return {
+        id: project.id, code: project.code, name: project.name, site: project.site,
+        status: project.status, active: project.active, notes: project.notes,
+        updatedAt: project.updatedAt, customer: project.customer,
+        employeeCanSeeResults: project.employeeCanSeeResults,
+        hours: { reported: role === 'ADMIN' ? hours.reported : null, approved: hoursVisible ? hours.approved : null },
+        tasks: taskMap.get(project.id) || [], updates: updateMap.get(project.id) || [],
+      };
+    }) };
+  });
+
   fastify.get('/project-control/projects', {
     preHandler: [requireRoles(workRoles, 'Lön och ekonomi använder den separata projektekonomin')],
   }, async (request, reply) => {
@@ -104,7 +168,7 @@ export function createProjectTaskRoutes(db: typeof prisma = prisma): FastifyPlug
       return reply.status(403).send({ error: 'Endast arbetsledare kan visa arkiverade projekt' });
     }
     const companyId = request.user.companyId;
-    const canReadEconomy = request.user.role === 'ADMIN';
+    const canReadEconomy = request.user.role === 'ADMIN' && query.includeEconomy !== 'false';
     const taskScope = getProjectTaskScope(request.user);
     const searchQuery = query.q ? escapePrismaLikePattern(query.q) : undefined;
     const projects = await db.project.findMany({
@@ -147,7 +211,7 @@ export function createProjectTaskRoutes(db: typeof prisma = prisma): FastifyPlug
         orderBy: [{ dueDate: 'asc' }, { priority: 'desc' }, { createdAt: 'asc' }],
       }),
       db.timeEntry.groupBy({ where: { projectId: { in: projectIds } }, by: ['projectId'], _max: { updatedAt: true } }),
-      db.projectMaterial.groupBy({ where: { projectId: { in: projectIds } }, by: ['projectId'], _max: { updatedAt: true } }),
+      canReadEconomy ? db.projectMaterial.groupBy({ where: { projectId: { in: projectIds } }, by: ['projectId'], _max: { updatedAt: true } }) : Promise.resolve([]),
       db.projectUpdate.groupBy({ where: { projectId: { in: projectIds } }, by: ['projectId'], _max: { occurredAt: true } }),
       canReadEconomy ? loadProjectEconomies(db, companyId, projects) : Promise.resolve(null),
     ]);

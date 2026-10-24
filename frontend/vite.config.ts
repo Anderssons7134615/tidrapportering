@@ -11,7 +11,7 @@ export default defineConfig({
       manifest: {
         name: 'Anderssons Isolering',
         short_name: 'Anderssons',
-        description: 'Projekt, tid och ekonomi för Anderssons Isolering',
+        description: 'Projekt, planering och timmar för Anderssons Isolering',
         lang: 'sv',
         theme_color: '#3159b8',
         background_color: '#f5f6f8',

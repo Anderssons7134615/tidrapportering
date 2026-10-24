@@ -14,8 +14,7 @@ const TeamWeekOverview = lazy(() => import('./pages/TeamWeekOverview'));
 const Approval = lazy(() => import('./pages/Approval'));
 const Customers = lazy(() => import('./pages/Customers'));
 const Projects = lazy(() => import('./pages/Projects'));
-const ProjectEconomy = lazy(() => import('./pages/ProjectEconomy'));
-const ProjectDetail = lazy(() => import('./pages/ProjectDetail'));
+const ProjectWorkspace = lazy(() => import('./pages/ProjectWorkspace'));
 const Activities = lazy(() => import('./pages/Activities'));
 const Users = lazy(() => import('./pages/Users'));
 const Reports = lazy(() => import('./pages/Reports'));
@@ -134,7 +133,7 @@ export default function App() {
           path="projects"
           element={
             <WorkRoute>
-              <PageLoader><Projects /></PageLoader>
+              <PageLoader><ProjectWorkspace /></PageLoader>
             </WorkRoute>
           }
         />
@@ -142,14 +141,15 @@ export default function App() {
           path="projects/:id"
           element={
             <WorkRoute>
-              <PageLoader><ProjectDetail /></PageLoader>
+              <PageLoader><ProjectWorkspace /></PageLoader>
             </WorkRoute>
           }
         />
         <Route
           path="project-economy"
-          element={<AdminOnlyRoute><PageLoader><ProjectEconomy /></PageLoader></AdminOnlyRoute>}
+          element={<Navigate to="/projects" replace />}
         />
+        <Route path="project-register" element={<AdminRoute><PageLoader><Projects /></PageLoader></AdminRoute>} />
         <Route
           path="activities"
           element={

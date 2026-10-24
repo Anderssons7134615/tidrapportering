@@ -283,12 +283,13 @@ test('clearing optional project fields persists after save and reread', async ()
   const { view } = renderProjects();
   await openTools(view);
   const dialog = await openEditor(view);
-  for (const label of ['Arbetsplats', 'Anteckningar', 'Budget timmar']) fireEvent.change(dialog.getByLabelText(label), { target: { value: '' } });
+  for (const label of ['Arbetsplats', 'Anteckningar']) fireEvent.change(dialog.getByLabelText(label), { target: { value: '' } });
   fireEvent.change(dialog.getByLabelText('Kund', { exact: true }), { target: { value: '' } });
   fireEvent.click(dialog.getByRole('button', { name: /^Spara/ }));
   await waitFor(() => assert.ok(requests.some((r) => r.method === 'PUT')));
   const reread = await api.projectsApi.get(project.id);
-  for (const key of ['customerId', 'site', 'notes', 'budgetHours']) assert.equal(reread[key], null, `${key} must clear on the server`);
+  for (const key of ['customerId', 'site', 'notes']) assert.equal(reread[key], null, `${key} must clear on the server`);
+  assert.equal(reread.budgetHours, 80, 'hidden historical budget must remain unchanged');
 });
 
 test('archive selection requires confirmation and restores the same project from the archive', async () => {
@@ -352,17 +353,16 @@ test('changing search clears selection so hidden projects cannot be archived', a
   assert.equal(requests.some((r) => r.method === 'DELETE'), false);
 });
 
-test('manager sees missing financial basis and filters projects needing action', async () => {
+test('manager ignores legacy financial warnings and filters only tasks needing action', async () => {
   const economy = { reportedHours: 12, approvedHours: 8, unapprovedHours: 4, budgetHours: 10, budgetUsagePercent: 120, warnings: ['Inköpspris saknas på material'] };
   const { view } = renderProjects({ extraProjects: [{ id: 'project-2', code: '0043', name: 'Följ upp', economy }] });
   await openTools(view);
-  await view.findByText('Inköpspris saknas på material');
-  assert.ok(view.getByText('Timbudget nådd'));
+  assert.equal(view.queryByText('Inköpspris saknas på material'), null);
+  assert.equal(view.queryByText('Timbudget nådd'), null);
   fireEvent.click(view.getByRole('button', { name: 'Behöver åtgärd' }));
-  assert.ok(view.getByRole('link', { name: /0043.*Följ upp/ }));
+  assert.equal(view.queryAllByRole('link', { name: /0043.*Följ upp/ }).length, 0);
   assert.equal(view.queryByRole('link', { name: /0042.*Testprojekt/ }), null);
-  fireEvent.click(view.getByRole('checkbox', { name: 'Markera alla visade' }));
-  assert.ok(view.getByText('1 valda'));
+  assert.equal(view.queryAllByRole('checkbox', { name: /Markera 004/ }).length, 0);
   fireEvent.click(view.getByRole('button', { name: 'Aktiva', exact: true }));
   assert.ok(view.getByRole('link', { name: /0042.*Testprojekt/ }));
   assert.equal(view.getByRole('button', { name: 'Behöver åtgärd' }).getAttribute('aria-pressed'), 'false');

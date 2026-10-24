@@ -7,7 +7,7 @@ export type NavigationItem = { to: string; icon: LucideIcon; label: string; role
 const items: NavigationItem[] = [
   { to: '/planning', icon: Calendar, label: 'Planering', roles: ['ADMIN', 'SUPERVISOR', 'EMPLOYEE'], group: 'projects' },
   { to: '/projects', icon: FolderKanban, label: 'Projekt', roles: ['ADMIN', 'SUPERVISOR', 'EMPLOYEE'], group: 'projects' },
-  { to: '/project-economy', icon: FileBarChart, label: 'Ekonomi', roles: ['ADMIN'], group: 'projects' },
+
   { to: '/', icon: Home, label: 'Översikt', roles: ['EMPLOYEE'], group: 'time' },
   { to: '/time-overview', icon: Home, label: 'Min tid', roles: ['ADMIN', 'SUPERVISOR'], group: 'time' },
   { to: '/time-entry', icon: Clock, label: 'Rapportera', roles: ['ADMIN', 'SUPERVISOR', 'EMPLOYEE'], group: 'time' },
@@ -25,7 +25,7 @@ export const groupLabels: Record<NavigationGroup, string> = { projects: 'Projekt
 const mobilePaths: Record<NavigationRole, string[]> = {
   EMPLOYEE: ['/', '/planning', '/time-entry', '/week', '/projects'],
   SUPERVISOR: ['/projects', '/planning', '/time-entry', '/approval', '/week'],
-  ADMIN: ['/projects', '/planning', '/time-entry', '/approval', '/project-economy'],
+  ADMIN: ['/projects', '/planning', '/time-entry', '/approval', '/week'],
   ACCOUNTANT: ['/reports', '/settings'],
 };
 export const roleLabel: Record<NavigationRole, string> = { ADMIN: 'Administratör', SUPERVISOR: 'Arbetsledare', ACCOUNTANT: 'Lön och ekonomi', EMPLOYEE: 'Medarbetare' };

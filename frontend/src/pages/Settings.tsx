@@ -115,7 +115,7 @@ export default function Settings() {
     const formData = new FormData(e.currentTarget);
     updateSettingsMutation.mutate({
       companyName: formData.get('companyName') as string,
-      vatRate: parseFloat(formData.get('vatRate') as string),
+
       csvDelimiter: formData.get('csvDelimiter') as string,
       reminderTime: formData.get('reminderTime') as string,
       reminderEnabled: formData.get('reminderEnabled') === 'true',
@@ -209,10 +209,7 @@ export default function Settings() {
                 </div>
 
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <div>
-                    <label htmlFor="vat-rate" className="label">Momssats (%)</label>
-                    <input id="vat-rate" name="vatRate" type="number" defaultValue={settings.vatRate} className="input" min="0" max="100" />
-                  </div>
+
                   <div>
                     <label htmlFor="csv-delimiter" className="label">CSV-separator</label>
                     <select id="csv-delimiter" name="csvDelimiter" defaultValue={settings.csvDelimiter} className="input">

@@ -349,9 +349,12 @@ export const projectsApi = {
   delete: (id: string) => fetchApi<{ message: string }>(`/projects/${id}`, { method: 'DELETE' }),
 };
 
+import type { WorkspaceProject } from '../types/projectWorkspace';
+
 export const projectTasksApi = {
+  workspace: () => fetchApi<{ items: WorkspaceProject[] }>('/project-workspace'),
   control: (params?: { active?: 'true' | 'false'; q?: string; projectStatus?: string; assigneeId?: string; taskStatus?: string; deadline?: string }) => {
-    const searchParams = new URLSearchParams();
+    const searchParams = new URLSearchParams({ includeEconomy: 'false' });
     Object.entries(params || {}).forEach(([key, value]) => { if (value) searchParams.set(key, value); });
     const query = searchParams.toString();
     return fetchApi<ProjectControlResponse>(`/project-control/projects${query ? `?${query}` : ''}`);

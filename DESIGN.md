@@ -1,6 +1,6 @@
 ---
 name: TidApp Studio
-description: En ljus och precis arbetsyta för tid, projekt, material och ekonomi.
+description: En ljus och precis arbetsyta för projekt, planering och timmar.
 colors:
   action: "#3159b8"
   action-hover: "#254690"
@@ -34,7 +34,7 @@ Företagsnamnet syns separat från produktnamnet. Navigation och synkstatus uttr
 - Geists variabla font levereras lokalt med OFL-licens och ingår i offlinecachen. Inga externa fontanrop.
 - Rubriker är 21–23 px. Brödtext är 14 px och kontroller 13–14 px. Metadata får vara 11–12 px med läsbar kontrast.
 - Formulärfält är minst 16 px på mobil för att undvika automatisk iOS-zoom. Detta ökar inte sidrubrikerna.
-- Timmar och belopp linjeras med tabulära siffror. Kvartstimmar visas utan avrundning till tiondelar.
+- Timmar linjeras med tabulära siffror. Kvartstimmar visas utan avrundning till tiondelar. Material, pris, kostnader, moms och ekonomisk budget hör inte till appens användarytor; historiska värden och skyddade export-/attestkontrakt bevaras.
 - Kund- och personmarkörer använder fem dämpade toner. Dessa är identitet, aldrig status. Namnet står alltid intill.
 
 ## Arbetsyta och navigation
@@ -56,11 +56,11 @@ Mobilmenyn isolerar bakgrunden, håller fokus i menyn och stängs med Escape, na
 
 ## Listor och arbetsflöden
 
-Projektvyn behåller kundlista → kundens projekt → projektdetaljer. Sökning, arkivval, kundscope, hantering, uppgifter och behörigheter behålls. Kundmarkörer gör listan lättare att känna igen.
+Projektarbetsytan använder befintliga projekt-ID:n, inte ett separat register. Dator visar projektlista och detaljpanel; mobil visar valt projekt direkt med tillbaka-knapp, utan att projektlistans verktyg tränger undan innehållet. Projekt, Att göra och Anteckningar kan sökas tillsammans. Alla aktiva och arkiverade projekt finns för arbetsledare och administratörer, med tydligt urval. Medarbetarnas befintliga arkiv-, uppgifts- och timbehörigheter bevaras. Kundscope och gamla projektlänkar fungerar fortfarande. Hantering/arkivering ligger separat och behåller sina bekräftelser. Material och projektekonomi visas inte.
 
 Teamveckan visar en person per rad och vardagar som standard. Visa helg gör samtliga dagar tillgängliga. Veckosumman inkluderar alltid helgen och dold helgtid anges uttryckligen. En dag öppnar dess tidrader; projektfördelningen är märkt som hela veckan. Saknad tid och avvikelser har text, inte bara färg. På smal skärm rullar sju dagar vid behov inom raden för att behålla 44 px träffyta.
 
-Tidregistrering behåller datum, personval, sökbar projektväljare, aktiviteter, timmar, kopiering och extrafält. Attest, lager, inköp och export behåller granskning, bekräftelser och felspärrar. Ny design får aldrig kringgå dessa steg.
+Tidregistrering behåller datum, personval, sökbar projektväljare, aktiviteter, timmar, kopiering och extrafält. Attest och löneexport behåller granskning, bekräftelser och felspärrar. Lager, inköp och kalkyler är inte användarvägar i tidsappen; historiska underlag raderas inte. Ny design får aldrig kringgå skyddade tid-/atteststeg.
 
 ## Tillgänglighet och kontroll
 
