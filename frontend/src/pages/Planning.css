@@ -15,6 +15,14 @@
 .planning-assigned-name { display: inline-flex; align-items: center; gap: 6px; min-width: 44px; min-height: 44px; max-width: 100%; padding: 6px 10px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-bg-soft); cursor: grab; text-align: left; overflow-wrap: anywhere; }
 .planning-person-drag:active, .planning-assigned-name:active { cursor: grabbing; }
 .planning-person-drag:disabled, .planning-assigned-name:disabled { cursor: not-allowed; opacity: 0.6; }
+.planning-assignment-chip { display: inline-flex; align-items: stretch; max-width: 100%; min-width: 0; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-bg-soft); }
+.planning-assignment-chip .planning-assigned-name { flex: 1 1 auto; min-width: 0; border: 0; }
+.planning-assignment-remove { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 44px; width: 44px; min-height: 44px; border-left: 1px solid var(--color-border); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; color: var(--color-text-muted); }
+.planning-assignment-remove:hover:not(:disabled) { background: var(--color-border); color: var(--color-text); }
+.planning-assignment-remove:disabled { cursor: not-allowed; opacity: 0.6; }
+.planning-assignment-job > h5 { white-space: pre-wrap; }
+.planning-day-assignments { grid-column: 2; margin-top: 6px; padding-left: 16px; list-style: disc; white-space: pre-wrap; overflow-wrap: anywhere; }
+.planning-day-assignments > li + li { margin-top: 4px; }
 .planning-drop-hint { margin-top: 6px; color: var(--color-text-muted); font-size: 0.75rem; }
 .planning-assignment-controls { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; min-width: 0; }
 .planning-assignment-controls > label { flex: 1 1 220px; min-width: 0; max-width: 28rem; }

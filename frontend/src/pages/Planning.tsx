@@ -9,6 +9,7 @@ import { AppShell, PageHeader, TaskSection, EmptyState, FormField, ConfirmDialog
 import { QueryError } from '../components/ui/QueryError';
 import type { PlanningDocument, PlanningWeek } from '../types/planning';
 import PlanningAssignments from './PlanningAssignments';
+import { validPlanningAssignments } from '../utils/planningAssignments';
 import './Planning.css';
 
 const emptyPlan = (): PlanningDocument => ({ weeks: [], jobs: [], issues: '' });
@@ -79,17 +80,20 @@ export default function Planning() {
         {draft && <AddWeek weeks={weeks} onAdd={w => { setDraft(d => d && ({ ...d, weeks: [...d.weeks, w] })); setSelected(w.startDate); }} />}
         {week ? <>
           <h3 className="mb-3 font-semibold">{weekLabel(week.startDate)}</h3>
-          {admin && draft && <PlanningAssignments key={week.startDate} week={week} jobs={draft.jobs} disabled={save.isPending} onAssign={(row, day, jobName) => {
+          {admin && draft && <PlanningAssignments key={week.startDate} week={week} jobs={draft.jobs} disabled={save.isPending} onChangeDay={(row, day, assigned, text) => {
             if (save.isPending) return;
             setDraft(current => current && ({ ...current, weeks: current.weeks.map(item => item.startDate === week.startDate
-              ? { ...item, people: item.people.map((person, index) => index === row ? { ...person, days: person.days.map((value, column) => column === day ? jobName : value) } : person) }
+              ? { ...item, people: item.people.map((person, index) => index === row ? { ...person,
+                ...(text !== undefined ? { days: person.days.map((value, column) => column === day ? text : value) } : {}),
+                assignments: Array.from({ length: 5 }, (_, column) => column === day ? assigned : person.assignments?.[column] ?? []),
+              } : person) }
               : item) }));
           }} />}
           <div className="planning-roster" role="table" aria-label={`Arbetsplanering vecka ${getISOWeek(parseISO(week.startDate))}, ${getISOWeekYear(parseISO(week.startDate))}`}>
             <div className="planning-roster-head" role="row"><span role="columnheader">Personal</span>{Array.from({ length: 5 }, (_, i) => <span role="columnheader" key={i}>{format(addDays(parseISO(week.startDate), i), 'EEE d/M', { locale: sv })}</span>)}</div>
             {week.people.map((p, row) => (!draft && person && person !== p.name) ? null : <div className="planning-person" role="row" key={row}>
               <div role="rowheader" className="planning-person-name">{draft ? <><input className="input" aria-label={`Namn på rad ${row + 1}`} maxLength={100} value={p.name} onChange={e => changeWeek({ ...week, people: week.people.map((v, i) => i === row ? { ...v, name: e.target.value } : v) })} /><button type="button" className="btn-secondary mt-2" onClick={() => { if (window.confirm(`Ta bort ${p.name || 'personen'} från denna vecka?`)) changeWeek({ ...week, people: week.people.filter((_, i) => i !== row) }); }}>Ta bort rad</button></> : p.name}</div>
-              {p.days.map((day, col) => <div role="cell" key={col} className="planning-day"><span className="planning-day-label">{format(addDays(parseISO(week.startDate), col), 'EEEE d/M', { locale: sv })}</span>{draft ? <textarea className="input" aria-label={`${p.name || `Rad ${row + 1}`} ${format(addDays(parseISO(week.startDate), col), 'EEEE', { locale: sv })}`} maxLength={500} rows={3} value={day} onChange={e => changeWeek({ ...week, people: week.people.map((v, i) => i === row ? { ...v, days: v.days.map((x, j) => j === col ? e.target.value : x) } : v) })} /> : <span className={!day ? 'text-graphite-600' : ''}>{day || 'Ej planerat'}</span>}</div>)}
+              {p.days.map((day, col) => <div role="cell" key={col} className="planning-day"><span className="planning-day-label">{format(addDays(parseISO(week.startDate), col), 'EEEE d/M', { locale: sv })}</span>{draft ? <textarea className="input" aria-label={`${p.name || `Rad ${row + 1}`} ${format(addDays(parseISO(week.startDate), col), 'EEEE', { locale: sv })}`} maxLength={500} rows={3} value={day} onChange={e => changeWeek({ ...week, people: week.people.map((v, i) => i === row ? { ...v, days: v.days.map((x, j) => j === col ? e.target.value : x) } : v) })} /> : <span className={!day ? 'text-graphite-600' : ''}>{day || (!p.assignments?.[col]?.length ? 'Ej planerat' : '')}</span>}{Boolean(p.assignments?.[col]?.length) && <ul className="planning-day-assignments" aria-label={`${p.name} ${format(addDays(parseISO(week.startDate), col), 'EEEE', { locale: sv })}: tilldelade jobb`}>{p.assignments![col].map(name => <li key={name}>{name}</li>)}</ul>}</div>)}
             </div>)}
           </div>
           {draft && <button type="button" className="btn-secondary mt-3" onClick={() => changeWeek({ ...week, people: [...week.people, { name: '', days: ['', '', '', '', ''] }] })}>Lägg till person</button>}
@@ -111,7 +115,7 @@ export default function Planning() {
         const candidate = JSON.parse(await file.text()) as PlanningDocument;
         // The server performs authoritative validation; reject malformed structure before rendering.
         if (!Array.isArray(candidate.weeks) || !Array.isArray(candidate.jobs) || typeof candidate.issues !== 'string'
-          || candidate.weeks.some(w => !/^\d{4}-\d{2}-\d{2}$/.test(w.startDate) || !Number.isFinite(parseISO(w.startDate).getTime()) || typeof w.note !== 'string' || !Array.isArray(w.people) || w.people.some(p => typeof p.name !== 'string' || !Array.isArray(p.days) || p.days.length !== 5 || p.days.some(d => typeof d !== 'string')))
+          || candidate.weeks.some(w => !/^\d{4}-\d{2}-\d{2}$/.test(w.startDate) || !Number.isFinite(parseISO(w.startDate).getTime()) || typeof w.note !== 'string' || !Array.isArray(w.people) || w.people.some(p => typeof p.name !== 'string' || !Array.isArray(p.days) || p.days.length !== 5 || p.days.some(d => typeof d !== 'string') || (p.assignments !== undefined && !validPlanningAssignments(p.assignments))))
           || candidate.jobs.some(j => typeof j.name !== 'string' || typeof j.details !== 'string' || typeof j.deadline !== 'string')) throw new Error('Filen har inte rätt planeringsformat.');
         setDraft(candidate); setImportError('');
       } catch (error) { setImportError(error instanceof Error ? error.message : 'Filen kunde inte läsas.'); }
@@ -162,6 +166,7 @@ export function validatePlanning(document: PlanningDocument): string | null {
     for (const [index, person] of week.people.entries()) {
       if (!person.name.trim()) return `Ange personens namn på rad ${index + 1} i ${weekLabel(week.startDate)}, eller ta bort den tomma raden.`;
       if (person.name.trim().length > 100) return `Namnet på rad ${index + 1} i ${weekLabel(week.startDate)} är för långt (högst 100 tecken).`;
+      if (person.assignments !== undefined && !validPlanningAssignments(person.assignments)) return `Kontrollera jobbtilldelningarna för ${person.name}: fem dagar med högst 200 olika jobb per dag och 200 tecken per namn.`;
       if (person.days.length !== 5 || person.days.some(day => day.length > 500)) return `Kontrollera ${person.name} i ${weekLabel(week.startDate)}: fem dagar med högst 500 tecken per dag.`;
     }
   }
