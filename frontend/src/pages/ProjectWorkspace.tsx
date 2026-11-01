@@ -15,7 +15,7 @@ import { ListSkeleton } from '../components/ui/Skeleton';
 import { formatDate, formatHours } from '../utils/format';
 import { refreshProjectQueries } from '../utils/projectQueries';
 import './ProjectWorkspace.css';
-import { TaskDialog } from './Projects';
+import { TaskDialog } from '../components/TaskDialog';
 
 const statusLabel = { PLANNED: 'Planerad', ONGOING: 'Pågående', COMPLETED: 'Avslutad' };
 const updateLabel: Record<ProjectUpdateType, string> = { NOTE: 'Anteckning', STATUS: 'Lägesuppdatering', NEXT_STEP: 'Nästa steg', RISK: 'Risk', DECISION: 'Beslut' };

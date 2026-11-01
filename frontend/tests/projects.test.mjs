@@ -206,7 +206,8 @@ test('unknown and conflicting customer selectors never reveal the company projec
 
 test('projects without a customer use Intern and the employee opens only permitted task tools', async () => {
   const task = { id: 'task-1', title: 'Min uppgift', assigneeId: 'admin-1', assignee: { id: 'admin-1', name: 'Testadmin' }, status: 'TODO', priority: 'NORMAL', dueDate: '2026-10-03' };
-  const { view } = renderProjects({ role: 'EMPLOYEE', tasks: [task], extraProjects: [{ id: 'project-2', name: 'Internt arbete', customer: null }] });
+  const { view, client } = renderProjects({ role: 'EMPLOYEE', tasks: [task], extraProjects: [{ id: 'project-2', name: 'Internt arbete', customer: null }] });
+  client.setQueryData(['project-workspace'], { items: [] });
   await view.findByRole('link', { name: 'Intern 1 aktivt projekt' });
   assert.equal(view.queryByRole('button', { name: 'Hantera' }), null);
   assert.ok(view.getByRole('button', { name: 'Nytt projekt' }));
@@ -220,6 +221,7 @@ test('projects without a customer use Intern and the employee opens only permitt
   await waitFor(() => assert.ok(requests.some((r) => r.path === '/api/project-tasks/task-1/status' && r.method === 'PATCH')));
   assert.deepEqual(requests.find((r) => r.path === '/api/project-tasks/task-1/status').body, { status: 'IN_PROGRESS' });
   assert.equal(requests.some((r) => r.path === '/api/project-tasks/task-1'), false);
+  await waitFor(() => assert.equal(client.getQueryState(['project-workspace']).isInvalidated, true));
   assert.equal(requests.some((r) => r.path.includes('/customers')), false);
 });
 
@@ -414,4 +416,35 @@ test('clearing an existing task note sends null instead of restoring the previou
   fireEvent.click(dialog.getByRole('button', { name: 'Spara uppgift' }));
   await waitFor(() => assert.ok(requests.some((r) => r.method === 'PATCH')));
   assert.equal(requests.find((r) => r.method === 'PATCH').body.note, null);
+});
+
+test('pending task save blocks close, archive and duplicate submit, then keeps edits after failure', async () => {
+  const task = { id: 'task-1', title: 'Kontrollera montage', assigneeId: 'admin-1', assignee: { name: 'Testadmin' }, status: 'TODO', priority: 'NORMAL', dueDate: '2026-10-01' };
+  const { view } = renderProjects({ tasks: [task] });
+  await openTools(view);
+  fireEvent.click(await view.findByRole('button', { name: /Visa uppgifter/ }));
+  fireEvent.click(view.getByRole('button', { name: task.title }));
+  const element = view.getByRole('dialog', { name: 'Redigera uppgift' });
+  const dialog = within(element);
+  fireEvent.change(dialog.getByLabelText('Vad ska göras?'), { target: { value: 'Behåll ändringen' } });
+  const previousFetch = globalThis.fetch;
+  let finish, saves = 0;
+  globalThis.fetch = (url, options = {}) => options.method === 'PATCH'
+    ? (saves++, new Promise(resolve => { finish = resolve; })) : previousFetch(url, options);
+  fireEvent.click(dialog.getByRole('button', { name: 'Spara uppgift' }));
+  await waitFor(() => assert.equal(dialog.getByRole('button', { name: 'Avbryt' }).disabled, true));
+  assert.equal(dialog.getByRole('button', { name: 'Arkivera' }).disabled, true);
+  assert.equal(dialog.getByLabelText('Vad ska göras?').matches(':disabled'), true);
+  fireEvent.click(dialog.getByRole('button', { name: 'Avbryt' }));
+  fireEvent(element, new window.Event('cancel', { cancelable: true }));
+  fireEvent.submit(element.querySelector('form'));
+  assert.equal(saves, 1);
+  assert.equal(element.open, true);
+  await act(async () => finish(Response.json({ error: 'Tillfälligt serverfel' }, { status: 503 })));
+  await waitFor(() => assert.equal(dialog.getByRole('button', { name: 'Spara uppgift' }).disabled, false));
+  assert.equal(dialog.getByLabelText('Vad ska göras?').value, 'Behåll ändringen');
+  globalThis.fetch = previousFetch;
+  fireEvent.click(dialog.getByRole('button', { name: 'Spara uppgift' }));
+  await waitFor(() => assert.equal(Boolean(view.queryByRole('dialog', { name: 'Redigera uppgift' })), false));
+  assert.equal(requests.find(r => r.method === 'PATCH').body.title, 'Behåll ändringen');
 });

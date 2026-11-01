@@ -155,10 +155,8 @@ export default function WeekView() {
 
   const dateParam = searchParams.get('date');
   const userIdParam = searchParams.get('userId');
-  const [selectedDate, setSelectedDate] = useState(() => {
-    if (dateParam) return parseDateOnlyLocal(dateParam);
-    return startOfWeek(new Date(), { weekStartsOn: 1 });
-  });
+  const parsedDate = dateParam ? parseDateOnlyLocal(dateParam) : new Date(NaN);
+  const selectedDate = dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) && Number.isFinite(parsedDate.getTime()) && format(parsedDate, 'yyyy-MM-dd') === dateParam ? parsedDate : new Date();
 
   const weekStart = startOfWeek(selectedDate, { weekStartsOn: 1 });
   const weekStartStr = format(weekStart, 'yyyy-MM-dd');
@@ -220,7 +218,6 @@ export default function WeekView() {
   const navigateWeek = (direction: 'prev' | 'next') => {
     haptic('light');
     const newDate = direction === 'prev' ? subWeeks(weekStart, 1) : addWeeks(weekStart, 1);
-    setSelectedDate(newDate);
     const params = new URLSearchParams({ date: format(newDate, 'yyyy-MM-dd') });
     if (userIdParam) params.set('userId', userIdParam);
     setSearchParams(params);

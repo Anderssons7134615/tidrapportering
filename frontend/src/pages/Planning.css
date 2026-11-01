@@ -47,3 +47,7 @@
   .planning-day-label { display: none; }
   .planning-job { grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) minmax(0, 1fr); }
 }
+
+/* Only name buttons own the touch gesture; surrounding content remains scrollable. */
+.planning-person-drag, .planning-assigned-name { touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.planning-drag-preview { position: fixed; z-index: 100; pointer-events: none; transform: translate(-50%, calc(-100% - 20px)); max-width: 180px; padding: 8px 12px; border: 1px solid var(--color-focus); border-radius: var(--radius-sm); background: var(--color-bg-soft); color: var(--color-text); overflow-wrap: anywhere; box-shadow: 0 2px 8px #0002; }

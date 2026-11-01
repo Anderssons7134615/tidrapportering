@@ -388,6 +388,38 @@ test('unlocked weeks are labelled as unlocked and cannot be unlocked again', asy
   assert.equal(view.queryByRole('button', { name: 'Öppna vecka' }), null);
 });
 
+test('week follows browser back and forward and preserves the selected employee', async () => {
+  const { view, router } = setup(WeekView, { path: '/week?date=2026-10-05&userId=u2', handler: url => {
+    assert.equal(url.searchParams.get('userId'), 'u2');
+    assert.match(url.pathname, /\/time-entries\/week\/2026-10-(05|12)$/);
+    return { entries: [], summary: { totalHours: 0 }, weekLock: null };
+  } });
+  await view.findByRole('heading', { name: 'Vecka 41' });
+  fireEvent.click(view.getByRole('button', { name: 'Nästa vecka' }));
+  await view.findByRole('heading', { name: 'Vecka 42' });
+  assert.equal(router.state.location.search, '?date=2026-10-12&userId=u2');
+  await act(() => router.navigate(-1));
+  await view.findByRole('heading', { name: 'Vecka 41' });
+  await act(() => router.navigate(1));
+  await view.findByRole('heading', { name: 'Vecka 42' });
+});
+
+test('invalid week dates fall back to the current week without rolling into another month', async () => {
+  const monday = new Date();
+  monday.setDate(monday.getDate() - (monday.getDay() + 6) % 7);
+  const expected = `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, '0')}-${String(monday.getDate()).padStart(2, '0')}`;
+  for (const date of ['not-a-date', '2026-02-31', '2026-13-01']) {
+    const calls = [];
+    const { view } = setup(WeekView, { path: `/week?date=${date}`, handler: url => {
+      calls.push(url.pathname);
+      return { entries: [], summary: { totalHours: 0 }, weekLock: null };
+    } });
+    await view.findByRole('heading', { name: /^Vecka \d+$/ });
+    await waitFor(() => assert.deepEqual(calls, [`/api/time-entries/week/${expected}`]));
+    cleanup();
+  }
+});
+
 test('an unlocked or rejected own week can be submitted again without changing its time', async () => {
   for (const initial of ['DRAFT', 'REJECTED']) {
     offline.useOfflineStore.setState({ isOnline: true, pendingEntries: [] });

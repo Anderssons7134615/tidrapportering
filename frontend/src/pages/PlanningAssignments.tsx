@@ -1,5 +1,6 @@
 import { useId, useLayoutEffect, useRef, useState, type DragEvent } from 'react';
 import { GripVertical, X } from 'lucide-react';
+import { usePlanningTouchDrag } from '../hooks/usePlanningTouchDrag';
 import { ConfirmDialog } from '../components/ui/design';
 import { addDays, format, parseISO } from 'date-fns';
 import { sv } from 'date-fns/locale';
@@ -28,6 +29,10 @@ export default function PlanningAssignments({ week, jobs, disabled, onChangeDay 
   const [hoveredJob, setHoveredJob] = useState<number | null>(null);
   const selectedRow = selection && week.people[selection.row] === selection.person ? selection.row : null;
   const selectedJob = jobSelection && jobs[jobSelection.index] === jobSelection.job ? jobSelection.index : null;
+  const root = useRef<HTMLElement>(null);
+  const jobList = useRef<HTMLDivElement>(null);
+  const jobCounts = new Map<string, number>();
+  for (const job of jobs) { const name = job.name.trim(); jobCounts.set(name, (jobCounts.get(name) ?? 0) + 1); }
   const dragged = useRef<DragContext | null>(null);
   const personButtons = useRef<(HTMLButtonElement | null)[]>([]);
   const focusAfterAssign = useRef<number | null>(null);
@@ -36,6 +41,17 @@ export default function PlanningAssignments({ week, jobs, disabled, onChangeDay 
     personButtons.current[focusAfterAssign.current]?.focus();
     focusAfterAssign.current = null;
   }, [week, pending, disabled]);
+  const touch = usePlanningTouchDrag({ root, jobs: jobList,
+    onStart: row => {
+      if (disabled || !week.people[row]?.name.trim()) return false;
+      dragged.current = { week, jobs, row, day };
+      setDragActive(true); setSelection(null); setNotice(''); return true;
+    },
+    onHover: setHoveredJob,
+    onDrop: index => { const source = dragged.current; stopDrag(); if (validSource(source) && jobs[index]) assign(source.row, jobs[index].name.trim()); },
+    onCancel: stopDrag,
+  });
+  useLayoutEffect(() => { stopDrag(); }, [week, jobs, day, disabled]);
   const dates = Array.from({ length: 5 }, (_, index) => format(addDays(parseISO(week.startDate), index), 'EEEE d MMMM', { locale: sv }));
 
   function assign(row: number, name: string) {
@@ -68,17 +84,18 @@ export default function PlanningAssignments({ week, jobs, disabled, onChangeDay 
   }
 
   function uniqueJob(name: string) {
-    return Boolean(name.trim()) && jobs.filter(job => job.name.trim() === name.trim()).length === 1;
+    return Boolean(name.trim()) && jobCounts.get(name.trim()) === 1;
   }
 
   function stopDrag() {
+    touch.cancel();
     dragged.current = null;
     setDragActive(false);
     setHoveredJob(null);
   }
 
   function startDrag(event: DragEvent<HTMLButtonElement>, row: number) {
-    if (disabled || !week.people[row]?.name.trim()) { event.preventDefault(); return; }
+    if (touch.isTracking() || disabled || !week.people[row]?.name.trim()) { event.preventDefault(); return; }
     dragged.current = { week, jobs, row, day };
     event.dataTransfer.setData(DRAG_TYPE, String(row));
     event.dataTransfer.effectAllowed = 'copy';
@@ -90,32 +107,33 @@ export default function PlanningAssignments({ week, jobs, disabled, onChangeDay 
   function renderAssignment(row: number, name: string) {
     const person = week.people[row];
     return <span key={`${row}:${name}`} className="planning-assignment-chip">
-      <button type="button" className="planning-assigned-name" aria-label={`Dra ${person.name} från ${name}`} disabled={disabled || !person.name.trim()} draggable={!disabled && Boolean(person.name.trim())}
+      <button type="button" className="planning-assigned-name" aria-label={`Dra ${person.name} från ${name}`} disabled={disabled || !person.name.trim()} {...touch.bindings(row)} draggable={!disabled && Boolean(person.name.trim())}
         onClick={() => { if (!disabled) { setSelection({ row, person }); setNotice(''); } }} onDragStart={event => startDrag(event, row)} onDragEnd={stopDrag}><GripVertical size={16} aria-hidden="true" />{person.name || 'Namn saknas'}</button>
       <button type="button" className="planning-assignment-remove" aria-label={`Ta bort ${person.name} från ${name}`} disabled={disabled} onClick={() => { if (!disabled && hasJob(person, name)) setPending({ week, jobs, row, day, name }); }}><X size={16} aria-hidden="true" /></button>
     </span>;
   }
 
-  return <section className="planning-assignments" aria-label="Fördela personal">
+  return <section ref={root} className="planning-assignments" aria-label="Fördela personal">
+    {touch.preview && <div className="planning-drag-preview" aria-hidden="true" style={{ left: touch.preview.x, top: touch.preview.y }}>{week.people[touch.preview.row]?.name}</div>}
     <h4 className="font-semibold">Fördela personal</h4>
     <label className="block" htmlFor={dayId}><span className="label">Dag att planera</span>
       <select id={dayId} className="input" value={day} disabled={disabled} onChange={event => { stopDrag(); setSelection(null); setJobSelection(null); setPending(null); setNotice(''); setDay(Number(event.target.value)); }}>
         {dates.map((label, index) => <option key={index} value={index}>{label}</option>)}
       </select>
     </label>
-    <p className="text-sm text-graphite-600">Dra samma namn till flera jobb – tilldelningarna läggs till för {dates[day]}. Tidigare jobb och dagtext behålls. På mobil: välj ett namn, ett jobb och tryck Tilldela vald dag.</p>
+    <p className="text-sm text-graphite-600">Dra samma namn till flera jobb – tilldelningarna läggs till för {dates[day]}. Tidigare jobb och dagtext behålls. Dra med finger, penna eller mus. Håll vid kanten för att rulla under dragningen. Du kan också välja namn och jobb och trycka Tilldela vald dag. Rulla annars bredvid namnknapparna.</p>
     <div className="planning-assignment-layout">
       <div aria-label="Personal att fördela" className="planning-assignment-people">
         {!week.people.length && <p className="text-sm text-graphite-600">Lägg till personer i veckoplanen nedan.</p>}
-        {week.people.map((person, row) => <button key={row} ref={element => { personButtons.current[row] = element; }} type="button" className="btn-secondary planning-person-drag" aria-label={`Välj ${person.name}`} aria-pressed={selectedRow === row} onClick={() => { if (!disabled) { setSelection({ row, person }); setNotice(''); } }} disabled={disabled || !person.name.trim()} draggable={!disabled && Boolean(person.name.trim())}
+        {week.people.map((person, row) => <button key={row} ref={element => { personButtons.current[row] = element; }} type="button" className="btn-secondary planning-person-drag" aria-label={`Välj ${person.name}`} aria-pressed={selectedRow === row} onClick={() => { if (!disabled) { setSelection({ row, person }); setNotice(''); } }} disabled={disabled || !person.name.trim()} {...touch.bindings(row)} draggable={!disabled && Boolean(person.name.trim())}
           aria-describedby={`${dayId}-person-${row}`} onDragStart={event => startDrag(event, row)} onDragEnd={stopDrag}>
           <GripVertical size={18} aria-hidden="true" />
           <span className="planning-person-copy"><strong>{person.name || 'Namn saknas'}</strong><span id={`${dayId}-person-${row}`} className="text-sm text-graphite-600">{daySummary(person)}</span></span>
         </button>)}
       </div>
-      <div className="planning-assignment-jobs" role="group" aria-label="Jobb att släppa namn på" tabIndex={0}>
+      <div ref={jobList} className="planning-assignment-jobs" role="group" aria-label="Jobb att släppa namn på" tabIndex={0}>
         {!jobs.length && <p className="text-sm text-graphite-600">Lägg till och namnge jobb i jobböversikten nedan.</p>}
-        {jobs.map((job, index) => <section key={index} className="planning-assignment-job" aria-label={`Jobb ${job.name}`}
+        {jobs.map((job, index) => <section key={index} className="planning-assignment-job" data-planning-job={index} aria-label={`Jobb ${job.name}`}
           data-drop-state={dragActive && validSource(dragged.current) && uniqueJob(job.name) ? (hoveredJob === index ? 'over' : 'ready') : undefined}
           onDragOver={event => {
             if (!validSource(dragged.current) || !uniqueJob(job.name)) return;
@@ -131,14 +149,14 @@ export default function PlanningAssignments({ week, jobs, disabled, onChangeDay 
             assign(source.row, name);
           }}>
           <h5 className="font-semibold">{job.name || 'Jobbet behöver ett namn'}</h5>
-          {job.name.trim() && jobs.filter(item => item.name.trim() === job.name.trim()).length > 1
+          {job.name.trim() && (jobCounts.get(job.name.trim()) ?? 0) > 1
             ? <p className="text-sm text-graphite-600">Ge jobben olika namn innan du tilldelar personal.</p>
             : job.name.trim() && <div className="planning-assigned-names">{week.people.map((person, row) => !hasJob(person, job.name.trim()) ? null : renderAssignment(row, job.name.trim()))}</div>}
           {uniqueJob(job.name) && <p className="planning-drop-hint">{hoveredJob === index && dragActive ? `Släpp för ${dates[day]}` : 'Släpp ett namn här'}</p>}
         </section>)}
       </div>
     </div>
-    {[...new Set(week.people.flatMap(person => person.assignments?.[day] ?? []))].filter(name => !jobs.some(job => uniqueJob(job.name) && job.name.trim() === name)).map(name =>
+    {[...new Set(week.people.flatMap(person => person.assignments?.[day] ?? []))].filter(name => !(name === name.trim() && uniqueJob(name))).map(name =>
       <section key={name} className="planning-assignment-job" aria-label={`Tidigare tilldelning ${name}`}>
         <h5 className="font-semibold">{name}</h5>
         <p className="text-sm text-graphite-600">Jobbnamnet saknas eller är inte unikt i jobblistan. Tilldelningen ligger kvar tills du tar bort den.</p>

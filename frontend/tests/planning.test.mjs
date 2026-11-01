@@ -13,6 +13,14 @@ before(async () => {
   Object.assign(globalThis, { window: dom.window, document: dom.window.document, HTMLElement: dom.window.HTMLElement, HTMLDialogElement: dom.window.HTMLDialogElement, Node: dom.window.Node, MutationObserver: dom.window.MutationObserver, getComputedStyle: dom.window.getComputedStyle, localStorage: dom.window.localStorage, FormData: dom.window.FormData });
   Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator });
   window.confirm = () => true;
+  window.PointerEvent = class extends window.MouseEvent {
+    constructor(type, init = {}) { super(type, init); Object.assign(this, { pointerId: init.pointerId ?? 1, pointerType: init.pointerType ?? 'touch', isPrimary: init.isPrimary ?? true }); }
+  };
+  const captures = new WeakMap();
+  HTMLElement.prototype.setPointerCapture = function(id) { captures.set(this, id); };
+  HTMLElement.prototype.hasPointerCapture = function(id) { return captures.get(this) === id; };
+  HTMLElement.prototype.releasePointerCapture = function() { captures.delete(this); };
+
   dom.window.HTMLElement.prototype.scrollIntoView = function () {};
   dom.window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
   dom.window.HTMLDialogElement.prototype.close = function () { this.open = false; };
@@ -472,4 +480,106 @@ test('an unsent employee comment survives cancelled navigation and warns before 
   await view.findByText('Din kommentar är publicerad.');
   await act(async () => router.navigate('/elsewhere'));
   await view.findByText('Annan sida');
+});
+
+function point(type = 'touch', x = 20, y = 30) { return { pointerId: 7, pointerType: type, isPrimary: true, button: 0, clientX: x, clientY: y }; }
+test('finger and pen drag add jobs to the chosen day without rewriting notes or auto-saving', async () => {
+  for (const type of ['touch', 'pen']) {
+    const initialDocument = structuredClone(documentFixture);
+    initialDocument.jobs.push({ name: 'Jobb C', details: '', deadline: '' });
+    const { view, requests } = setup({ initialDocument });
+    fireEvent.click(await view.findByRole('button', { name: 'Redigera planering' }));
+    fireEvent.change(view.getByLabelText('Dag att planera'), { target: { value: '1' } });
+    const source = view.getByRole('button', { name: 'Välj Testperson' });
+    const target = view.getByRole('region', { name: 'Jobb Jobb C' });
+    document.elementFromPoint = () => target.querySelector('h5');
+    fireEvent.pointerDown(source, point(type));
+    fireEvent.pointerMove(source, point(type, 80, 100));
+    assert.equal(target.dataset.dropState, 'over');
+    fireEvent.pointerUp(source, point(type, 80, 100));
+    fireEvent.click(source, { detail: 1 });
+    assert.equal(source.getAttribute('aria-pressed'), 'false');
+    assert.equal(source.hasPointerCapture(7), false);
+    assert.equal(view.getByLabelText('Testperson tisdag').value, 'Jobb B');
+    assert.ok(view.getByRole('button', { name: 'Dra Testperson från Jobb C' }));
+    assert.equal(requests.some(r => r.method === 'PUT'), false);
+    fireEvent.click(view.getByRole('button', { name: 'Spara planering' }));
+    await view.findByText('Planeringen är sparad och synlig för personalen.');
+    assert.deepEqual(requests.find(r => r.method === 'PUT').body.document.weeks[0].people[0], {
+      ...initialDocument.weeks[0].people[0], assignments: [[], ['Jobb C'], [], [], []],
+    });
+    cleanup();
+  }
+});
+test('touch tap, cancellation, Escape, outside drop and stale context never assign', async () => {
+  for (const mode of ['tap', 'cancel', 'capture-lost', 'escape', 'outside', 'day', 'edited', 'foreign-pointer']) {
+    const initialDocument = structuredClone(documentFixture);
+    initialDocument.jobs.push({ name: 'Jobb C', details: '', deadline: '' });
+    const { view } = setup({ initialDocument });
+    fireEvent.click(await view.findByRole('button', { name: 'Redigera planering' }));
+    const source = view.getByRole('button', { name: 'Välj Testperson' });
+    document.elementFromPoint = () => mode === 'outside' ? document.body : view.getByRole('region', { name: 'Jobb Jobb C' });
+    fireEvent.pointerDown(source, point());
+    fireEvent.pointerMove(source, point('touch', mode === 'tap' ? 23 : 80, mode === 'tap' ? 33 : 100));
+    if (mode === 'cancel') fireEvent.pointerCancel(source, point());
+    if (mode === 'capture-lost') fireEvent.lostPointerCapture(source, point());
+    if (mode === 'escape') fireEvent.keyDown(window, { key: 'Escape' });
+    if (mode === 'day') fireEvent.change(view.getByLabelText('Dag att planera'), { target: { value: '1' } });
+    if (mode === 'edited') fireEvent.change(view.getByLabelText('Namn på rad 1'), { target: { value: 'Ny person' } });
+    fireEvent.pointerUp(source, { ...point('touch', 80, 100), ...(mode === 'foreign-pointer' ? { pointerId: 8 } : {}) });
+    assert.equal(view.queryByRole('button', { name: /Dra .* från Jobb C/ }), null, mode);
+    if (mode === 'tap') { fireEvent.click(source); assert.equal(source.getAttribute('aria-pressed'), 'true'); }
+    cleanup();
+  }
+});
+
+test('touch from an assigned name scrolls list and page edges and stops scrolling after drop', async () => {
+  const initialDocument = structuredClone(documentFixture);
+  initialDocument.jobs.push({ name: 'Jobb C', details: '', deadline: '' });
+  const { view, requests } = setup({ initialDocument });
+  fireEvent.click(await view.findByRole('button', { name: 'Redigera planering' }));
+  const source = view.getByRole('button', { name: 'Dra Testperson från Jobb A' });
+  const target = view.getByRole('region', { name: 'Jobb Jobb C' });
+  const list = view.getByRole('group', { name: 'Jobb att släppa namn på' });
+  list.getBoundingClientRect = () => ({ left: 0, right: 300, top: 300, bottom: 600 });
+  document.elementFromPoint = () => target;
+  const original = { requestAnimationFrame: window.requestAnimationFrame, cancelAnimationFrame: window.cancelAnimationFrame, scrollBy: window.scrollBy };
+  const frames = new Map(), pageScrolls = [];
+  let nextId = 0;
+  window.requestAnimationFrame = callback => { frames.set(++nextId, callback); return nextId; };
+  window.cancelAnimationFrame = id => frames.delete(id);
+  window.scrollBy = (x, y) => pageScrolls.push([x, y]);
+  const tick = () => { const [id, callback] = frames.entries().next().value; frames.delete(id); act(() => callback()); };
+  try {
+    fireEvent.pointerDown(source, point());
+    fireEvent.pointerMove(source, point('touch', 100, 585));
+    tick();
+    assert.equal(list.scrollTop, 10);
+    assert.equal(pageScrolls.length, 0);
+    assert.equal(target.dataset.dropState, 'over');
+    fireEvent.pointerMove(source, point('touch', 500, window.innerHeight - 5));
+    tick();
+    assert.deepEqual(pageScrolls, [[0, 10]]);
+    fireEvent.pointerUp(source, point('touch', 100, 500));
+    assert.equal(frames.size, 0);
+    assert.equal(source.hasPointerCapture(7), false);
+    assert.ok(view.getByRole('button', { name: 'Dra Testperson från Jobb A' }));
+    assert.ok(view.getByRole('button', { name: 'Dra Testperson från Jobb C' }));
+    assert.equal(view.getByLabelText('Testperson måndag').value, 'Jobb A');
+    assert.equal(requests.some(request => request.method === 'PUT'), false);
+  } finally { cleanup(); Object.assign(window, original); }
+});
+
+test('a cancelled touch gesture does not swallow the next physical mouse click', async () => {
+  const { view } = setup();
+  fireEvent.click(await view.findByRole('button', { name: 'Redigera planering' }));
+  const source = view.getByRole('button', { name: 'Välj Testperson' });
+  document.elementFromPoint = () => document.body;
+  fireEvent.pointerDown(source, point());
+  fireEvent.pointerMove(source, point('touch', 80, 100));
+  fireEvent.pointerCancel(source, point());
+  fireEvent.pointerDown(source, point('mouse'));
+  fireEvent.pointerUp(source, point('mouse'));
+  fireEvent.click(source, { detail: 1 });
+  assert.equal(source.getAttribute('aria-pressed'), 'true');
 });

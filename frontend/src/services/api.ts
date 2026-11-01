@@ -85,6 +85,14 @@ export const supplierInvoicesApi = {
   document: (id: string) => fetchBlob(`/supplier-invoices/${encodeURIComponent(id)}/document`),
 };
 
+// A late response from a previous login must not clear the current session.
+function expireSession(requestToken: string | null) {
+  const session = useAuthStore.getState();
+  if (session.token !== requestToken) return;
+  session.logout();
+  window.location.href = '/login';
+}
+
 async function fetchApi<T>(
   endpoint: string,
   options: RequestInit = {}
@@ -104,8 +112,7 @@ async function fetchApi<T>(
   });
 
   if (response.status === 401) {
-    useAuthStore.getState().logout();
-    window.location.href = '/login';
+    expireSession(token);
     throw new Error('Unauthorized');
   }
 
@@ -140,8 +147,7 @@ async function fetchBlob(endpoint: string, options: RequestInit = {}): Promise<B
   });
 
   if (response.status === 401) {
-    useAuthStore.getState().logout();
-    window.location.href = '/login';
+    expireSession(token);
     throw new Error('Unauthorized');
   }
 
