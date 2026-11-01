@@ -102,6 +102,17 @@ test('old economy link resolves to the workspace without loading any economy rou
   assert.equal(requests.some(request => /economy|portfolio|materials/.test(request.path)), false);
 });
 
+test('retired material, purchase and calculation tabs cannot trigger old APIs through the real router', async () => {
+  for (const role of ['ADMIN', 'SUPERVISOR', 'EMPLOYEE']) for (const tab of ['materials', 'purchases', 'calculation']) {
+    const { view } = setup({ role, path: `/projects/p-0?tab=${tab}` });
+    await view.findByRole('heading', { name: 'Provprojekt 0' });
+    assert.equal(view.getByRole('tab', { name: 'Översikt', exact: true }).getAttribute('aria-selected'), 'true');
+    assert.equal(view.queryByRole('tab', { name: /Material|Inköp|Kalkyl/ }), null);
+    assert.equal(requests.some(request => /materials|supplier-invoices|project-calculations|inventory/.test(request.path)), false);
+    cleanup(); requests = [];
+  }
+});
+
 test('editing a workspace project never renders or submits hidden prices, budgets or billing model', async () => {
   const history = { fixedPrice: 98765, defaultRate: 650, budgetHours: 100, billingModel: 'FIXED' };
   const { view } = setup({ path: '/projects/p-0', handler: (path, method, body) => {

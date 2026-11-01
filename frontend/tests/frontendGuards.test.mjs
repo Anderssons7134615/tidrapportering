@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  canModifyProjectMaterial,
   getFocusTrapAction,
   getProjectQueryAccess,
   getReportExportBlockReason,
@@ -27,17 +26,6 @@ test('project retry access never enables manager data for employees', () => {
     getProjectQueryAccess({ hasProjectId: true, isManager: true }),
     { canLoadTimeEntries: true, canLoadManagerSummary: true }
   );
-});
-
-test('employees can only modify their own uninvoiced material on active projects', () => {
-  const ownRow = { projectActive: true, isManager: false, currentUserId: 'u1', createdByUserId: 'u1', invoiceStatus: 'NOT_INVOICED' };
-  assert.equal(canModifyProjectMaterial(ownRow), true);
-  assert.equal(canModifyProjectMaterial({ ...ownRow, createdByUserId: 'u2' }), false);
-  assert.equal(canModifyProjectMaterial({ ...ownRow, currentUserId: undefined, createdByUserId: undefined }), false);
-  assert.equal(canModifyProjectMaterial({ ...ownRow, invoiceStatus: 'INVOICED' }), false);
-  assert.equal(canModifyProjectMaterial({ ...ownRow, projectActive: false }), false);
-  assert.equal(canModifyProjectMaterial({ ...ownRow, isManager: true, inventoryMovementId: 'stock-issue' }), false);
-  assert.equal(canModifyProjectMaterial({ ...ownRow, isManager: true, createdByUserId: 'u2' }), true);
 });
 
 test('report export stays blocked until the current review data is ready', () => {

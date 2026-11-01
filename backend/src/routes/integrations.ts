@@ -8,14 +8,7 @@ import {
   type IntegrationPermission,
   type IntegrationScope,
 } from '../lib/integrationAuth.js';
-import {
-  createMaterialBatch,
-  getMaterialBatchStatus,
-  IntegrationMaterialError,
-  materialBatchBodySchema,
-  parseIdempotencyKey,
-  validateMaterialBatch,
-} from '../lib/integrationMaterialBatch.js';
+import { parseIdempotencyKey } from '../lib/integrationIdempotency.js';
 import {
   createProjectFromIntegration,
   getProjectCreateStatus,
@@ -76,9 +69,6 @@ function requireIntegrationPermission(permission: IntegrationPermission) {
 }
 
 function sendIntegrationError(error: unknown, reply: any) {
-  if (error instanceof IntegrationMaterialError) {
-    return reply.status(error.statusCode).send({ error: error.message, code: error.code });
-  }
   if (error instanceof z.ZodError) {
     return reply.status(400).send({ error: 'Ogiltig data', code: 'VALIDATION_ERROR', details: error.errors });
   }
@@ -159,33 +149,6 @@ export const createIntegrationRoutes = (db: typeof prisma): FastifyPluginAsync =
     return { items: customers };
   });
 
-  fastify.get('/projects/:id/materials', {
-    preHandler: [requireIntegrationPermission('READ_ONLY')],
-  }, async (request, reply) => {
-    const { id } = request.params as { id: string };
-    const { limit } = listQuerySchema.parse(request.query);
-    if (!await scopedProject(db, id, request.integrationScope!.companyId)) {
-      return reply.status(404).send({ error: 'Projekt hittades inte' });
-    }
-
-    const items = await db.projectMaterial.findMany({
-      where: { projectId: id },
-      select: {
-        id: true,
-        articleName: true,
-        articleNumber: true,
-        unit: true,
-        quantity: true,
-        date: true,
-        note: true,
-        createdAt: true,
-      },
-      orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
-      take: limit ?? 100,
-    });
-    return { items };
-  });
-
   fastify.get('/projects/:id/time-entries', {
     preHandler: [requireIntegrationPermission('READ_ONLY')],
   }, async (request, reply) => {
@@ -245,63 +208,6 @@ export const createIntegrationRoutes = (db: typeof prisma): FastifyPluginAsync =
       take: limit ?? 100,
     });
     return { items };
-  });
-
-  fastify.post('/material-writes/validate', {
-    preHandler: [requireIntegrationPermission('MATERIAL_CREATE')],
-    bodyLimit: 64 * 1024,
-    config: { rateLimit: { max: 20, timeWindow: '1 minute' } },
-  }, async (request, reply) => {
-    try {
-      const body = materialBatchBodySchema.parse(request.body);
-      const validation = await validateMaterialBatch(db, request.integrationScope!, body);
-      return {
-        valid: true,
-        project: validation.project,
-        rows: validation.rows.map((row) => ({
-          index: row.index,
-          article: {
-            id: row.article.id,
-            name: row.article.name,
-            articleNumber: row.article.articleNumber,
-            unit: row.article.unit,
-          },
-          quantity: row.quantity,
-          date: row.date,
-          note: row.note,
-        })),
-      };
-    } catch (error) {
-      return sendIntegrationError(error, reply);
-    }
-  });
-
-  fastify.post('/material-writes', {
-    preHandler: [requireIntegrationPermission('MATERIAL_CREATE')],
-    bodyLimit: 64 * 1024,
-    config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
-  }, async (request, reply) => {
-    try {
-      const body = materialBatchBodySchema.parse(request.body);
-      const idempotencyKey = parseIdempotencyKey(request.headers['idempotency-key']);
-      const result = await createMaterialBatch(db, request.integrationScope!, body, idempotencyKey);
-      return reply.status(result.created ? 201 : 200).send(result);
-    } catch (error) {
-      return sendIntegrationError(error, reply);
-    }
-  });
-
-  fastify.get('/material-writes/:idempotencyKey', {
-    preHandler: [requireIntegrationPermission('MATERIAL_CREATE')],
-    config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
-  }, async (request, reply) => {
-    try {
-      const params = z.object({ idempotencyKey: z.string() }).strict().parse(request.params);
-      const idempotencyKey = parseIdempotencyKey(params.idempotencyKey);
-      return await getMaterialBatchStatus(db, request.integrationScope!, idempotencyKey);
-    } catch (error) {
-      return sendIntegrationError(error, reply);
-    }
   });
 
   fastify.post('/project-writes/validate', {

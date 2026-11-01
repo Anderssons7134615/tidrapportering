@@ -41,9 +41,6 @@ test('non-admin cannot reach invoice documents, prices, catalog exports or proje
   try {
     for (const role of ['SUPERVISOR', 'EMPLOYEE', 'ACCOUNTANT']) for (const request of [
       { method: 'GET', url: '/projects/project/manager-summary' },
-      { method: 'GET', url: '/projects/materials/articles.xlsx' },
-      { method: 'POST', url: '/projects/materials/articles/import.xlsx' },
-      { method: 'POST', url: '/projects/project/materials/import.xlsx' },
       { method: 'GET', url: '/invoices' },
       { method: 'GET', url: '/obsidian/projects/project/snapshot' },
       { method: 'GET', url: '/obsidian/events' },

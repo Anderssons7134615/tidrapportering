@@ -27,12 +27,7 @@ export function createMaterialBatchPayloadHash(body: MaterialBatchBody): string 
   return createHash('sha256').update(JSON.stringify(body), 'utf8').digest('hex');
 }
 
-export function parseIdempotencyKey(value: string | string[] | undefined): string {
-  if (typeof value !== 'string' || !/^[A-Za-z0-9._:-]{8,100}$/.test(value)) {
-    throw new Error('IDEMPOTENCY_KEY_INVALID');
-  }
-  return value;
-}
+export { parseIdempotencyKey } from './integrationIdempotency.js';
 
 export class IntegrationMaterialError extends Error {
   constructor(

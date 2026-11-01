@@ -77,7 +77,7 @@ test('övriga dagar prioriterar projekt och döljer attest från chefens dashboa
   assert.equal(rows.some((row) => row.id === 'pending-approvals'), false);
   assert.equal(rows.find((row) => row.id === 'manager-projects')?.to, '/projects');
   assert.equal(rows.some((row) => /risk|saknar budget/i.test(row.title)), false);
-  assert.equal(rows.some((row) => row.to === '/project-economy'), true);
+  assert.equal(rows.some((row) => row.to === '/project-economy'), false);
   assert.equal(rows.some((row) => row.tone === 'red'), false);
 });
 

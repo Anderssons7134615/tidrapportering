@@ -57,12 +57,6 @@ export function buildDashboardActionRows({
       description: 'Öppna, redigera och arkivera projekt.',
       tone: 'gray',
       to: '/projects',
-    }, {
-      id: 'manager-economy',
-      title: 'Projektekonomi',
-      description: 'Se timmar, budget och resultat när du behöver.',
-      tone: 'gray',
-      to: '/project-economy',
     }];
   }
 

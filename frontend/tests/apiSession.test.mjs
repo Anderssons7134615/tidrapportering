@@ -25,7 +25,7 @@ for (const kind of ['json', 'blob']) {
         assert.equal(options.headers.Authorization, 'Bearer old-token');
         return new Promise(resolve => { finish = resolve; });
       };
-      const request = kind === 'json' ? api.planningApi.get() : api.supplierInvoicesApi.document('test');
+      const request = kind === 'json' ? api.planningApi.get() : api.reportsApi.timeBackupExcel('2026-10-01', '2026-10-31');
       if (switchSession) auth.useAuthStore.getState().setAuth('new-token', { id: 'second', companyId: 'two' });
       finish(Response.json({ error: 'Unauthorized' }, { status: 401 }));
       await assert.rejects(request, /Unauthorized/);

@@ -7,83 +7,16 @@ export const planningApi = {
   comments: (page: number) => fetchApi<{ items: PlanningComment[]; hasMore: boolean }>(`/planning/comments?page=${page}`),
   comment: (content: string, requestKey: string) => fetchApi<PlanningComment>('/planning/comments', { method: 'POST', body: JSON.stringify({ content, requestKey }) }),
 };
-import type { CalculationPreview, SavedCalculation, CalculationListItem } from '../types/projectCalculation';
-import type { CalculationDraft, CalculationDraftListItem, EditableCalculation } from '../types/projectCalculation';
-
-export const projectCalculationsApi = {
-  drafts: (projectId: string) => fetchApi<CalculationDraftListItem[]>(`/project-calculations/${encodeURIComponent(projectId)}/editor`),
-  draft: (projectId: string, id: string) => fetchApi<CalculationDraft | null>(`/project-calculations/${encodeURIComponent(projectId)}/editor/${encodeURIComponent(id)}`),
-  previewDraft: (projectId: string, id: string, expectedRevision: number, document: EditableCalculation) => fetchApi<CalculationPreview>(`/project-calculations/${encodeURIComponent(projectId)}/editor/${encodeURIComponent(id)}/preview`, { method: 'POST', body: JSON.stringify({ expectedRevision, document }) }),
-  saveDraft: (projectId: string, id: string, expectedRevision: number, document: EditableCalculation) => fetchApi<CalculationDraft>(`/project-calculations/${encodeURIComponent(projectId)}/editor/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify({ expectedRevision, document }) }),
-  lockDraft: (projectId: string, id: string, expectedRevision: number, expectedFingerprint: string) => fetchApi<{ id: string }>(`/project-calculations/${encodeURIComponent(projectId)}/editor/${encodeURIComponent(id)}/lock`, { method: 'POST', body: JSON.stringify({ expectedRevision, expectedFingerprint, reviewed: true }) }),
-  list: (projectId: string) => fetchApi<CalculationListItem[]>(`/project-calculations/${encodeURIComponent(projectId)}`),
-  get: (projectId: string, id: string) => fetchApi<SavedCalculation>(`/project-calculations/${encodeURIComponent(projectId)}/${encodeURIComponent(id)}`),
-  preview: (projectId: string, calculation: unknown) => fetchApi<CalculationPreview>(`/project-calculations/${encodeURIComponent(projectId)}/preview`, { method: 'POST', body: JSON.stringify(calculation) }),
-  save: (projectId: string, calculation: unknown, expectedFingerprint: string) => fetchApi<{ id: string; duplicate: boolean }>(`/project-calculations/${encodeURIComponent(projectId)}/import`, { method: 'POST', body: JSON.stringify({ calculation, expectedFingerprint, reviewed: true }) }),
-};
 import type { TimeWriteRequest, TimeWriteAck } from '../types/timeWrite';
-import type { InventoryItem, InventoryMovement, InventoryMovementInput } from '../types/inventory';
-import type { InvoiceDraft, InvoiceList, InvoiceStatus, SupplierInvoice } from '../types/supplierInvoice';
 import type {
-  User,
-  Customer,
-  Project,
-  ProjectOption,
-  MaterialArticle,
-  ProjectMaterial,
-  ProjectMaterialsResponse,
-  Activity,
-  TimeEntry,
-  WeekLock,
-  Settings,
-  DashboardData,
-  DashboardDrilldownData,
-  DashboardMetric,
-  WeekData,
-  ProjectManagerSummary,
-  TeamWeekSummary,
-  PushSubscriptionInfo,
-  ProjectSummary,
-  ProjectUpdate,
-  ProjectUpdateType,
-  MaterialImportResult,
-  MaterialImportPreview,
-  OfflineSyncEntry,
-  OfflineSyncResult,
-  ProjectControlResponse,
-  ProjectTask,
-  ProjectTaskPriority,
-  ProjectTaskStatus,
-  ProjectPortfolioItem,
+  User, Customer, Project, ProjectOption, Activity, TimeEntry, WeekLock, Settings,
+  DashboardData, DashboardDrilldownData, DashboardMetric, WeekData, ProjectManagerSummary,
+  TeamWeekSummary, PushSubscriptionInfo, ProjectSummary, ProjectUpdate, ProjectUpdateType,
+  OfflineSyncEntry, OfflineSyncResult, ProjectControlResponse, ProjectTask,
+  ProjectTaskPriority, ProjectTaskStatus, ProjectPortfolioItem,
 } from '../types';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
-
-export const inventoryApi = {
-  list: () => fetchApi<InventoryItem[]>('/inventory/items'),
-  history: (id: string, page = 1) => fetchApi<{ items: InventoryMovement[]; page: number; total: number }>(`/inventory/items/${encodeURIComponent(id)}/history?page=${page}`),
-  addItem: (articleId: string, shelf: string) => fetchApi<{ id: string }>('/inventory/items', { method: 'POST', body: JSON.stringify({ articleId, shelf }) }),
-  setShelf: (id: string, revision: number, shelf: string) => fetchApi(`/inventory/items/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ revision, shelf }) }),
-  move: (id: string, input: InventoryMovementInput) => fetchApi(`/inventory/items/${encodeURIComponent(id)}/movements`, { method: 'POST', body: JSON.stringify(input) }),
-};
-
-export const supplierInvoicesApi = {
-  reparse: (id: string, revision: number) => fetchApi<SupplierInvoice>(`/supplier-invoices/${encodeURIComponent(id)}/reparse`, { method: 'POST', body: JSON.stringify({ revision }) }),
-  list: (params: { page?: number; search?: string; status?: InvoiceStatus; projectId?: string }) => {
-    const query = new URLSearchParams();
-    Object.entries(params).forEach(([key, value]) => { if (value !== undefined && value !== '') query.set(key, String(value)); });
-    return fetchApi<InvoiceList>(`/supplier-invoices?${query}`);
-  },
-  get: (id: string) => fetchApi<SupplierInvoice>(`/supplier-invoices/${encodeURIComponent(id)}`),
-  upload: (file: File) => {
-    const body = new FormData(); body.append('file', file);
-    return fetchApi<{ invoice: SupplierInvoice; duplicate: boolean }>('/supplier-invoices', { method: 'POST', body });
-  },
-  save: (id: string, draft: InvoiceDraft) => fetchApi<SupplierInvoice>(`/supplier-invoices/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(draft) }),
-  confirm: (id: string, revision: number) => fetchApi<SupplierInvoice>(`/supplier-invoices/${encodeURIComponent(id)}/confirm`, { method: 'POST', body: JSON.stringify({ revision, reviewedOriginal: true }) }),
-  changeStatus: (id: string, revision: number, action: 'reopen' | 'void', reason: string) => fetchApi<SupplierInvoice>(`/supplier-invoices/${encodeURIComponent(id)}/${action}`, { method: 'POST', body: JSON.stringify({ revision, reason }) }),
-  document: (id: string) => fetchBlob(`/supplier-invoices/${encodeURIComponent(id)}/document`),
-};
 
 // A late response from a previous login must not clear the current session.
 function expireSession(requestToken: string | null) {
@@ -229,51 +162,6 @@ export const projectsApi = {
   },
   nextCode: () => fetchApi<{ code: string }>('/projects/next-code'),
   get: (id: string) => fetchApi<Project>(`/projects/${id}`),
-  listMaterialArticles: (active?: boolean) =>
-    fetchApi<MaterialArticle[]>(`/projects/materials/articles${active !== undefined ? `?active=${active}` : ''}`),
-  exportMaterialArticlesExcel: () => fetchBlob('/projects/materials/articles.xlsx'),
-  downloadMaterialTemplate: () => fetchBlob('/projects/materials/template.xlsx'),
-  previewMaterialArticlesImport: (file: File) => {
-    const formData = new FormData();
-    formData.append('file', file);
-    return fetchApi<MaterialImportPreview>('/projects/materials/articles/import-preview', {
-      method: 'POST',
-      body: formData,
-    });
-  },
-  importMaterialArticlesExcel: (file: File) => {
-    const formData = new FormData();
-    formData.append('file', file);
-    return fetchApi<MaterialImportResult>('/projects/materials/articles/import.xlsx', {
-      method: 'POST',
-      body: formData,
-    });
-  },
-  createMaterialArticle: (data: {
-    name: string;
-    articleNumber?: string;
-    category?: string;
-    unit?: string;
-    supplier?: string;
-    manufacturer?: string;
-    listPrice?: number;
-    discountPercent?: number;
-    purchasePrice?: number;
-    defaultUnitPrice?: number;
-    markupPercent?: number;
-    employeeVisible?: boolean;
-  }) => fetchApi<MaterialArticle>('/projects/materials/articles', {
-    method: 'POST',
-    body: JSON.stringify(data),
-  }),
-  updateMaterialArticle: (id: string, data: Partial<MaterialArticle>) =>
-    fetchApi<MaterialArticle>(`/projects/materials/articles/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    }),
-  deleteMaterialArticle: (id: string) =>
-    fetchApi<{ message: string }>(`/projects/materials/articles/${id}`, { method: 'DELETE' }),
-  listMaterials: (id: string) => fetchApi<ProjectMaterialsResponse>(`/projects/${id}/materials`),
   getSummary: (id: string, params?: { from?: string; to?: string }) => {
     const searchParams = new URLSearchParams();
     if (params?.from) searchParams.set('from', params.from);
@@ -292,30 +180,6 @@ export const projectsApi = {
     method: 'POST',
     body: JSON.stringify(data),
   }),
-  createMaterial: (id: string, data: {
-    articleId: string;
-    quantity: number;
-    date?: string;
-    note?: string;
-  }) => fetchApi<ProjectMaterial>(`/projects/${id}/materials`, {
-    method: 'POST',
-    body: JSON.stringify(data),
-  }),
-  updateMaterial: (id: string, materialId: string, data: Partial<ProjectMaterial> & { date?: string }) =>
-    fetchApi<ProjectMaterial>(`/projects/${id}/materials/${materialId}`, {
-      method: 'PATCH',
-      body: JSON.stringify(data),
-    }),
-  importProjectMaterialsExcel: (id: string, file: File) => {
-    const formData = new FormData();
-    formData.append('file', file);
-    return fetchApi<MaterialImportResult>(`/projects/${id}/materials/import.xlsx`, {
-      method: 'POST',
-      body: formData,
-    });
-  },
-  deleteMaterial: (id: string, materialId: string) =>
-    fetchApi<{ message: string }>(`/projects/${id}/materials/${materialId}`, { method: 'DELETE' }),
   getManagerSummary: async (id: string) => {
     const raw = await fetchApi<any>(`/projects/${id}/manager-summary`);
 

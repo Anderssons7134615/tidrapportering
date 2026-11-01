@@ -30,28 +30,6 @@ export function getProjectQueryAccess({
   };
 }
 
-export function canModifyProjectMaterial({
-  projectActive,
-  isManager,
-  currentUserId,
-  createdByUserId,
-  invoiceStatus,
-  lockedForChanges,
-  inventoryMovementId,
-}: {
-  projectActive: boolean;
-  isManager: boolean;
-  currentUserId?: string;
-  createdByUserId?: string | null;
-  invoiceStatus?: string;
-  lockedForChanges?: boolean;
-  inventoryMovementId?: string | null;
-}) {
-  if (inventoryMovementId) return false;
-  if (!projectActive || lockedForChanges || invoiceStatus === 'INVOICED') return false;
-  return isManager || Boolean(currentUserId && createdByUserId === currentUserId);
-}
-
 export function getReportExportBlockReason({
   isFetching,
   isError,
