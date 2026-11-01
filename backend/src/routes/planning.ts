@@ -15,6 +15,12 @@ export function createPlanningRoutes(db: PrismaClient): FastifyPluginAsync {
     app.put('/', { preHandler: [admin], bodyLimit: 1024 * 1024 }, async (request, reply) => {
       const { expectedRevision, document } = savePlanningSchema.parse(request.body);
       const companyId = request.user.companyId;
+      const userIds = [...new Set(document.weeks.flatMap(week => week.people.flatMap(person => person.userId ? [person.userId] : [])))];
+      if (userIds.length) {
+        // Inactive accounts remain valid historical links. Never accept another company's account.
+        const users = await db.user.findMany({ where: { companyId, id: { in: userIds } }, select: { id: true } });
+        if (users.length !== userIds.length) return reply.status(400).send({ error: 'En kontokoppling är ogiltig. Välj konton från det egna företaget.' });
+      }
       if (expectedRevision === 0) {
         try { return await db.planningBoard.create({ data: { companyId, document } }); }
         catch (error) { if ((error as { code?: string }).code !== 'P2002') throw error; }

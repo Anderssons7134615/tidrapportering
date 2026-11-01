@@ -9,7 +9,13 @@ const document = { weeks: [{ startDate: '2026-10-19', note: '', people: [{ name:
 const requestKey = '00000000-0000-4000-8000-000000000001';
 async function setup() {
   const boards: any[] = [], comments: any[] = [];
+  const users = [
+    { id: '00000000-0000-4000-8000-000000000001', companyId: 'a', active: true },
+    { id: '00000000-0000-4000-8000-000000000002', companyId: 'b', active: true },
+    { id: '00000000-0000-4000-8000-000000000003', companyId: 'a', active: false },
+  ];
   const db: any = {
+    user: { findMany: async ({ where }: any) => users.filter(user => user.companyId === where.companyId && where.id.in.includes(user.id)) },
     planningBoard: {
       findUnique: async ({ where }: any) => boards.find(b => b.companyId === where.companyId) ?? null,
       create: async ({ data }: any) => { if (boards.some(b => b.companyId === data.companyId)) throw { code: 'P2002' }; const b = { ...data, id: `b${boards.length}`, revision: 1 }; boards.push(b); return b; },
@@ -119,4 +125,28 @@ test('plan validates real Mondays, duplicate weeks, five weekdays and bounded fi
   assert.equal(planningDocumentSchema.safeParse({ ...document, weeks: [document.weeks[0], document.weeks[0]] }).success, false);
   assert.equal(planningDocumentSchema.safeParse({ ...document, weeks: [{ ...document.weeks[0], people: [{ name: '', days: [] }] }] }).success, false);
   assert.equal(planningDocumentSchema.safeParse({ ...document, issues: 'x'.repeat(20001) }).success, false);
+});
+
+test('account links require company membership and one row per week, preserving inactive accounts', async () => {
+  const { app, call, boards } = await setup();
+  const linked = (userId: string) => ({ ...document, weeks: [{ ...document.weeks[0], people: [{ ...document.weeks[0].people[0], userId }] }] });
+  try {
+    for (const id of ['not-an-id', '00000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000009']) {
+      assert.equal((await call('PUT', '', 'ADMIN', { expectedRevision: 0, document: linked(id) })).statusCode, 400);
+      assert.equal(boards.length, 0);
+    }
+    const valid = linked('00000000-0000-4000-8000-000000000001');
+    const duplicate = structuredClone(valid);
+    duplicate.weeks[0].people.push({ ...duplicate.weeks[0].people[0], name: 'Samma konto med annat namn' });
+    assert.equal((await call('PUT', '', 'ADMIN', { expectedRevision: 0, document: duplicate })).statusCode, 400);
+    assert.equal(boards.length, 0);
+    valid.weeks.push({ ...valid.weeks[0], startDate: '2026-10-26' });
+    assert.equal((await call('PUT', '', 'ADMIN', { expectedRevision: 0, document: valid })).statusCode, 200);
+    assert.deepEqual((await call('GET', '', 'EMPLOYEE')).json().document, valid);
+    assert.equal((await call('PUT', '', 'ADMIN', { expectedRevision: 1, document: linked('00000000-0000-4000-8000-000000000003') })).statusCode, 200);
+    assert.equal((await call('PUT', '', 'ADMIN', { expectedRevision: 2, document: linked('00000000-0000-4000-8000-000000000002') })).statusCode, 400);
+    assert.equal(boards[0].revision, 2);
+    for (const role of ['EMPLOYEE', 'SUPERVISOR']) assert.equal((await call('PUT', '', role, { expectedRevision: 2, document: valid })).statusCode, 403);
+    assert.equal((await call('PUT', '', 'ADMIN', { expectedRevision: 2, document })).statusCode, 200);
+  } finally { await app.close(); }
 });
