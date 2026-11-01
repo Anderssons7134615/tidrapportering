@@ -32,7 +32,7 @@ before(async () => {
   auth = await vite.ssrLoadModule('/src/stores/authStore.ts');
   ({ validPlanningAssignments } = await vite.ssrLoadModule('/src/utils/planningAssignments.ts'));
 });
-afterEach(() => { cleanup(); clients.splice(0).forEach(c => c.clear()); globalThis.fetch = originalFetch; });
+afterEach(() => { cleanup(); clients.splice(0).forEach(c => c.clear()); globalThis.fetch = originalFetch; localStorage.clear(); });
 after(async () => { await vite?.close(); dom?.window.close(); });
 function setup({ role = 'ADMIN', empty = false, failSave = false, failComment = false, failLoad = false, initialDocument = documentFixture } = {}) {
   auth.useAuthStore.setState({ token: 'synthetic-test', user: { id: 'u1', companyId: 'a', role, name: 'Testperson' } });
@@ -41,6 +41,11 @@ function setup({ role = 'ADMIN', empty = false, failSave = false, failComment = 
     const path = new URL(url, 'http://localhost').pathname, method = options.method || 'GET';
     const body = options.body ? JSON.parse(options.body) : undefined;
     requests.push({ path, method, body });
+    if (path.endsWith('/users')) return Response.json([
+      { id: '00000000-0000-4000-8000-000000000001', name: 'Kontoperson', active: true, role: 'EMPLOYEE' },
+      { id: '00000000-0000-4000-8000-000000000002', name: 'Inaktiv person', active: false, role: 'EMPLOYEE' },
+      { id: '00000000-0000-4000-8000-000000000003', name: 'Ekonom', active: true, role: 'ACCOUNTANT' },
+    ]);
     if (path.endsWith('/planning') && method === 'GET') return failLoad ? Response.json({ error: 'Testfel' }, { status: 503 }) : Response.json(board);
     if (path.endsWith('/planning') && method === 'PUT') {
       if (failSave) return Response.json({ error: 'Planeringen har ändrats' }, { status: 409 });
@@ -73,8 +78,25 @@ test('employee and supervisor read the plan and post advice; retry uses the same
     await view.findByText('Kan hjälpa på torsdag');
     assert.equal(field.value, '');
     const posts = requests.filter(r => r.method === 'POST'); assert.equal(posts.length, 2); assert.equal(posts[0].body.requestKey, posts[1].body.requestKey);
-    assert.equal(requests.some(r => r.method === 'PUT'), false); cleanup();
+    assert.equal(requests.some(r => r.method === 'PUT' || r.path.endsWith('/users')), false); cleanup();
   }
+});
+
+test('admin explicitly links a person to an account and the link follows a new week', async () => {
+  const { view, requests } = setup();
+  fireEvent.click(await view.findByRole('button', { name: 'Redigera planering' }));
+  await view.findByRole('option', { name: 'Kontoperson' });
+  assert.equal(view.queryByRole('option', { name: 'Inaktiv person' }), null);
+  assert.equal(view.queryByRole('option', { name: 'Ekonom' }), null);
+  fireEvent.change(view.getByLabelText('Konto för Testperson'), { target: { value: '00000000-0000-4000-8000-000000000001' } });
+  fireEvent.change(view.getByLabelText('Datum i ny vecka'), { target: { value: '2026-11-02' } });
+  fireEvent.click(view.getByRole('button', { name: 'Lägg till vecka' }));
+  assert.equal(view.getByLabelText('Konto för Testperson').value, '00000000-0000-4000-8000-000000000001');
+  fireEvent.click(view.getByRole('button', { name: 'Spara planering' }));
+  await view.findByText('Planeringen är sparad och synlig för personalen.');
+  const saved = requests.find(request => request.method === 'PUT').body.document;
+  assert.equal(saved.weeks.length, 2);
+  assert.ok(saved.weeks.every(week => week.people[0].userId === '00000000-0000-4000-8000-000000000001'));
 });
 test('admin edits a weekday and saves the expected revision', async () => {
   const { view, requests } = setup();
@@ -82,8 +104,21 @@ test('admin edits a weekday and saves the expected revision', async () => {
   fireEvent.change(view.getByLabelText('Testperson måndag'), { target: { value: 'Nytt jobb' } });
   fireEvent.click(view.getByRole('button', { name: 'Spara planering' }));
   await view.findByText('Planeringen är sparad och synlig för personalen.');
-  await view.findByText('Nytt jobb');
+  assert.ok(within(view.getByRole('table')).getByText('Nytt jobb'));
   const put = requests.find(r => r.method === 'PUT'); assert.equal(put.body.expectedRevision, 1); assert.equal(put.body.document.weeks[0].people[0].days[0], 'Nytt jobb');
+});
+
+test('personal read status ignores the admin draft until the plan is published', async () => {
+  const initialDocument = structuredClone(documentFixture);
+  initialDocument.weeks[0].people[0].userId = 'u1';
+  const { view } = setup({ initialDocument });
+  fireEvent.click(await view.findByRole('button', { name: 'Markera min plan som läst' }));
+  fireEvent.click(view.getByRole('button', { name: 'Redigera planering' }));
+  fireEvent.change(view.getByLabelText('Testperson måndag'), { target: { value: 'Nytt publicerat jobb' } });
+  assert.ok(view.getByText('Din plan är markerad som läst.'));
+  fireEvent.click(view.getByRole('button', { name: 'Spara planering' }));
+  await view.findByText('Planeringen är sparad och synlig för personalen.');
+  assert.ok(view.getByText('Din plan har ändrats sedan du markerade den som läst.'));
 });
 function dragData() {
   const values = new Map();

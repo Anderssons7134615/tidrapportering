@@ -1,4 +1,10 @@
 .planning-save { display: grid; gap: 12px; padding: 16px; background: var(--color-bg-soft); border-radius: var(--radius-sm); }
+.planning-personal-days, .planning-staffing-columns { display: grid; gap: 16px; min-width: 0; }
+.planning-personal-days > section, .planning-staffing-columns > section { min-width: 0; overflow-wrap: anywhere; }
+.planning-staffing { padding: 16px 0 24px; margin-bottom: 20px; border-bottom: 1px solid var(--color-border); overflow-wrap: anywhere; }
+@media (min-width: 640px) {
+  .planning-personal-days, .planning-staffing-columns { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 .planning-assignments { display: grid; gap: 12px; min-width: 0; margin-bottom: 24px; padding: 16px 0 24px; border-bottom: 1px solid var(--color-border); }
 .planning-assignments > label { max-width: 22rem; }
 .planning-assignment-layout { display: grid; gap: 16px; min-width: 0; }
