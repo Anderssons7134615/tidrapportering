@@ -7,6 +7,7 @@ import { createServer } from 'vite';
 
 let validPlanningAssignments, dom, vite, Planning, auth, render, cleanup, fireEvent, waitFor, act, within, QueryClient, QueryClientProvider, createMemoryRouter, RouterProvider;
 const clients = [], originalFetch = globalThis.fetch;
+const projectOptions = [{ id: 'proj-1', code: 'P1001', name: 'Ica Maxi ventilation', customer: { id: 'c1', name: 'Ica' } }];
 const documentFixture = { weeks: [{ startDate: '2026-10-26', note: 'Preliminärt', people: [{ name: 'Testperson', days: ['Jobb A','Jobb B','','',''] }] }], jobs: [{ name: 'Jobb A', details: 'Två dagar', deadline: 'V44' }], issues: 'Behöver bemanning' };
 before(async () => {
   dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'http://localhost', pretendToBeVisual: true });
@@ -46,6 +47,7 @@ function setup({ role = 'ADMIN', empty = false, failSave = false, failComment = 
       { id: '00000000-0000-4000-8000-000000000002', name: 'Inaktiv person', active: false, role: 'EMPLOYEE' },
       { id: '00000000-0000-4000-8000-000000000003', name: 'Ekonom', active: true, role: 'ACCOUNTANT' },
     ]);
+    if (path.endsWith('/projects/options')) return Response.json(projectOptions);
     if (path.endsWith('/planning') && method === 'GET') return failLoad ? Response.json({ error: 'Testfel' }, { status: 503 }) : Response.json(board);
     if (path.endsWith('/planning') && method === 'PUT') {
       if (failSave) return Response.json({ error: 'Planeringen har ändrats' }, { status: 409 });
@@ -85,7 +87,8 @@ test('employee and supervisor read the plan and post advice; retry uses the same
 test('admin explicitly links a person to an account and the link follows a new week', async () => {
   const { view, requests } = setup();
   fireEvent.click(await view.findByRole('button', { name: 'Redigera planering' }));
-  await view.findByRole('option', { name: 'Kontoperson' });
+  const accountSelect = view.getByLabelText('Konto för Testperson');
+  await within(accountSelect).findByRole('option', { name: 'Kontoperson' });
   assert.equal(view.queryByRole('option', { name: 'Inaktiv person' }), null);
   assert.equal(view.queryByRole('option', { name: 'Ekonom' }), null);
   fireEvent.change(view.getByLabelText('Konto för Testperson'), { target: { value: '00000000-0000-4000-8000-000000000001' } });
@@ -617,4 +620,109 @@ test('a cancelled touch gesture does not swallow the next physical mouse click',
   fireEvent.pointerUp(source, point('mouse'));
   fireEvent.click(source, { detail: 1 });
   assert.equal(source.getAttribute('aria-pressed'), 'true');
+});
+
+async function boardSetup(extraWeeks = []) {
+  const { stockholmDate } = await vite.ssrLoadModule('/src/utils/planningOverview.ts');
+  const { format, startOfISOWeek, parseISO, addDays } = await import('date-fns');
+  const monday = format(startOfISOWeek(parseISO(stockholmDate())), 'yyyy-MM-dd');
+  const next = format(addDays(parseISO(monday), 7), 'yyyy-MM-dd');
+  const initialDocument = structuredClone(documentFixture);
+  initialDocument.weeks.push({ startDate: monday, note: '', people: [{ name: 'Kontoperson', userId: '00000000-0000-4000-8000-000000000001', days: ['', '', '', '', 'Kurs'] }] }, ...extraWeeks);
+  initialDocument.jobs.push({ name: 'Jobb B', details: '', deadline: '' });
+  const result = setup({ initialDocument });
+  fireEvent.click(await result.view.findByRole('button', { name: 'Redigera planering' }));
+  const grid = await result.view.findByRole('grid');
+  const cell = (week, day) => grid.querySelector(`[data-cell="${week}|${day}|u:00000000-0000-4000-8000-000000000001"]`);
+  return { ...result, grid, cell, monday, next };
+}
+const savedDocument = async (view, requests) => {
+  fireEvent.click(view.getByRole('button', { name: 'Spara planering' }));
+  await view.findByText('Planeringen är sparad och synlig för personalen.');
+  return requests.find(request => request.method === 'PUT').body.document;
+};
+
+test('board: dragging over several days and clicking a job plans them all; undo restores; nothing saves until Spara', async () => {
+  const { view, requests, cell, monday } = await boardSetup();
+  fireEvent.pointerDown(cell(monday, 0), { button: 0, buttons: 1, pointerType: 'mouse' });
+  fireEvent.pointerOver(cell(monday, 2), { buttons: 1, pointerType: 'mouse' });
+  fireEvent.pointerUp(window, { pointerType: 'mouse' });
+  assert.ok(view.getByText('3 dagar valda'));
+  fireEvent.click(view.getByRole('button', { name: 'Sätt Jobb A på valda dagar' }));
+  assert.ok(view.getByText(/Jobb A satt på 3 dagar/));
+  fireEvent.click(view.getByRole('button', { name: 'Sätt Jobb B på valda dagar' }));
+  fireEvent.click(view.getByRole('button', { name: 'Ångra senaste ändringen i tavlan' }));
+  assert.equal(requests.some(request => request.method === 'PUT'), false);
+  const saved = await savedDocument(view, requests);
+  const person = saved.weeks.find(week => week.startDate === monday).people[0];
+  assert.deepEqual(person.assignments, [['Jobb A'], ['Jobb A'], ['Jobb A'], [], []]);
+  assert.equal(person.days[4], 'Kurs');
+  assert.deepEqual(saved.weeks.find(week => week.startDate === '2026-10-26'), documentFixture.weeks[0]);
+});
+
+test('board: keyboard selection, a project job and copying the week forward', async () => {
+  const { view, requests, cell, monday, next } = await boardSetup();
+  fireEvent.keyDown(cell(monday, 3), { key: 'Enter' });
+  fireEvent.keyDown(cell(monday, 4), { key: ' ' });
+  fireEvent.change(view.getByPlaceholderText(/Sök projekt/), { target: { value: 'P1001 Ica Maxi ventilation' } });
+  fireEvent.click(view.getByRole('button', { name: 'Lägg till jobbet och sätt det på valda dagar' }));
+  assert.ok(view.getByRole('button', { name: 'Sätt P1001 Ica Maxi ventilation på valda dagar' }));
+  fireEvent.click(view.getByRole('button', { name: 'Kopiera V' + (await import('date-fns')).getISOWeek(new Date(`${monday}T12:00:00`)) + ' hit' }));
+  const saved = await savedDocument(view, requests);
+  assert.deepEqual(saved.jobs.at(-1), { name: 'P1001 Ica Maxi ventilation', details: 'Kund: Ica', deadline: '' });
+  const copied = saved.weeks.find(week => week.startDate === next);
+  assert.deepEqual(copied.people[0].assignments, [[], [], [], ['P1001 Ica Maxi ventilation'], ['P1001 Ica Maxi ventilation']]);
+  assert.equal(copied.people[0].userId, '00000000-0000-4000-8000-000000000001');
+});
+
+test('board: copying over a week with content requires confirmation', async () => {
+  const { monday, next } = await (async () => {
+    const { stockholmDate } = await vite.ssrLoadModule('/src/utils/planningOverview.ts');
+    const { format, startOfISOWeek, parseISO, addDays } = await import('date-fns');
+    const m = format(startOfISOWeek(parseISO(stockholmDate())), 'yyyy-MM-dd');
+    return { monday: m, next: format(addDays(parseISO(m), 7), 'yyyy-MM-dd') };
+  })();
+  const existing = { startDate: next, note: '', people: [{ name: 'Kontoperson', userId: '00000000-0000-4000-8000-000000000001', days: ['Behåll', '', '', '', ''] }] };
+  const { view, requests } = await boardSetup([existing]);
+  window.confirm = () => false;
+  try {
+    fireEvent.click(view.getAllByRole('button', { name: /^Kopiera V\d+ hit$/ })[1]);
+  } finally { window.confirm = () => true; }
+  const saved = await savedDocument(view, requests);
+  assert.equal(saved.weeks.find(week => week.startDate === next).people[0].days[0], 'Behåll');
+  assert.ok(saved.weeks.some(week => week.startDate === monday));
+});
+
+test('board: adding staff from accounts and marking a day Ledig', async () => {
+  const { view, requests, grid, monday } = await boardSetup();
+  fireEvent.click(view.getByRole('button', { name: 'Lägg till namnet i tavlan' }));
+  fireEvent.change(view.getByLabelText('Annan person (t.ex. inhyrd)'), { target: { value: 'Inhyrd Isolerare' } });
+  fireEvent.click(view.getByRole('button', { name: 'Lägg till namnet i tavlan' }));
+  fireEvent.click(view.getByRole('button', { name: 'Markera Inhyrd Isolerare båda veckorna' }));
+  assert.ok(view.getByText('10 dagar valda'));
+  fireEvent.keyDown(grid.querySelector(`[data-cell="${monday}|0|n:inhyrd isolerare"]`), { key: 'Escape' });
+  fireEvent.keyDown(grid.querySelector(`[data-cell="${monday}|1|n:inhyrd isolerare"]`), { key: 'Enter' });
+  fireEvent.click(view.getByRole('button', { name: 'Markera valda dagar som Ledig (tar bort jobben)' }));
+  const saved = await savedDocument(view, requests);
+  const week = saved.weeks.find(item => item.startDate === monday);
+  assert.deepEqual(week.people.map(person => person.name), ['Kontoperson', 'Inhyrd Isolerare']);
+  assert.deepEqual(week.people[1].days, ['', 'Ledig', '', '', '']);
+});
+
+test('board: click-only activation (assistive tech) selects a cell; removing a person clears the selection', async () => {
+  const { view, cell, monday } = await boardSetup();
+  fireEvent.click(cell(monday, 1), { detail: 0 });
+  assert.ok(view.getByText('1 dag vald'));
+  fireEvent.click(view.getByRole('button', { name: /^Ta bort Kontoperson från V\d+–V\d+$/ }));
+  assert.ok(view.getByText('Inga dagar valda'));
+});
+
+test('board: Ångra is disabled after an edit in text mode so it cannot discard that edit', async () => {
+  const { view, cell, monday } = await boardSetup();
+  fireEvent.keyDown(cell(monday, 0), { key: 'Enter' });
+  fireEvent.click(view.getByRole('button', { name: 'Sätt Jobb B på valda dagar' }));
+  const undo = view.getByRole('button', { name: 'Ångra senaste ändringen i tavlan' });
+  assert.equal(undo.disabled, false);
+  fireEvent.change(view.getByLabelText('Behöver lösas'), { target: { value: 'Ny fråga' } });
+  assert.equal(undo.disabled, true);
 });

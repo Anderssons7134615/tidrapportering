@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useBlocker } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { addDays, format, getISOWeek, getISOWeekYear, parseISO, startOfISOWeek } from 'date-fns';
@@ -13,6 +13,7 @@ import { validPlanningAssignments } from '../utils/planningAssignments';
 import { stockholmDate } from '../utils/planningOverview';
 import MyPlanning from '../components/MyPlanning';
 import PlanningStaffing from '../components/PlanningStaffing';
+import PlanningBoard, { type BoardChange } from '../components/PlanningBoard';
 import './Planning.css';
 
 const emptyPlan = (): PlanningDocument => ({ weeks: [], jobs: [], issues: '' });
@@ -41,6 +42,10 @@ export default function Planning() {
   const [importError, setImportError] = useState('');
   const [commentDirty, setCommentDirty] = useState(false);
   const saveErrorRef = useRef<HTMLDivElement>(null);
+  // Undo covers board actions only. Any edit made elsewhere (text mode) starts a new undo history.
+  const [history, setHistory] = useState<PlanningDocument[]>([]);
+  const boardDraft = useRef<PlanningDocument | null>(null);
+  const coalesceKey = useRef<string | undefined>();
   useEffect(() => { setPerson(''); }, [selected]);
   const blocker = useBlocker(Boolean(draft) || commentDirty);
   const content = draft ?? plan.data?.document;
@@ -62,7 +67,23 @@ export default function Planning() {
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
   }, [draft, commentDirty]);
-  const beginEdit = () => { setDraft(structuredClone(plan.data?.document ?? emptyPlan())); setRevision(plan.data?.revision ?? 0); save.reset(); setNotice(''); };
+  const beginEdit = () => { setDraft(structuredClone(plan.data?.document ?? emptyPlan())); setRevision(plan.data?.revision ?? 0); save.reset(); setNotice(''); setHistory([]); boardDraft.current = null; };
+  const boardChange: BoardChange = (next, options) => {
+    if (!draft || next === draft || save.isPending) return;
+    const continuing = boardDraft.current === draft;
+    if (!(options?.coalesce && continuing && options.coalesce === coalesceKey.current)) setHistory(items => [...(continuing ? items : []), draft].slice(-50));
+    coalesceKey.current = options?.coalesce;
+    boardDraft.current = next;
+    setDraft(next);
+  };
+  const canUndo = Boolean(draft) && history.length > 0 && boardDraft.current === draft && !save.isPending;
+  const undo = () => {
+    const previous = history[history.length - 1];
+    if (!canUndo || !previous) return;
+    setHistory(items => items.slice(0, -1));
+    boardDraft.current = previous; coalesceKey.current = undefined;
+    setDraft(previous);
+  };
   const changeWeek = (next: PlanningWeek) => setDraft(d => d && ({ ...d, weeks: d.weeks.map(w => w.startDate === week?.startDate ? next : w) }));
 
   if (plan.isLoading) return <TaskSection><p role="status">Laddar planeringen…</p></TaskSection>;
@@ -72,18 +93,23 @@ export default function Planning() {
     {notice && <p role="status" className="text-sm text-primary-800">{notice}</p>}
     {plan.data && <p className="text-sm text-graphite-600">Uppdaterad {stamp(plan.data.updatedAt)}</p>}
     {plan.data && user?.companyId && <MyPlanning document={plan.data.document} userId={user.id} companyId={user.companyId} today={today} />}
-    {content && <nav aria-label="Planeringens avsnitt" className="flex flex-wrap gap-2"><a className="btn-secondary" href="#planning-roster">Veckoplan</a><a className="btn-secondary" href="#planning-issues">Behöver lösas</a><a className="btn-secondary" href="#planning-jobs">Alla jobb</a>{plan.data && <a className="btn-secondary" href="#planning-comments">Kommentarer och tips</a>}</nav>}
-    {draft && <form className="planning-save" onSubmit={e => { e.preventDefault(); save.mutate(); }}>
+    {content && <nav aria-label="Planeringens avsnitt" className="flex flex-wrap gap-2">{draft ? <a className="btn-secondary" href="#planning-board">Tavla</a> : <a className="btn-secondary" href="#planning-roster">Veckoplan</a>}<a className="btn-secondary" href="#planning-issues">Behöver lösas</a><a className="btn-secondary" href="#planning-jobs">Alla jobb</a>{plan.data && <a className="btn-secondary" href="#planning-comments">Kommentarer och tips</a>}</nav>}
+    {draft && <form className="planning-save planning-save-sticky" onSubmit={e => { e.preventDefault(); save.mutate(); }}>
       <p className="font-semibold">Redigerar planeringen · ändringarna är inte sparade</p>
       <div className="flex flex-wrap gap-2">
         <button className="btn-primary" disabled={save.isPending}>{save.isPending ? 'Sparar…' : 'Spara planering'}</button>
+        <button type="button" className="btn-secondary" disabled={!canUndo} onClick={undo} aria-label="Ångra senaste ändringen i tavlan">Ångra</button>
         <button type="button" className="btn-secondary" disabled={save.isPending} onClick={() => { if (window.confirm('Avbryt och lämna dina osparade ändringar?')) { setDraft(null); save.reset(); } }}>Avbryt</button>
       </div>
       {save.isError && <div role="alert" tabIndex={-1} ref={saveErrorRef}><p>{save.error.message}</p><p className="mt-2 text-sm">Ditt utkast finns kvar. Rätta uppgiften och spara igen.</p>{(save.error as Error & { status?: number }).status === 409 && <><button type="button" className="btn-secondary mt-2" onClick={() => void plan.refetch()}>Hämta aktuell plan</button><p className="mt-2 text-sm">Kopiera dina ändringar innan du avbryter och öppnar den aktuella planen.</p></>}</div>}
     </form>}
     {!content && <EmptyState title="Ingen planering publicerad ännu" description="En administratör lägger upp planen här. Sedan kan alla i teamet läsa och kommentera." />}
     <ConfirmDialog open={blocker.state === 'blocked'} title="Lämna osparade ändringar?" description="Din planering eller kommentar har inte publicerats." confirmLabel="Lämna sidan" consequence="Osparade ändringar går förlorade." onClose={() => blocker.state === 'blocked' && blocker.reset()} onConfirm={() => blocker.state === 'blocked' && blocker.proceed()} />
+    {draft && admin && <TaskSection title="Planera" id="planning-board">
+      <PlanningBoard document={draft} onChange={boardChange} accounts={accounts.data} companyId={user?.companyId ?? ''} disabled={save.isPending} today={today} />
+    </TaskSection>}
     {content && <fieldset disabled={save.isPending} className="min-w-0 space-y-5">
+      <Collapsible open={!draft} summary="Textläge: fritext per dag, kontokoppling och fördelning per dag">
       <TaskSection title="Veckoplan" id="planning-roster">
         <div className="planning-filters">
           {weeks.length > 0 && <FormField label="Vecka" controlId="planning-week"><select id="planning-week" className="input" value={week?.startDate ?? ''} onChange={e => setSelected(e.target.value)}>{weeks.map(w => <option key={w.startDate} value={w.startDate}>{weekLabel(w.startDate)}</option>)}</select></FormField>}
@@ -120,11 +146,12 @@ export default function Planning() {
           {draft ? <label className="mt-4 block"><span className="label">Veckans anteckning</span><textarea className="input" rows={3} maxLength={5000} value={week.note} onChange={e => changeWeek({ ...week, note: e.target.value })} /></label> : week.note && <p className="mt-4 whitespace-pre-wrap text-sm text-graphite-600">{week.note}</p>}
         </> : <p>Inga veckor tillagda.</p>}
       </TaskSection>
+      </Collapsible>
       <TaskSection title="Behöver lösas" id="planning-issues">
         {draft ? <textarea className="input" aria-label="Behöver lösas" rows={8} maxLength={20000} value={draft.issues} onChange={e => setDraft({ ...draft, issues: e.target.value })} /> : <p className="whitespace-pre-wrap leading-relaxed">{content.issues || 'Inga öppna frågor noterade.'}</p>}
       </TaskSection>
       <TaskSection title="Jobb och återstående behov" id="planning-jobs">
-        <div className="divide-y divide-graphite-200">{content.jobs.map((job, i) => draft ? <fieldset key={i} className="planning-job"><legend className="sr-only">Jobb {i + 1}</legend>{(['name', 'details', 'deadline'] as const).map((field, j) => <label key={field}><span className="label">{['Jobb / beställare', 'Omfattning och bemanning', 'Tid / deadline'][j]}</span><textarea className="input" rows={j === 0 ? 2 : 3} maxLength={j === 0 ? 200 : j === 1 ? 5000 : 1000} value={job[field]} onChange={e => setDraft({ ...draft, jobs: draft.jobs.map((v, n) => n === i ? { ...v, [field]: e.target.value } : v) })} /></label>)}<button type="button" className="btn-secondary" onClick={() => { if (window.confirm(`Ta bort jobbet ${job.name || '(utan namn)'} ur planeringen?`)) setDraft({ ...draft, jobs: draft.jobs.filter((_, n) => n !== i) }); }}>Ta bort jobb</button></fieldset> : <article key={i} className="planning-job"><h3 className="font-semibold">{job.name}</h3><p className="whitespace-pre-wrap">{job.details}</p><p className="whitespace-pre-wrap text-graphite-600"><span className="sr-only">Tid / deadline: </span>{job.deadline}</p></article>)}</div>
+        <div className="divide-y divide-graphite-200">{content.jobs.map((job, i) => draft ? <JobEditor key={i} index={i} job={job} onChange={next => setDraft({ ...draft, jobs: draft.jobs.map((v, n) => n === i ? next : v) })}><button type="button" className="btn-secondary" onClick={() => { if (window.confirm(`Ta bort jobbet ${job.name || '(utan namn)'} ur planeringen?`)) setDraft({ ...draft, jobs: draft.jobs.filter((_, n) => n !== i) }); }}>Ta bort jobb</button></JobEditor> : <article key={i} className="planning-job"><h3 className="font-semibold">{job.name}</h3><p className="whitespace-pre-wrap">{job.details}</p><p className="whitespace-pre-wrap text-graphite-600"><span className="sr-only">Tid / deadline: </span>{job.deadline}</p></article>)}</div>
         {draft && <button type="button" className="btn-secondary mt-3" onClick={() => setDraft({ ...draft, jobs: [...draft.jobs, { name: '', details: '', deadline: '' }] })}>Lägg till jobb</button>}
       </TaskSection>
     </fieldset>}
@@ -142,6 +169,24 @@ export default function Planning() {
     }} />{importError && <p role="alert">{importError}</p>}<p className="mt-2 text-sm text-graphite-600">Kontrollera innehållet ovan och välj Spara planering för att publicera.</p></TaskSection>}
     {plan.data && <Comments companyId={user?.companyId ?? ''} onDirtyChange={setCommentDirty} />}
   </AppShell>;
+}
+
+type PlanningJob = PlanningDocument['jobs'][number];
+function JobEditor({ index, job, onChange, children }: { index: number; job: PlanningJob; onChange: (job: PlanningJob) => void; children: ReactNode }) {
+  const field = (name: keyof PlanningJob, label: string, rows: number, max: number) => <label><span className="label">{label}</span><textarea className="input" rows={rows} maxLength={max} value={job[name]} onChange={e => onChange({ ...job, [name]: e.target.value })} /></label>;
+  const deadline = job.deadline.trim().split('\n')[0];
+  return <fieldset className="planning-job planning-job-compact"><legend className="sr-only">Jobb {index + 1}</legend>
+    {field('name', 'Jobb / beställare', 1, 200)}
+    <details className="planning-job-more"><summary>Omfattning och deadline{deadline ? ` · ${deadline}` : ''}</summary>
+      {field('details', 'Omfattning och bemanning', 3, 5000)}
+      {field('deadline', 'Tid / deadline', 3, 1000)}
+    </details>
+    {children}
+  </fieldset>;
+}
+
+function Collapsible({ open, summary, children }: { open: boolean; summary: string; children: ReactNode }) {
+  return open ? <>{children}</> : <details className="planning-advanced"><summary>{summary}</summary>{children}</details>;
 }
 
 function AddWeek({ weeks, onAdd }: { weeks: PlanningWeek[]; onAdd: (w: PlanningWeek) => void }) {
